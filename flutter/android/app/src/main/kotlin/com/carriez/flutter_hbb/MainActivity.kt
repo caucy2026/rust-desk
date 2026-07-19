@@ -4,11 +4,18 @@ package com.carriez.flutter_hbb
  * Handle events from flutter
  * Request MediaProjection permission
  *
+ * 双屏模式:
+ *   - Display 0 (主屏): 键盘输入 + 连接管理
+ *   - Display 2 (副屏): RemoteActivity 显示远程桌面 + 触摸
+ *
+ * Reference: chip.md §2.4 (主屏防呆机制)
+ *
  * Inspired by [droidVNC-NG] https://github.com/bk138/droidVNC-NG
  */
 
 import ffi.FFI
 
+import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -18,6 +25,7 @@ import android.os.Bundle
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.Display
 import android.view.WindowManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
@@ -98,6 +106,32 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ===== 双屏防呆: 确保 MainActivity 始终运行在主屏 Display 0 =====
+        // 如果系统错误地恢复到了副屏，强制迁回主屏。
+        val currentDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION")
+            (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.displayId
+        }
+
+        if (currentDisplayId != Display.DEFAULT_DISPLAY) {
+            Log.w(logTag, "防呆: MainActivity 被启动到 Display $currentDisplayId, 迁回主屏")
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                val options = ActivityOptions.makeBasic()
+                options.launchDisplayId = Display.DEFAULT_DISPLAY  // 公开 API，无需反射
+                startActivity(intent, options.toBundle())
+            } else {
+                startActivity(intent)
+            }
+            finish()
+            return
+        }
+
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             FFI.setClipboardManager(_rdClipboardManager!!)
@@ -274,6 +308,42 @@ class MainActivity : FlutterActivity() {
                 "on_voice_call_closed" -> {
                     onVoiceCallClosed()
                 }
+                // ===== 双屏: 启动 RemoteActivity 到 Display 2 =====
+                "launch_remote_on_display2" -> {
+                    val peerId = (call.arguments as? Map<*, *>)?.get("peer_id") as? String ?: ""
+                    val password = (call.arguments as? Map<*, *>)?.get("password") as? String
+                    val forceRelay = (call.arguments as? Map<*, *>)?.get("force_relay") as? Boolean ?: false
+                    launchRemoteOnDisplay2(peerId, password, forceRelay)
+                    result.success(true)
+                }
+                // ===== 双屏: 主屏键盘输入转发到远程 =====
+                "send_key_string" -> {
+                    val text = (call.arguments as? Map<*, *>)?.get("text") as? String ?: ""
+                    if (text.isNotEmpty()) {
+                        SessionState.forwardKeyString(text)
+                    }
+                    result.success(true)
+                }
+                "send_key_event" -> {
+                    val key = (call.arguments as? Map<*, *>)?.get("key") as? String ?: ""
+                    val down = (call.arguments as? Map<*, *>)?.get("down") as? Boolean ?: true
+                    if (key.isNotEmpty()) {
+                        SessionState.forwardKeyEvent(key, down)
+                    }
+                    result.success(true)
+                }
+                "get_remote_state" -> {
+                    result.success(mapOf(
+                        "connected" to SessionState.isRemoteConnected,
+                        "sessionId" to (SessionState.currentSessionId ?: "")
+                    ))
+                }
+                "close_remote" -> {
+                    // 关闭副屏 RemoteActivity
+                    SessionState.remoteMethodChannel?.invokeMethod("finish_activity", null)
+                    SessionState.reset()
+                    result.success(true)
+                }
                 else -> {
                     result.error("-1", "No such method", null)
                 }
@@ -411,5 +481,40 @@ class MainActivity : FlutterActivity() {
     override fun onStart() {
         super.onStart()
         stopService(Intent(this, FloatingWindowService::class.java))
+    }
+
+    // ===== 双屏: 启动 RemoteActivity 到 Display 2 =====
+    /**
+     * 使用反射 API 将 RemoteActivity 启动到副屏 Display 2。
+     *
+     * Reference: chip.md §2.3 — 副屏 Activity 启动（反射 API）
+     */
+    private fun launchRemoteOnDisplay2(peerId: String, password: String?, forceRelay: Boolean) {
+        Log.d(logTag, "launchRemoteOnDisplay2: peerId=$peerId, display=2")
+
+        val intent = Intent(this, RemoteActivity::class.java).apply {
+            putExtra(RemoteActivity.EXTRA_PEER_ID, peerId)
+            password?.let { putExtra(RemoteActivity.EXTRA_PASSWORD, it) }
+            putExtra(RemoteActivity.EXTRA_FORCE_RELAY, forceRelay)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            try {
+                val options = ActivityOptions.makeBasic()
+                val method = options.javaClass.getMethod(
+                    "setLaunchDisplayId",
+                    Int::class.javaPrimitiveType  // ⚠️ javaPrimitiveType, 不是 javaObjectType
+                )
+                method.invoke(options, 2) // Display 2 = 副屏
+                startActivity(intent, options.toBundle())
+                Log.d(logTag, "RemoteActivity 已启动到 Display 2")
+            } catch (e: Exception) {
+                Log.e(logTag, "反射 setLaunchDisplayId 失败, 降级到默认 Display", e)
+                startActivity(intent)
+            }
+        } else {
+            startActivity(intent)
+        }
     }
 }

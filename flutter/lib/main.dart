@@ -26,10 +26,12 @@ import 'package:window_manager/window_manager.dart';
 import 'common.dart';
 import 'consts.dart';
 import 'mobile/pages/home_page.dart';
+import 'mobile/pages/remote_page.dart';
 import 'mobile/pages/server_page.dart';
 import 'mobile/widgets/deploy_dialog.dart';
 import 'models/platform_model.dart';
 
+import 'package:flutter_hbb/generated_bridge.dart';
 import 'package:flutter_hbb/plugin/handlers.dart'
     if (dart.library.html) 'package:flutter_hbb/web/plugin/handlers.dart';
 
@@ -188,6 +190,112 @@ void runMobileApp() async {
   gFFI.userModel.refreshCurrentUser();
   runApp(App());
   await initUniLinks();
+
+  // ===== 双屏: 监听 RemoteActivity 的 MethodChannel =====
+  // 如果当前 Flutter 引擎运行在 RemoteActivity (Display 2) 中，
+  // 则接收连接参数并直接导航到 RemotePage。
+  if (isAndroid) {
+    _initDualScreenRemoteListener();
+  }
+}
+
+/// 双屏模式: 监听 "remoteChannel" 的 init_params，
+/// 如果是副屏 RemoteActivity，直接显示 RemotePage。
+void _initDualScreenRemoteListener() {
+  try {
+    const remoteChannel = MethodChannel('remoteChannel');
+    remoteChannel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'init_params':
+          final peerId = call.arguments['peer_id'] as String? ?? '';
+          final password = call.arguments['password'] as String?;
+          final forceRelay = call.arguments['force_relay'] as bool? ?? false;
+          if (peerId.isNotEmpty) {
+            debugPrint('[DualScreen] RemoteActivity init_params: peerId=$peerId');
+            // 直接导航到 RemotePage，替换整个导航栈
+            globalKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (_) => RemotePage(
+                  id: peerId,
+                  password: password?.isNotEmpty == true ? password : null,
+                  forceRelay: forceRelay,
+                ),
+              ),
+              (_) => false, // 清除所有之前的页面
+            );
+          }
+          break;
+        case 'on_key_string':
+          // 从主屏接收键盘字符串 → 通过 FFI 发送到远程
+          final text = call.arguments['text'] as String? ?? '';
+          if (text.isNotEmpty && gFFI.sessionId.isNotEmpty) {
+            try {
+              bind.sessionInputString(
+                  sessionId: gFFI.sessionId, value: text);
+            } catch (e) {
+              debugPrint('[DualScreen] sessionInputString error: $e');
+            }
+          }
+          break;
+        case 'on_key_event':
+          // 从主屏接收虚拟键事件 → 通过 FFI 发送到远程
+          final key = call.arguments['key'] as String? ?? '';
+          final down = call.arguments['down'] as bool? ?? true;
+          if (key.isNotEmpty) {
+            try {
+              gFFI.inputModel.inputKey(key);
+            } catch (e) {
+              debugPrint('[DualScreen] inputKey error: $e');
+            }
+          }
+          break;
+        case 'finish_activity':
+          // 主屏请求关闭副屏
+          _finishRemoteActivity();
+          break;
+        default:
+          break;
+      }
+    });
+
+    // 也尝试通过 get_connection_params 主动拉取参数 (备选方案)
+    remoteChannel.invokeMethod('get_connection_params').then((params) {
+      if (params != null) {
+        final peerId = params['peer_id'] as String? ?? '';
+        if (peerId.isNotEmpty) {
+          debugPrint('[DualScreen] get_connection_params: peerId=$peerId');
+          globalKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => RemotePage(
+                id: peerId,
+                password: (params['password'] as String?)?.isNotEmpty == true
+                    ? params['password'] as String
+                    : null,
+                forceRelay: params['force_relay'] as bool? ?? false,
+              ),
+            ),
+            (_) => false,
+          );
+        }
+      }
+    }).catchError((e) {
+      // Normal: 主屏 MainActivity 不会有这个 channel，忽略错误
+      debugPrint('[DualScreen] Not remote mode (expected): $e');
+    });
+  } catch (e) {
+    debugPrint('[DualScreen] _initDualScreenRemoteListener error: $e');
+  }
+}
+
+/// 关闭 RemoteActivity
+void _finishRemoteActivity() {
+  try {
+    const remoteChannel = MethodChannel('remoteChannel');
+    // 通知 Kotlin 层关闭 Activity
+    globalKey.currentState?.popUntil((route) => route.isFirst);
+  } catch (e) {
+    debugPrint('[DualScreen] finishRemoteActivity error: $e');
+  }
 }
 
 void runMultiWindow(

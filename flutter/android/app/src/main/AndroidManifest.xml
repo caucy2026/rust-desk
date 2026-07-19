@@ -27,6 +27,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="RustDesk"
         android:requestLegacyExternalStorage="true"
+        android:resizeableActivity="true"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true">
 
@@ -79,6 +80,18 @@
                 <data android:scheme="rustdesk" />
             </intent-filter>
         </activity>
+
+        <!-- ===== 双屏: 副屏 RemoteActivity (Display 2) ===== -->
+        <!-- 显示远程桌面画面 + 处理触摸事件 -->
+        <activity
+            android:name=".RemoteActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode|navigation"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="landscape"
+            android:theme="@style/LaunchTheme"
+            android:windowSoftInputMode="adjustNothing" />
 
         <activity
             android:name=".PermissionRequestTransparentActivity"
