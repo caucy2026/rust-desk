@@ -20,6 +20,8 @@ import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Display
 import android.view.WindowManager
@@ -145,7 +147,7 @@ class RemoteActivity : FlutterActivity() {
         }
 
         // 将连接参数立即发送给 Flutter 端 (在 Flutter 初始化完成后)
-        handler.postDelayed({
+        Handler(Looper.getMainLooper()).postDelayed({
             channel.invokeMethod("init_params", mapOf(
                 "peer_id" to peerId,
                 "password" to (password ?: ""),

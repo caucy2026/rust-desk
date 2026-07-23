@@ -228,7 +228,7 @@ void _initDualScreenRemoteListener() {
         case 'on_key_string':
           // 从主屏接收键盘字符串 → 通过 FFI 发送到远程
           final text = call.arguments['text'] as String? ?? '';
-          if (text.isNotEmpty && gFFI.sessionId.isNotEmpty) {
+          if (text.isNotEmpty && gFFI.sessionId.toString().isNotEmpty) {
             try {
               bind.sessionInputString(
                   sessionId: gFFI.sessionId, value: text);

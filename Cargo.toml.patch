@@ -1,0 +1,28 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -25,15 +25,15 @@
+-flutter = ["flutter_rust_bridge"]
+-default = ["use_dasp"]
+-hwcodec = ["scrap/hwcodec"]
+-vram = ["scrap/vram"]
+-mediacodec = ["scrap/mediacodec"]
+-plugin_framework = []
+-linux-pkg-config = ["magnum-opus/linux-pkg-config"]
++flutter = ["flutter_rust_bridge"]
++default = []
++plugin_framework = []
+@@ -42,7 +42,6 @@
+ async-trait = "0.1"
+-scrap = { path = "libs/scrap", features = ["wayland"] }
+ hbb_common = { path = "libs/hbb_common" }
+@@ -53,9 +52,6 @@
+-magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus" }
+-dasp = { version = "0.11", features = ["signal", "interpolate-linear", "interpolate"], optional = true }
+-rubato = { version = "0.12", optional = true }
+-samplerate = { version = "0.2", optional = true }
+ num_cpus = "1.15"
+@@ -92,7 +88,6 @@
+-portable-pty = { git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1", package = "portable-pty" }
+@@ -197,7 +192,7 @@
+-members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/virtual_display", "libs/virtual_display/dylib", "libs/portable", "libs/remote_printer"]
++members = ["libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/virtual_display", "libs/virtual_display/dylib", "libs/remote_printer"]

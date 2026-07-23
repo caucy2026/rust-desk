@@ -243,6 +243,29 @@ class _ControlPageState extends State<ControlPage> {
                 child: Container(
                   padding: const EdgeInsets.only(left: 16, right: 16),
                   child: RawAutocomplete<Peer>(
+                    optionsViewBuilder: (context, onSelected, options) {
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          child: SizedBox(
+                            width: 300,
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: options.length,
+                              itemBuilder: (context, index) {
+                                final option = options.elementAt(index);
+                                return ListTile(
+                                  title: Text(option.id),
+                                  subtitle: Text(option.alias.isNotEmpty ? option.alias : option.username),
+                                  onTap: () => onSelected(option),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     optionsBuilder: (TextEditingValue textEditingValue) {
                       if (textEditingValue.text == '') {
                         _autocompleteOpts = const Iterable<Peer>.empty();
