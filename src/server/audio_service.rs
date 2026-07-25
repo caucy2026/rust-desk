@@ -199,7 +199,8 @@ mod cpal_impl {
         sp.snapshot(|_sps: ServiceSwap<_>| Ok(()))?;
         match &state.stream {
             None => {
-                state.stream = Some(play(&sp)?);
+                #[cfg(feature = "use_dasp")]
+                { state.stream = Some(play(&sp)?); }
             }
             _ => {}
         }
@@ -214,7 +215,8 @@ mod cpal_impl {
         sp.snapshot(|sps| {
             match &state.stream {
                 None => {
-                    state.stream = Some(play(&sp)?);
+                    #[cfg(feature = "use_dasp")]
+                    { state.stream = Some(play(&sp)?); }
                 }
                 _ => {}
             }
@@ -245,7 +247,8 @@ mod cpal_impl {
     ) {
         let mut data = data;
         if sample_rate0 != sample_rate {
-            data = crate::common::audio_resample(&data, sample_rate0, sample_rate, device_channel);
+            // [debug] audio_resample disabled (use_dasp feature not enabled)
+            // data = crate::common::audio_resample(&data, sample_rate0, sample_rate, device_channel);
         }
         if device_channel != encode_channel {
             data = crate::common::audio_rechannel(
@@ -346,6 +349,7 @@ mod cpal_impl {
         Ok((device, format))
     }
 
+    #[cfg(feature = "use_dasp")]
     fn play(sp: &GenericService) -> ResultType<(Box<dyn StreamTrait>, Arc<Message>)> {
         use cpal::SampleFormat::*;
         let (device, config) = get_device()?;
@@ -384,6 +388,7 @@ mod cpal_impl {
         ))
     }
 
+    #[cfg(feature = "use_dasp")]
     fn build_input_stream<T>(
         device: cpal::Device,
         config: &cpal::SupportedStreamConfig,

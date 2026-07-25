@@ -725,7 +725,7 @@ class PasswordWidget extends StatefulWidget {
 }
 
 class _PasswordWidgetState extends State<PasswordWidget> {
-  bool _passwordVisible = false;
+  bool _passwordVisible = true;
   final _focusNode = FocusNode();
   Timer? _timer;
   Timer? _timerReRequestFocus;
@@ -765,6 +765,7 @@ class _PasswordWidgetState extends State<PasswordWidget> {
       title: translate(widget.title ?? DialogTextField.kPasswordTitle),
       hintText: translate(widget.hintText ?? 'Enter your password'),
       controller: widget.controller,
+      keyboardType: TextInputType.visiblePassword,
       prefixIcon: DialogTextField.kPasswordIcon,
       suffixIcon: IconButton(
         icon: Icon(

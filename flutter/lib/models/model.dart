@@ -1379,6 +1379,9 @@ class FfiModel with ChangeNotifier {
     final connType = parent.target?.connType;
     if (isPeerAndroid) {
       _touchMode = true;
+    } else if (isMobile) {
+      // Mobile/pad 设备默认开启触摸模式（点哪儿鼠标去哪儿）
+      _touchMode = true;
     } else {
       // `kOptionTouchMode` is originally peer option, but it is moved to local option later.
       // We check local option first, if not set, then check peer option.

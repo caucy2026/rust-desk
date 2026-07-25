@@ -191,12 +191,10 @@ void runMobileApp() async {
   runApp(App());
   await initUniLinks();
 
-  // ===== 双屏: 监听 RemoteActivity 的 MethodChannel =====
-  // 如果当前 Flutter 引擎运行在 RemoteActivity (Display 2) 中，
-  // 则接收连接参数并直接导航到 RemotePage。
-  if (isAndroid) {
-    _initDualScreenRemoteListener();
-  }
+  // ===== 双屏模式已禁用 (单屏编译) =====
+  // if (isAndroid) {
+  //   _initDualScreenRemoteListener();
+  // }
 }
 
 /// 双屏模式: 监听 "remoteChannel" 的 init_params，

@@ -1355,7 +1355,7 @@ void _rdpDialog(String id) async {
   final userController = TextEditingController(text: username);
   final passwordController = TextEditingController(
       text: await bind.mainGetPeerOption(id: id, key: 'rdp_password'));
-  RxBool secure = true.obs;
+  RxBool secure = false.obs;
 
   gFFI.dialogManager.show((setState, close, context) {
     submit() async {
@@ -1436,6 +1436,7 @@ void _rdpDialog(String id) async {
                     Expanded(
                       child: Obx(() => TextField(
                             obscureText: secure.value,
+                            keyboardType: TextInputType.visiblePassword,
                             maxLength: maxLength,
                             decoration: InputDecoration(
                                 labelText:

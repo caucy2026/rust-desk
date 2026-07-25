@@ -11,13 +11,13 @@ object KeyEventConverter {
 
         val keyboardMode = keyEventProto.getMode()
 
-        if (keyEventProto.hasChr()) {
+        if (keyEventProto.getUnionCase() == hbb.MessageOuterClass.KeyEvent.UnionCase.CHR) {
             if (keyboardMode == KeyboardMode.Map || keyboardMode == KeyboardMode.Translate) {
                 chrValue = keyEventProto.getChr()
             } else {
                 chrValue = convertUnicodeToKeyCode(keyEventProto.getChr() as Int)
             }
-        } else if (keyEventProto.hasControlKey()) {
+        } else if (keyEventProto.getUnionCase() == hbb.MessageOuterClass.KeyEvent.UnionCase.CONTROL_KEY) {
             chrValue = convertControlKeyToKeyCode(keyEventProto.getControlKey())
         }
 

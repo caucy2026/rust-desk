@@ -353,3 +353,50 @@ RustDesk/rustdesk/
         ├── message.proto
         └── rendezvous.proto
 ```
+
+---
+
+## 2026-07-25 闭环验证记录
+
+### 本次目标
+
+- 确保 Android 全量代码可编译。
+- 确保编译产物可推送到设备并可正常启动运行。
+
+### 今日关键修复
+
+1. Flutter 依赖兼容
+- 修复 `octo_image` 缓存包缺少 animation 导入导致的编译错误。
+- 修复 `sqflite` 缓存包缺少 services 导入导致的编译错误。
+
+2. Protobuf/Kotlin 兼容
+- 适配 `proto3 oneof` 生成代码，不再使用 `hasSeq/hasChr/hasControlKey`。
+- 修改为 `getUnionCase()` 判断分支，修复 Kotlin 编译失败。
+- 影响文件：
+    - `flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/InputService.kt`
+    - `flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/KeyboardKeyEventMapper.kt`
+
+3. protoc 工具链
+- 按工程配置补齐 `/tmp/protoc3/bin/protoc`，满足 Gradle protobuf 任务依赖。
+
+### 构建验证
+
+- 命令：`flutter build apk --debug`
+- 结果：通过，产物 `flutter/build/app/outputs/flutter-apk/app-debug.apk`
+- 产物时间：`2026-07-25 21:54:45`
+- 产物大小：约 `136MB`
+
+### 设备闭环验证 (192.168.1.6:5555)
+
+- 安装：`adb install -r .../app-debug.apk` -> `Success`
+- 启动：`adb shell am start -n com.carriez.flutter_hbb/.MainActivity`
+- 包名存在：`com.carriez.flutter_hbb`
+- 前台 Activity：`com.carriez.flutter_hbb/.MainActivity`
+- 进程 PID：`11995`
+- 版本信息：`versionName=1.4.9`，`versionCode=67`
+- 更新时间：`2026-07-25 21:56:09`
+
+### 结论
+
+- Android 代码编译通过。
+- APK 推送成功并可在目标设备正常启动运行，闭环完成。

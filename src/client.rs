@@ -1436,12 +1436,16 @@ impl AudioHandler {
                     let sample_rate = self.sample_rate.1;
                     let mut buffer = buffer[0..n].to_owned();
                     if sample_rate != sample_rate0 {
+                        // [debug] audio_resample disabled (use_dasp feature not enabled)
+                        buffer = buffer[0..n].to_owned();
+                        /*
                         buffer = crate::audio_resample(
                             &buffer[0..n],
                             sample_rate0,
                             sample_rate,
                             channels,
                         );
+                        */
                     }
                     if self.channels != self.device_channel {
                         buffer = crate::audio_rechannel(
