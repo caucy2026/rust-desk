@@ -579,6 +579,70 @@ class PermissionChecker extends StatefulWidget {
 }
 
 class _PermissionCheckerState extends State<PermissionChecker> {
+  Future<void> _showPermissionRequestMenu(ServerModel serverModel) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.screen_share),
+                title: Text(translate("Screen Capture")),
+                subtitle: Text(translate("Request screen capture permission")),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  serverModel.toggleService();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.keyboard),
+                title: Text(translate("Input Control")),
+                subtitle: Text(translate("Open Accessibility settings")),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showInputWarnAlert(gFFI);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder),
+                title: Text(translate("Transfer file")),
+                subtitle: Text(translate("Request file permission")),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await AndroidPermissionManager.request(
+                      kManageExternalStorage);
+                },
+              ),
+              if (androidVersion >= 30)
+                ListTile(
+                  leading: const Icon(Icons.mic),
+                  title: Text(translate("Audio Capture")),
+                  subtitle: Text(translate("Request microphone permission")),
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await AndroidPermissionManager.request(kRecordAudio);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.app_settings_alt),
+                title: Text(translate("Open System Setting")),
+                subtitle: Text(
+                    translate("Open app settings to grant required permissions")),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  AndroidPermissionManager.startAction(
+                      kActionApplicationDetailsSettings);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final serverModel = Provider.of<ServerModel>(context);
@@ -596,6 +660,14 @@ class _PermissionCheckerState extends State<PermissionChecker> {
     return PaddingCard(
         title: translate("Permissions"),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _showPermissionRequestMenu(serverModel),
+              icon: const Icon(Icons.security),
+              label: Text(translate("Permission Request Menu")),
+            ),
+          ).marginOnly(bottom: 6),
           serverModel.mediaOk && !hideStopService
               ? ElevatedButton.icon(
                       style: ButtonStyle(

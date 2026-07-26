@@ -129,11 +129,13 @@ class FfiModel with ChangeNotifier {
   DateTime? _offlineReconnectStartTime;
   bool _viewOnly = false;
   bool _showMyCursor = false;
+  bool _macInputPermissionHintShown = false;
   WeakReference<FFI> parent;
   late final SessionID sessionId;
 
   RxBool waitForImageDialogShow = true.obs;
   Timer? waitForImageTimer;
+  Timer? waitForImageMacHintTimer;
   RxBool waitForFirstImage = true.obs;
   bool isRefreshing = false;
 
@@ -243,6 +245,23 @@ class FfiModel with ChangeNotifier {
       }
     }
 
+    if (!hasKeyboardPerm &&
+      _pi.platform == kPeerPlatformMacOS &&
+      !_macInputPermissionHintShown &&
+      parent.target != null) {
+      _macInputPermissionHintShown = true;
+      final helpText =
+        'Connected, but remote control input is blocked on the Mac side.\n\n'
+        'Please check on the Mac:\n'
+        '1. System Settings -> Privacy & Security -> Accessibility, and allow KEMI-远程桌面.\n'
+        '2. System Settings -> Privacy & Security -> Input Monitoring, and allow KEMI-远程桌面.\n'
+        '3. Quit and reopen KEMI-远程桌面 after changing permissions.';
+      showMsgBox(sessionId, 'error', 'Mac input permission required', helpText,
+        '', true, parent.target!.dialogManager);
+    } else if (hasKeyboardPerm) {
+      _macInputPermissionHintShown = false;
+    }
+
     debugPrint('updatePermission: $_permissions');
     notifyListeners();
   }
@@ -256,6 +275,7 @@ class FfiModel with ChangeNotifier {
     _secure = null;
     _direct = null;
     _inputBlocked = false;
+    _macInputPermissionHintShown = false;
     _timer?.cancel();
     _timer = null;
     resetRestartReconnectState();
@@ -1174,18 +1194,45 @@ class FfiModel with ChangeNotifier {
       closeConnection();
     }
 
+    showMacCaptureHelp() {
+      final helpText =
+          'Connected, but no image frames are coming from the remote Mac.\n\n'
+          'Please check on the Mac side:\n'
+          '1. System Settings -> Privacy & Security -> Screen Recording, and allow RustDesk.\n'
+          '2. Quit and reopen RustDesk on Mac after changing permission.\n'
+          '3. Start sharing screen again on Mac.';
+      showMsgBox(sessionId, 'error', 'No image from remote Mac', helpText, '',
+          true, dialogManager);
+    }
+
     if (waitForFirstImage.isFalse) return;
+    final isMacPeer = _pi.platform == kPeerPlatformMacOS;
+    final waitingText = isMacPeer
+        ? '$text\n\nIf this takes too long, the remote Mac may have failed to start screen capture.'
+        : text;
+
     dialogManager.show(
       (setState, close, context) => CustomAlertDialog(
           title: null,
-          content: SelectionArea(child: msgboxContent(type, title, text)),
+          content: SelectionArea(child: msgboxContent(type, title, waitingText)),
           actions: [
+            if (isMacPeer)
+              dialogButton("Mac Capture Help", onPressed: showMacCaptureHelp,
+                  isOutline: true),
             dialogButton("Cancel", onPressed: onClose, isOutline: true)
           ],
           onCancel: onClose),
       tag: '$sessionId-waiting-for-image',
     );
     waitForImageDialogShow.value = true;
+    waitForImageMacHintTimer?.cancel();
+    if (isMacPeer) {
+      waitForImageMacHintTimer = Timer(Duration(seconds: 12), () {
+        if (waitForFirstImage.isTrue && waitForImageDialogShow.value) {
+          showMacCaptureHelp();
+        }
+      });
+    }
     waitForImageTimer = Timer(Duration(milliseconds: 1500), () {
       if (waitForFirstImage.isTrue && !isRefreshing) {
         bind.sessionInputOsPassword(sessionId: sessionId, value: '');
@@ -1379,9 +1426,6 @@ class FfiModel with ChangeNotifier {
     final connType = parent.target?.connType;
     if (isPeerAndroid) {
       _touchMode = true;
-    } else if (isMobile) {
-      // Mobile/pad 设备默认开启触摸模式（点哪儿鼠标去哪儿）
-      _touchMode = true;
     } else {
       // `kOptionTouchMode` is originally peer option, but it is moved to local option later.
       // We check local option first, if not set, then check peer option.
@@ -1396,6 +1440,11 @@ class FfiModel with ChangeNotifier {
         final optSession = await bind.sessionGetOption(
             sessionId: sessionId, arg: kOptionTouchMode);
         _touchMode = optSession != '';
+      }
+      // Mobile clients default to touch mode for absolute tap-to-position,
+      // unless the user has explicitly set it to 'N' (mouse mode).
+      if (isMobile && optLocal != 'N') {
+        _touchMode = true;
       }
     }
     if (isMobile) {

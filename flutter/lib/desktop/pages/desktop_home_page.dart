@@ -38,6 +38,7 @@ const borderColor = Color(0xFF2F65BA);
 class _DesktopHomePageState extends State<DesktopHomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final _leftPaneScrollController = ScrollController();
+static const _kMacPermissionFlowVersion = 'v1.0.4';
 
   @override
   bool get wantKeepAlive => true;
@@ -48,6 +49,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var watchIsProcessTrust = false;
   var watchIsInputMonitoring = false;
   var watchIsCanRecordAudio = false;
+  var _macPermissionAutoPrompted = false;
+  var _macPermissionGuideShownInSession = false;
+  static const _kOptionMacPermissionGuideShown = 'mac-permission-guide-shown';
   Timer? _updateTimer;
   bool isCardClosed = false;
 
@@ -478,24 +482,23 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       }
     } else if (isMacOS) {
       final isOutgoingOnly = bind.isOutgoingOnly();
-      if (!(isOutgoingOnly || bind.mainIsCanScreenRecording(prompt: false))) {
+      final hasScreenPermission =
+          isOutgoingOnly || bind.mainIsCanScreenRecording(prompt: false);
+      final hasAccessibilityPermission =
+          isOutgoingOnly || bind.mainIsProcessTrusted(prompt: false);
+      final hasInputMonitoringPermission =
+          bind.mainIsCanInputMonitoring(prompt: false);
+
+      if (!hasScreenPermission ||
+          !hasAccessibilityPermission ||
+          !hasInputMonitoringPermission) {
         return buildInstallCard("Permissions", "config_screen", "Configure",
             () async {
-          bind.mainIsCanScreenRecording(prompt: true);
-          watchIsCanScreenRecording = true;
-        }, help: 'Help', link: translate("doc_mac_permission"));
-      } else if (!isOutgoingOnly && !bind.mainIsProcessTrusted(prompt: false)) {
-        return buildInstallCard("Permissions", "config_acc", "Configure",
-            () async {
-          bind.mainIsProcessTrusted(prompt: true);
-          watchIsProcessTrust = true;
-        }, help: 'Help', link: translate("doc_mac_permission"));
-      } else if (!bind.mainIsCanInputMonitoring(prompt: false)) {
-        return buildInstallCard("Permissions", "config_input", "Configure",
-            () async {
-          bind.mainIsCanInputMonitoring(prompt: true);
-          watchIsInputMonitoring = true;
-        }, help: 'Help', link: translate("doc_mac_permission"));
+          await _requestAllMissingMacPermissions();
+          },
+              help: 'Help',
+              link: translate("doc_mac_permission"),
+              footerText: 'Permission flow $_kMacPermissionFlowVersion');
       } else if (!isOutgoingOnly &&
           !svcStopped.value &&
           bind.mainIsInstalled() &&
@@ -579,7 +582,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       String? help,
       String? link,
       bool? closeButton,
-      String? closeOption}) {
+      String? closeOption,
+      String? footerText}) {
     if (bind.mainGetBuildinOption(key: kOptionHideHelpCards) == 'Y' &&
         content != 'install_daemon_tip') {
       return const SizedBox();
@@ -675,6 +679,17 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                                             fontSize: 12),
                                       )).marginOnly(top: 6)),
                             ]
+                          : <Widget>[]) +
+                        (footerText != null
+                          ? <Widget>[
+                            Center(
+                              child: Text(
+                            footerText,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 10.5),
+                            ).marginOnly(top: 8)),
+                          ]
                           : <Widget>[]))),
         ),
         if (closeButton != null && closeButton == true)
@@ -692,6 +707,157 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           ),
       ],
     );
+  }
+
+  Widget _buildMacPermissionStatusRow(String title, bool granted) {
+    return Row(
+      children: [
+        Icon(
+          granted ? Icons.check_circle : Icons.error_outline,
+          size: 18,
+          color: granted ? Colors.green : Colors.orange,
+        ).marginOnly(right: 8),
+        Expanded(child: Text(title)),
+        Text(granted ? 'Granted' : 'Missing'),
+      ],
+    ).marginOnly(bottom: 6);
+  }
+
+  void _showMacPermissionGuideDialog({
+    required bool canScreenRecording,
+    required bool canTrusted,
+    required bool canInputMonitoring,
+  }) {
+    if (_macPermissionGuideShownInSession) {
+      return;
+    }
+    _macPermissionGuideShownInSession = true;
+
+    gFFI.dialogManager.show((setState, close, context) {
+      return CustomAlertDialog(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.security, color: MyTheme.accent),
+            Text(translate('Permissions')).paddingOnly(left: 10),
+          ],
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 460),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Enable the following macOS permissions to allow remote view and input:',
+                style: const TextStyle(fontSize: 14),
+              ).marginOnly(bottom: 12),
+              _buildMacPermissionStatusRow(
+                'Screen Recording',
+                canScreenRecording,
+              ),
+              _buildMacPermissionStatusRow(
+                'Accessibility',
+                canTrusted,
+              ),
+              _buildMacPermissionStatusRow(
+                'Input Monitoring',
+                canInputMonitoring,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'After granting permission in System Settings, quit and reopen the app.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          dialogButton('Help', onPressed: () async {
+            await launchUrl(Uri.parse(translate('doc_mac_permission')));
+          }, isOutline: true),
+          dialogButton('Close', onPressed: close, isOutline: true),
+          dialogButton('Request Permissions', onPressed: () {
+            if (!canScreenRecording) {
+              bind.mainIsCanScreenRecording(prompt: true);
+              watchIsCanScreenRecording = true;
+            }
+            if (!canTrusted) {
+              bind.mainIsProcessTrusted(prompt: true);
+              watchIsProcessTrust = true;
+            }
+            if (!canInputMonitoring) {
+              bind.mainIsCanInputMonitoring(prompt: true);
+              watchIsInputMonitoring = true;
+            }
+            close();
+          }),
+        ],
+      );
+    });
+  }
+
+  Future<void> _autoPromptMacPermissionsIfNeeded() async {
+    if (!isMacOS || bind.isOutgoingOnly() || _macPermissionAutoPrompted) {
+      return;
+    }
+    _macPermissionAutoPrompted = true;
+
+    final canScreenRecording = bind.mainIsCanScreenRecording(prompt: false);
+    final canTrusted = bind.mainIsProcessTrusted(prompt: false);
+    final canInputMonitoring = bind.mainIsCanInputMonitoring(prompt: false);
+    final hasMissingPermission =
+        !canScreenRecording || !canTrusted || !canInputMonitoring;
+
+    if (!hasMissingPermission) {
+      return;
+    }
+
+    if (bind.mainGetLocalOption(key: _kOptionMacPermissionGuideShown) != 'Y') {
+      await bind.mainSetLocalOption(
+          key: _kOptionMacPermissionGuideShown, value: 'Y');
+      if (mounted) {
+        _showMacPermissionGuideDialog(
+          canScreenRecording: canScreenRecording,
+          canTrusted: canTrusted,
+          canInputMonitoring: canInputMonitoring,
+        );
+      }
+    }
+
+    if (!canScreenRecording) {
+      bind.mainIsCanScreenRecording(prompt: true);
+      watchIsCanScreenRecording = true;
+    }
+    if (!canTrusted) {
+      bind.mainIsProcessTrusted(prompt: true);
+      watchIsProcessTrust = true;
+    }
+    if (!canInputMonitoring) {
+      bind.mainIsCanInputMonitoring(prompt: true);
+      watchIsInputMonitoring = true;
+    }
+  }
+
+  Future<void> _requestAllMissingMacPermissions() async {
+    final canScreenRecording = bind.mainIsCanScreenRecording(prompt: false);
+    final canTrusted = bind.mainIsProcessTrusted(prompt: false);
+    final canInputMonitoring = bind.mainIsCanInputMonitoring(prompt: false);
+
+    if (!canScreenRecording) {
+      bind.mainIsCanScreenRecording(prompt: true);
+      watchIsCanScreenRecording = true;
+    }
+    if (!canTrusted) {
+      bind.mainIsProcessTrusted(prompt: true);
+      watchIsProcessTrust = true;
+    }
+    if (!canInputMonitoring) {
+      bind.mainIsCanInputMonitoring(prompt: true);
+      watchIsInputMonitoring = true;
+    }
   }
 
   @override
@@ -851,6 +1017,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       }
     });
     _uniLinksSubscription = listenUniLinks();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoPromptMacPermissionsIfNeeded();
+    });
 
     if (bind.isIncomingOnly()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {

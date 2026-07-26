@@ -26,7 +26,12 @@ impl Capturer {
                 }
             },
         )
-        .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
+        .map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Quartz capturer create failed: {:?}", e),
+            )
+        })?;
 
         Ok(Capturer {
             inner,

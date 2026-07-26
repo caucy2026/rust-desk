@@ -5,7 +5,7 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = kemi-远程桌面
+PRODUCT_NAME = KEMI-远程桌面
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = com.carriez.flutterHbb

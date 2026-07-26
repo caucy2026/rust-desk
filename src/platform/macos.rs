@@ -173,7 +173,12 @@ fn unsafe_is_can_screen_recording(prompt: bool) -> bool {
     if !can_record_screen && prompt {
         use scrap::{Capturer, Display};
         if let Ok(d) = Display::primary() {
-            Capturer::new(d).ok();
+            if let Err(e) = Capturer::new(d) {
+                log::warn!(
+                    "Screen recording prompt fallback failed to create capturer: {}",
+                    e
+                );
+            }
         }
     }
     can_record_screen

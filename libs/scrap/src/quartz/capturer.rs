@@ -66,6 +66,20 @@ impl Capturer {
             stream
         };
 
+        if stream.is_null() {
+            unsafe {
+                dispatch_release(queue);
+            }
+            log::error!(
+                "CGDisplayStreamCreateWithDispatchQueue returned null stream (display_id={}, width={}, height={}, format={:?})",
+                display.id(),
+                width,
+                height,
+                format,
+            );
+            return Err(CGError::Failure);
+        }
+
         match unsafe { CGDisplayStreamStart(stream) } {
             CGError::Success => Ok(Capturer {
                 stream,
@@ -76,7 +90,21 @@ impl Capturer {
                 display,
                 stopped,
             }),
-            x => Err(x),
+            x => {
+                unsafe {
+                    CFRelease(stream);
+                    dispatch_release(queue);
+                }
+                log::error!(
+                    "CGDisplayStreamStart failed (display_id={}, width={}, height={}, format={:?}, error={:?})",
+                    display.id(),
+                    width,
+                    height,
+                    format,
+                    x,
+                );
+                Err(x)
+            }
         }
     }
 

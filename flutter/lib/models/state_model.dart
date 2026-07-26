@@ -29,6 +29,11 @@ class StateGlobal {
 
   String _inputSource = '';
 
+  /// True when cache loading + network refresh have completed (or timed out).
+  final essentialDataLoaded = false.obs;
+  /// True when the animated KEMI splash has played long enough and can exit.
+  final splashFinished = false.obs;
+
   // Track relative mouse mode state for each peer connection.
   // Key: peerId, Value: true if relative mouse mode is active.
   // Note: This is session-only runtime state, NOT persisted to config.

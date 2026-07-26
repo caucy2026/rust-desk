@@ -185,16 +185,14 @@ void runMobileApp() async {
   checkUpdate();
   if (isAndroid) androidChannelInit();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
+  // Render immediately — splash handles its own animation + timing.
+  runApp(App());
+  // Background: non-blocking cache load + network.
   draggablePositions.load();
   await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);
+  stateGlobal.essentialDataLoaded.value = true;
   gFFI.userModel.refreshCurrentUser();
-  runApp(App());
   await initUniLinks();
-
-  // ===== 双屏模式已禁用 (单屏编译) =====
-  // if (isAndroid) {
-  //   _initDualScreenRemoteListener();
-  // }
 }
 
 /// 双屏模式: 监听 "remoteChannel" 的 init_params，

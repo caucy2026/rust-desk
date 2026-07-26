@@ -302,9 +302,33 @@ fn create_capturer(
             #[cfg(not(windows))]
             {
                 log::debug!("Create capturer from scrap");
-                return Ok(Box::new(
-                    Capturer::new(display).with_context(|| "Failed to create capturer")?,
-                ));
+                #[cfg(target_os = "macos")]
+                let can_screen_recording = crate::platform::macos::is_can_screen_recording(false);
+                return Ok(Box::new(Capturer::new(display).with_context(|| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        format!(
+                            "Failed to create capturer (display_index={}, width={}, height={}, online={}, primary={}, screen_recording={})",
+                            _current,
+                            display.width(),
+                            display.height(),
+                            display.is_online(),
+                            display.is_primary(),
+                            can_screen_recording,
+                        )
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        format!(
+                            "Failed to create capturer (display_index={}, width={}, height={}, online={}, primary={})",
+                            _current,
+                            display.width(),
+                            display.height(),
+                            display.is_online(),
+                            display.is_primary(),
+                        )
+                    }
+                })?));
             }
         }
     };
