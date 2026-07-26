@@ -1,0 +1,520 @@
+package com.carriez.flutter_hbb
+
+/**
+ * Handle events from flutter
+ * Request MediaProjection permission
+ *
+ * 双屏模式:
+ *   - Display 0 (主屏): 键盘输入 + 连接管理
+ *   - Display 2 (副屏): RemoteActivity 显示远程桌面 + 触摸
+ *
+ * Reference: chip.md §2.4 (主屏防呆机制)
+ *
+ * Inspired by [droidVNC-NG] https://github.com/bk138/droidVNC-NG
+ */
+
+import ffi.FFI
+
+import android.app.ActivityOptions
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.content.ClipboardManager
+import android.os.Bundle
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import android.view.Display
+import android.view.WindowManager
+import android.media.MediaCodecInfo
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
+import android.media.MediaCodecList
+import android.media.MediaFormat
+import android.util.DisplayMetrics
+import androidx.annotation.RequiresApi
+import org.json.JSONArray
+import org.json.JSONObject
+import com.hjq.permissions.XXPermissions
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+import kotlin.concurrent.thread
+
+
+class MainActivity : FlutterActivity() {
+    companion object {
+        var flutterMethodChannel: MethodChannel? = null
+        private var _rdClipboardManager: RdClipboardManager? = null
+        val rdClipboardManager: RdClipboardManager?
+            get() = _rdClipboardManager;
+    }
+
+    private val channelTag = "mChannel"
+    private val logTag = "mMainActivity"
+    private var mainService: MainService? = null
+
+    private var isAudioStart = false
+    private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        if (MainService.isReady) {
+            Intent(activity, MainService::class.java).also {
+                bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
+            }
+        }
+        flutterMethodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            channelTag
+        )
+        initFlutterChannel(flutterMethodChannel!!)
+        thread {
+            try {
+                setCodecInfo()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to setCodecInfo: ${e.message}", e)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val inputPer = InputService.isOpen
+        activity.runOnUiThread {
+            flutterMethodChannel?.invokeMethod(
+                "on_state_changed",
+                mapOf("name" to "input", "value" to inputPer.toString())
+            )
+        }
+    }
+
+    private fun requestMediaProjection() {
+        val intent = Intent(this, PermissionRequestTransparentActivity::class.java).apply {
+            action = ACT_REQUEST_MEDIA_PROJECTION
+        }
+        startActivityForResult(intent, REQ_INVOKE_PERMISSION_ACTIVITY_MEDIA_PROJECTION)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_INVOKE_PERMISSION_ACTIVITY_MEDIA_PROJECTION && resultCode == RES_FAILED) {
+            flutterMethodChannel?.invokeMethod("on_media_projection_canceled", null)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // ===== 双屏防呆: 确保 MainActivity 始终运行在主屏 Display 0 =====
+        // 如果系统错误地恢复到了副屏，强制迁回主屏。
+        val currentDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        } else {
+            @Suppress("DEPRECATION")
+            (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.displayId
+        }
+
+        if (currentDisplayId != Display.DEFAULT_DISPLAY) {
+            Log.w(logTag, "防呆: MainActivity 被启动到 Display $currentDisplayId, 迁回主屏")
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                val options = ActivityOptions.makeBasic()
+                options.launchDisplayId = Display.DEFAULT_DISPLAY  // 公开 API，无需反射
+                startActivity(intent, options.toBundle())
+            } else {
+                startActivity(intent)
+            }
+            finish()
+            return
+        }
+
+        if (_rdClipboardManager == null) {
+            _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+            FFI.setClipboardManager(_rdClipboardManager!!)
+        }
+    }
+
+    override fun onDestroy() {
+        Log.e(logTag, "onDestroy")
+        mainService?.let {
+            unbindService(serviceConnection)
+        }
+        super.onDestroy()
+    }
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d(logTag, "onServiceConnected")
+            val binder = service as MainService.LocalBinder
+            mainService = binder.getService()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d(logTag, "onServiceDisconnected")
+            mainService = null
+        }
+    }
+
+    private fun initFlutterChannel(flutterMethodChannel: MethodChannel) {
+        flutterMethodChannel.setMethodCallHandler { call, result ->
+            // make sure result will be invoked, otherwise flutter will await forever
+            when (call.method) {
+                "init_service" -> {
+                    Intent(activity, MainService::class.java).also {
+                        bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
+                    }
+                    if (MainService.isReady) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    requestMediaProjection()
+                    result.success(true)
+                }
+                "start_capture" -> {
+                    mainService?.let {
+                        result.success(it.startCapture())
+                    } ?: let {
+                        result.success(false)
+                    }
+                }
+                "stop_service" -> {
+                    Log.d(logTag, "Stop service")
+                    mainService?.let {
+                        it.destroy()
+                        result.success(true)
+                    } ?: let {
+                        result.success(false)
+                    }
+                }
+                "check_permission" -> {
+                    if (call.arguments is String) {
+                        result.success(XXPermissions.isGranted(context, call.arguments as String))
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "request_permission" -> {
+                    if (call.arguments is String) {
+                        requestPermission(context, call.arguments as String)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                START_ACTION -> {
+                    if (call.arguments is String) {
+                        startAction(context, call.arguments as String)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "check_video_permission" -> {
+                    mainService?.let {
+                        result.success(it.checkMediaPermission())
+                    } ?: let {
+                        result.success(false)
+                    }
+                }
+                "check_service" -> {
+                    Companion.flutterMethodChannel?.invokeMethod(
+                        "on_state_changed",
+                        mapOf("name" to "input", "value" to InputService.isOpen.toString())
+                    )
+                    Companion.flutterMethodChannel?.invokeMethod(
+                        "on_state_changed",
+                        mapOf("name" to "media", "value" to MainService.isReady.toString())
+                    )
+                    result.success(true)
+                }
+                "stop_input" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        InputService.ctx?.disableSelf()
+                    } else {
+                        InputService.ctx = null
+                        Companion.flutterMethodChannel?.invokeMethod(
+                            "on_state_changed",
+                            mapOf("name" to "input", "value" to InputService.isOpen.toString())
+                        )
+                    }
+                    result.success(true)
+                }
+                "cancel_notification" -> {
+                    if (call.arguments is Int) {
+                        val id = call.arguments as Int
+                        mainService?.cancelNotification(id)
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "enable_soft_keyboard" -> {
+                    // https://blog.csdn.net/hanye2020/article/details/105553780
+                    if (call.arguments as Boolean) {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                    } else {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+                    }
+                    result.success(true)
+
+                }
+                "try_sync_clipboard" -> {
+                    rdClipboardManager?.syncClipboard(true)
+                    result.success(true)
+                }
+                GET_START_ON_BOOT_OPT -> {
+                    val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
+                    result.success(prefs.getBoolean(KEY_START_ON_BOOT_OPT, false))
+                }
+                SET_START_ON_BOOT_OPT -> {
+                    if (call.arguments is Boolean) {
+                        val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
+                        val edit = prefs.edit()
+                        edit.putBoolean(KEY_START_ON_BOOT_OPT, call.arguments as Boolean)
+                        edit.apply()
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                SYNC_APP_DIR_CONFIG_PATH -> {
+                    if (call.arguments is String) {
+                        val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
+                        val edit = prefs.edit()
+                        edit.putString(KEY_APP_DIR_CONFIG_PATH, call.arguments as String)
+                        edit.apply()
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                GET_VALUE -> {
+                    if (call.arguments is String) {
+                        if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {
+                            result.success(isSupportVoiceCall())
+                        } else {
+                            result.error("-1", "No such key", null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
+                }
+                "on_voice_call_started" -> {
+                    onVoiceCallStarted()
+                }
+                "on_voice_call_closed" -> {
+                    onVoiceCallClosed()
+                }
+                // ===== 双屏: 启动 RemoteActivity 到 Display 2 =====
+                "launch_remote_on_display2" -> {
+                    val peerId = (call.arguments as? Map<*, *>)?.get("peer_id") as? String ?: ""
+                    val password = (call.arguments as? Map<*, *>)?.get("password") as? String
+                    val forceRelay = (call.arguments as? Map<*, *>)?.get("force_relay") as? Boolean ?: false
+                    launchRemoteOnDisplay2(peerId, password, forceRelay)
+                    result.success(true)
+                }
+                // ===== 双屏: 主屏键盘输入转发到远程 =====
+                "send_key_string" -> {
+                    val text = (call.arguments as? Map<*, *>)?.get("text") as? String ?: ""
+                    if (text.isNotEmpty()) {
+                        SessionState.forwardKeyString(text)
+                    }
+                    result.success(true)
+                }
+                "send_key_event" -> {
+                    val key = (call.arguments as? Map<*, *>)?.get("key") as? String ?: ""
+                    val down = (call.arguments as? Map<*, *>)?.get("down") as? Boolean ?: true
+                    if (key.isNotEmpty()) {
+                        SessionState.forwardKeyEvent(key, down)
+                    }
+                    result.success(true)
+                }
+                "get_remote_state" -> {
+                    result.success(mapOf(
+                        "connected" to SessionState.isRemoteConnected,
+                        "sessionId" to (SessionState.currentSessionId ?: "")
+                    ))
+                }
+                "close_remote" -> {
+                    // 关闭副屏 RemoteActivity
+                    SessionState.remoteMethodChannel?.invokeMethod("finish_activity", null)
+                    SessionState.reset()
+                    result.success(true)
+                }
+                else -> {
+                    result.error("-1", "No such method", null)
+                }
+            }
+        }
+    }
+
+    private fun setCodecInfo() {
+        val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+        val codecs = codecList.codecInfos
+        val codecArray = JSONArray()
+
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val wh = getScreenSize(windowManager)
+        var w = wh.first
+        var h = wh.second
+        val align = 64
+        w = (w + align - 1) / align * align
+        h = (h + align - 1) / align * align
+        codecs.forEach { codec ->
+            val codecObject = JSONObject()
+            codecObject.put("name", codec.name)
+            codecObject.put("is_encoder", codec.isEncoder)
+            var hw: Boolean? = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                hw = codec.isHardwareAccelerated
+            } else {
+                // https://chromium.googlesource.com/external/webrtc/+/HEAD/sdk/android/src/java/org/webrtc/MediaCodecUtils.java#29
+                // https://chromium.googlesource.com/external/webrtc/+/master/sdk/android/api/org/webrtc/HardwareVideoEncoderFactory.java#229
+                if (listOf("OMX.google.", "OMX.SEC.", "c2.android").any { codec.name.startsWith(it, true) }) {
+                    hw = false
+                } else if (listOf("c2.qti", "OMX.qcom.video", "OMX.Exynos", "OMX.hisi", "OMX.MTK", "OMX.Intel", "OMX.Nvidia").any { codec.name.startsWith(it, true) }) {
+                    hw = true
+                }
+            }
+            if (hw != true) {
+                return@forEach
+            }
+            codecObject.put("hw", hw)
+            var mime_type = ""
+            codec.supportedTypes.forEach { type ->
+                if (listOf("video/avc", "video/hevc").contains(type)) { // "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9", "video/av01"
+                    mime_type = type;
+                }
+            }
+            if (mime_type.isNotEmpty()) {
+                codecObject.put("mime_type", mime_type)
+                val caps = codec.getCapabilitiesForType(mime_type)
+                if (codec.isEncoder) {
+                    // Encoder's max_height and max_width are interchangeable
+                    if (!caps.videoCapabilities.isSizeSupported(w,h) && !caps.videoCapabilities.isSizeSupported(h,w)) {
+                        return@forEach
+                    }
+                }
+                codecObject.put("min_width", caps.videoCapabilities.supportedWidths.lower)
+                codecObject.put("max_width", caps.videoCapabilities.supportedWidths.upper)
+                codecObject.put("min_height", caps.videoCapabilities.supportedHeights.lower)
+                codecObject.put("max_height", caps.videoCapabilities.supportedHeights.upper)
+                val surface = caps.colorFormats.contains(COLOR_FormatSurface);
+                codecObject.put("surface", surface)
+                val nv12 = caps.colorFormats.contains(COLOR_FormatYUV420SemiPlanar)
+                codecObject.put("nv12", nv12)
+                if (!(nv12 || surface)) {
+                    return@forEach
+                }
+                codecObject.put("min_bitrate", caps.videoCapabilities.bitrateRange.lower / 1000)
+                codecObject.put("max_bitrate", caps.videoCapabilities.bitrateRange.upper / 1000)
+                if (!codec.isEncoder) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        codecObject.put("low_latency", caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
+                    }
+                }
+                if (!codec.isEncoder) {
+                    return@forEach
+                }
+                codecArray.put(codecObject)
+            }
+        }
+        val result = JSONObject()
+        result.put("version", Build.VERSION.SDK_INT)
+        result.put("w", w)
+        result.put("h", h)
+        result.put("codecs", codecArray)
+        FFI.setCodecInfo(result.toString())
+    }
+
+    private fun onVoiceCallStarted() {
+        var ok = false
+        mainService?.let {
+            ok = it.onVoiceCallStarted()
+        } ?: let {
+            isAudioStart = true
+            ok = audioRecordHandle.onVoiceCallStarted(null)
+        }
+        if (!ok) {
+            // Rarely happens, So we just add log and msgbox here.
+            Log.e(logTag, "onVoiceCallStarted fail")
+            flutterMethodChannel?.invokeMethod("msgbox", mapOf(
+                "type" to "custom-nook-nocancel-hasclose-error",
+                "title" to "Voice call",
+                "text" to "Failed to start voice call."))
+        } else {
+            Log.d(logTag, "onVoiceCallStarted success")
+        }
+    }
+
+    private fun onVoiceCallClosed() {
+        var ok = false
+        mainService?.let {
+            ok = it.onVoiceCallClosed()
+        } ?: let {
+            isAudioStart = false
+            ok = audioRecordHandle.onVoiceCallClosed(null)
+        }
+        if (!ok) {
+            // Rarely happens, So we just add log and msgbox here.
+            Log.e(logTag, "onVoiceCallClosed fail")
+            flutterMethodChannel?.invokeMethod("msgbox", mapOf(
+                "type" to "custom-nook-nocancel-hasclose-error",
+                "title" to "Voice call",
+                "text" to "Failed to stop voice call."))
+        } else {
+            Log.d(logTag, "onVoiceCallClosed success")
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        val disableFloatingWindow = FFI.getLocalOption("disable-floating-window") == "Y"
+        if (!disableFloatingWindow && MainService.isReady) {
+            startService(Intent(this, FloatingWindowService::class.java))
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        stopService(Intent(this, FloatingWindowService::class.java))
+    }
+
+    // ===== 双屏: 启动 RemoteActivity 到 Display 2 =====
+    /**
+     * 使用反射 API 将 RemoteActivity 启动到副屏 Display 2。
+     *
+     * Reference: chip.md §2.3 — 副屏 Activity 启动（反射 API）
+     */
+    private fun launchRemoteOnDisplay2(peerId: String, password: String?, forceRelay: Boolean) {
+        Log.d(logTag, "launchRemoteOnDisplay2: peerId=$peerId, display=2")
+
+        val intent = Intent(this, RemoteActivity::class.java).apply {
+            putExtra(RemoteActivity.EXTRA_PEER_ID, peerId)
+            password?.let { putExtra(RemoteActivity.EXTRA_PASSWORD, it) }
+            putExtra(RemoteActivity.EXTRA_FORCE_RELAY, forceRelay)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            try {
+                val options = ActivityOptions.makeBasic()
+                val method = options.javaClass.getMethod(
+                    "setLaunchDisplayId",
+                    Int::class.javaPrimitiveType  // ⚠️ javaPrimitiveType, 不是 javaObjectType
+                )
+                method.invoke(options, 2) // Display 2 = 副屏
+                startActivity(intent, options.toBundle())
+                Log.d(logTag, "RemoteActivity 已启动到 Display 2")
+            } catch (e: Exception) {
+                Log.e(logTag, "反射 setLaunchDisplayId 失败, 降级到默认 Display", e)
+                startActivity(intent)
+            }
+        } else {
+            startActivity(intent)
+        }
+    }
+}
