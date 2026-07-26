@@ -1,18 +1,25 @@
-# RustDesk 服务器二进制
+# 服务器二进制 & 启动脚本
 
-## 自编译版（demo 源码，单进程）
-| 文件 | 大小 | 说明 |
-|------|------|------|
-| `rustdesk-server-selfbuilt-x86_64` | 995KB | Mac ARM → Linux x86_64 交叉编译，源码来自 rustdesk-server-demo，单进程同时处理 ID 注册+中继转发 |
+## 文件说明
 
-## 官方预编译版（Pro，双进程）
-| 文件 | 大小 | 说明 |
-|------|------|------|
-| `rustdesk-hbbs-official-v1.1.16-x86_64` | 9.2MB | 官方 v1.1.16 hbbs（会合/ID 服务器） |
-| `rustdesk-hbbr-official-v1.1.16-x86_64` | 3.2MB | 官方 v1.1.16 hbbr（中继服务器） |
+| 文件 | 说明 |
+|------|------|
+| `start-hbbs.sh` | 启动官方 hbbs（ID 服务器），自动获取公网 IP |
+| `start-hbbr.sh` | 启动官方 hbbr（中继服务器） |
+| `start-demo.sh` | 启动自编译 demo 服务器 |
+| `rustdesk-hbbs-official-v1.1.16-x86_64` | 官方 hbbs 二进制 |
+| `rustdesk-hbbr-official-v1.1.16-x86_64` | 官方 hbbr 二进制 |
+| `rustdesk-server-selfbuilt-x86_64` | 自编译 demo 二进制 |
 
-## 区别
-- **自编译版**：开源 demo，单进程运行 (`IP=x.x.x.x ./rustdesk-server-selfbuilt-x86_64`)
-- **官方版**：Pro 功能更全，双进程分别运行 (`./hbbs ...` + `./hbbr ...`)
+## 快速开始
 
-所有文件均为 ELF 64-bit x86-64，可直接在 Ubuntu 上运行。
+```bash
+# 官方版
+./start-hbbs.sh 你的公网IP &
+./start-hbbr.sh &
+
+# 自编译版
+./start-demo.sh 你的公网IP &
+```
+
+详细部署文档：`../DEPLOY.md`
