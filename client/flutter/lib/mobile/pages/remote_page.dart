@@ -19,6 +19,7 @@ import '../../common/widgets/overlay.dart';
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/remote_input.dart';
 import '../../models/input_model.dart';
+import '../../models/keyboard_proxy_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import '../../utils/image.dart';
@@ -59,6 +60,8 @@ class RemotePage extends StatefulWidget {
 }
 
 class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+  bool? _keyboardCloseIntent;
+
   Timer? _timer;
   bool _showBar = !isWebDesktop;
   bool _showGestureHelp = false;
@@ -111,6 +114,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);
     keyboardSubscription =
         keyboardVisibilityController.onChange.listen(onSoftKeyboardChanged);
+    if (isAndroid) {
+      keyboardProxyController.addListener(_onKeyboardProxyChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+        }
+      });
+    }
     gFFI.chatModel
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
@@ -120,8 +131,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       if (gFFI.recordingModel.start) {
         showToast(translate('Automatically record outgoing sessions'));
       }
-      _disableAndroidSoftKeyboard(
-          isKeyboardVisible: keyboardVisibilityController.isVisible);
     });
     WidgetsBinding.instance.addObserver(this);
 
@@ -143,6 +152,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    if (isAndroid) {
+      keyboardProxyController.removeListener(_onKeyboardProxyChanged);
+      unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
+      keyboardProxyController.reset();
+    }
     // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
     // after several awaits (canvas save, image update, the `enable_soft_keyboard`
     // platform call), so if the app is backgrounded while this page is disposing,
@@ -157,7 +171,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     gFFI.inputModel.listenToMouse(false);
     gFFI.imageModel.disposeImage();
     gFFI.cursorModel.disposeImages();
-    await gFFI.invokeMethod("enable_soft_keyboard", true);
+    if (!isAndroid) {
+      await gFFI.invokeMethod("enable_soft_keyboard", true);
+    }
     _mobileFocusNode.dispose();
     _physicalFocusNode.dispose();
     clearWaylandKeyboardPromptSuppressedForConnection(sessionId.toString());
@@ -183,6 +199,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       trySyncClipboard();
     }
+  }
+
+  void _onKeyboardProxyChanged() {
+    if (mounted) setState(() {});
   }
 
   // For client side
@@ -219,7 +239,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
     // Ensure soft keyboard is not active before user confirms.
     _showEdit = false;
-    gFFI.invokeMethod("enable_soft_keyboard", false);
+    if (!isAndroid) {
+      gFFI.invokeMethod("enable_soft_keyboard", false);
+    }
     _mobileFocusNode.unfocus();
     _physicalFocusNode.requestFocus();
     setState(() {});
@@ -239,6 +261,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       );
 
   void onSoftKeyboardChanged(bool visible) {
+    if (isAndroid) return;
     if (!visible) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
@@ -391,6 +414,20 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void openKeyboard() {
+    if (isAndroid) {
+      final closeIntent =
+          _keyboardCloseIntent ?? keyboardProxyController.value.isVisible;
+      _keyboardCloseIntent = null;
+      if (closeIntent) {
+        final requestId = keyboardProxyController.value.requestId;
+        if (keyboardProxyController.tryBeginClose()) {
+          gFFI.invokeMethod("keyboard_proxy_close", {"requestId": requestId});
+        }
+        return;
+      }
+      if (keyboardProxyController.value.isTransitioning) return;
+    }
+
     final allowWaylandKeyboard =
         mainGetPeerBoolOptionSync(widget.id, kPeerOptionAllowWaylandKeyboard);
     if (shouldShowWaylandKeyboardPrompt(
@@ -414,15 +451,19 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   void _openKeyboardUnlocked() {
     inputModel.keyboardInputAllowed = true;
+    if (isAndroid) {
+      final currentSessionId = sessionId.toString();
+      if (!keyboardProxyController.tryBeginOpen(currentSessionId)) return;
+      gFFI.invokeMethod("keyboard_proxy_open", {"sessionId": currentSessionId});
+      return;
+    }
+
     gFFI.invokeMethod("enable_soft_keyboard", true);
-    // destroy first, so that our _value trick can work
     _value = initText;
     _textController.text = _value;
     setState(() => _showEdit = false);
     _timer?.cancel();
     _timer = Timer(kMobileDelaySoftKeyboard, () {
-      // show now, and sleep a while to requestFocus to
-      // make sure edit ready, so that keyboard won't show/hide/show/hide happen
       setState(() => _showEdit = true);
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
@@ -442,7 +483,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final keyboardIsVisible =
-        keyboardVisibilityController.isVisible && _showEdit;
+        !isAndroid && keyboardVisibilityController.isVisible && _showEdit;
     final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
 
     return WillPopScope(
@@ -451,6 +492,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         return false;
       },
       child: Scaffold(
+          resizeToAvoidBottomInset: false,
           // workaround for https://github.com/rustdesk/rustdesk/issues/3131
           floatingActionButtonLocation: keyboardIsVisible
               ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
@@ -552,6 +594,20 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   Widget getBottomAppBar() {
     final ffiModel = Provider.of<FfiModel>(context);
+    final proxy = keyboardProxyController.value;
+    final keyboardActive = isAndroid
+        ? proxy.isVisible || proxy.state == KeyboardProxyState.closing
+        : keyboardVisibilityController.isVisible && _showEdit;
+    final keyboardColor = keyboardActive ? Colors.greenAccent : Colors.white;
+    final keyboardIcon = isAndroid && proxy.isTransitioning
+        ? SizedBox.square(
+            dimension: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: keyboardColor,
+            ),
+          )
+        : const Icon(Icons.keyboard);
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
@@ -572,7 +628,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       color: Colors.white,
                       icon: Icon(Icons.tv),
                       onPressed: () {
-                        setState(() => _showEdit = false);
+                        setState(() {
+                          _showEdit = false;
+                        });
                         showOptions(context, widget.id, gFFI.dialogManager);
                       },
                     )
@@ -581,10 +639,20 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       ? []
                       : gFFI.ffiModel.isPeerAndroid
                           ? [
-                              IconButton(
-                                  color: Colors.white,
-                                  icon: Icon(Icons.keyboard),
-                                  onPressed: openKeyboard),
+                              Listener(
+                                onPointerDown: isAndroid
+                                    ? (_) => _keyboardCloseIntent =
+                                        keyboardProxyController.value.isVisible
+                                    : null,
+                                child: IconButton(
+                                    color: keyboardColor,
+                                    disabledColor: keyboardColor,
+                                    icon: keyboardIcon,
+                                    onPressed:
+                                        isAndroid && proxy.isTransitioning
+                                            ? null
+                                            : openKeyboard),
+                              ),
                               IconButton(
                                 color: Colors.white,
                                 icon: const Icon(Icons.build),
@@ -593,10 +661,20 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                               )
                             ]
                           : [
-                              IconButton(
-                                  color: Colors.white,
-                                  icon: Icon(Icons.keyboard),
-                                  onPressed: openKeyboard),
+                              Listener(
+                                onPointerDown: isAndroid
+                                    ? (_) => _keyboardCloseIntent =
+                                        keyboardProxyController.value.isVisible
+                                    : null,
+                                child: IconButton(
+                                    color: keyboardColor,
+                                    disabledColor: keyboardColor,
+                                    icon: keyboardIcon,
+                                    onPressed:
+                                        isAndroid && proxy.isTransitioning
+                                            ? null
+                                            : openKeyboard),
+                              ),
                               IconButton(
                                 color: Colors.white,
                                 icon: Icon(gFFI.ffiModel.touchMode
@@ -630,7 +708,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       color: Colors.white,
                       icon: Icon(Icons.more_vert),
                       onPressed: () {
-                        setState(() => _showEdit = false);
+                        setState(() {
+                          _showEdit = false;
+                        });
                         showActions(widget.id);
                       },
                     ),
@@ -655,7 +735,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       !gFFI.inputModel.relativeMouseMode.value;
 
   Widget getBodyForMobile() {
-    final keyboardIsVisible = keyboardVisibilityController.isVisible;
+    final keyboardIsVisible =
+        !isAndroid && keyboardVisibilityController.isVisible;
     return Container(
         color: MyTheme.canvasColor,
         child: Stack(children: () {
@@ -672,7 +753,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             SizedBox(
               width: 0,
               height: 0,
-              child: !_showEdit
+              child: isAndroid || !_showEdit
                   ? Container()
                   : TextFormField(
                       textInputAction: TextInputAction.newline,

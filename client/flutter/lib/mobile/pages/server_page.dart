@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
 import '../../consts.dart';
+import '../../models/keyboard_proxy_model.dart';
 import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
 import 'home_page.dart';
@@ -1016,6 +1017,31 @@ void androidChannelInit() {
                 "stop_service by kotlin, isStart:${gFFI.serverModel.isStart}");
             if (gFFI.serverModel.isStart) {
               gFFI.serverModel.stopService();
+            }
+            break;
+          }
+        case "keyboard_proxy_state":
+          {
+            keyboardProxyController.handleState(arguments);
+            break;
+          }
+        case "keyboard_proxy_commit_text":
+          {
+            final currentSessionId = gFFI.sessionId.toString();
+            if (keyboardProxyController.acceptsInput(
+                arguments, currentSessionId)) {
+              final text = arguments["text"] as String? ?? "";
+              bind.sessionInputString(sessionId: gFFI.sessionId, value: text);
+            }
+            break;
+          }
+        case "keyboard_proxy_key":
+          {
+            final currentSessionId = gFFI.sessionId.toString();
+            if (keyboardProxyController.acceptsInput(
+                arguments, currentSessionId)) {
+              final key = arguments["key"] as String? ?? "";
+              if (key.isNotEmpty) gFFI.inputModel.inputKey(key);
             }
             break;
           }

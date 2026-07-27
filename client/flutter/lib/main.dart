@@ -187,6 +187,7 @@ void runMobileApp() async {
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   // Render immediately — splash handles its own animation + timing.
   runApp(App());
+
   // Background: non-blocking cache load + network.
   draggablePositions.load();
   await Future.wait([gFFI.abModel.loadCache(), gFFI.groupModel.loadCache()]);

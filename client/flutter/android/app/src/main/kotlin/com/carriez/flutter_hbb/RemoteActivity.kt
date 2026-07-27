@@ -7,9 +7,7 @@ package com.carriez.flutter_hbb
  *   1. 接收主屏传来的 peer_id，自动连接远程桌面
  *   2. 显示远程桌面画面 (RemotePage)
  *   3. 处理触摸事件 → 远程被控设备
- *   4. 接收主屏发来的键盘输入 → 转发到远程
- *
- * 防呆机制: 如果被错误启动到主屏 (Display 0)，自动迁回副屏 (Display 2)。
+ *   4. 双屏键盘代理: 在当前远程画面的对面屏幕启动原生输入代理
  *
  * Reference: chip.md §2.3 (副屏 Activity 启动), §2.4 (防呆机制)
  *
@@ -108,6 +106,7 @@ class RemoteActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // ===== remoteChannel: 连接参数 / 生命周期 =====
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_TAG)
 
         // 注册到 SessionState，供主屏通信
@@ -146,6 +145,43 @@ class RemoteActivity : FlutterActivity() {
             }
         }
 
+        // ===== mChannel: 双屏键盘代理 (Flutter 调用 gFFI.invokeMethod 走此通道) =====
+        val mChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mChannel")
+        mChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "keyboard_proxy_open" -> {
+                    result.success(
+                        KeyboardProxyManager.open(
+                            this@RemoteActivity,
+                            mChannel,
+                            call.argument<String>("sessionId").orEmpty()
+                        )
+                    )
+                }
+                "keyboard_proxy_prepare" -> {
+                    result.success(
+                        KeyboardProxyManager.prepare(
+                            this@RemoteActivity,
+                            mChannel
+                        )
+                    )
+                }
+                "keyboard_proxy_close" -> {
+                    val expectedRequestId = call.argument<Number>("requestId")?.toLong()
+                    KeyboardProxyManager.close("close_requested", expectedRequestId)
+                    result.success(true)
+                }
+                "keyboard_proxy_release" -> {
+                    KeyboardProxyManager.release()
+                    result.success(true)
+                }
+                else -> {
+                    // 其他 mChannel 调用在 RemoteActivity 中无需处理
+                    result.notImplemented()
+                }
+            }
+        }
+
         // 将连接参数立即发送给 Flutter 端 (在 Flutter 初始化完成后)
         Handler(Looper.getMainLooper()).postDelayed({
             channel.invokeMethod("init_params", mapOf(
@@ -158,6 +194,7 @@ class RemoteActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
+        KeyboardProxyManager.release("activity_destroyed")
         SessionState.reset()
         super.onDestroy()
     }

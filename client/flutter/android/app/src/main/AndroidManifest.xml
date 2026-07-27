@@ -25,7 +25,7 @@
     <application
         android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher"
-        android:label="RustDesk"
+        android:label="KEMI远程桌面"
         android:requestLegacyExternalStorage="true"
         android:resizeableActivity="true"
         android:roundIcon="@mipmap/ic_launcher"
@@ -47,7 +47,7 @@
             android:name=".InputService"
             android:enabled="true"
             android:exported="false"
-            android:label="RustDesk Input"
+            android:label="KEMI远程桌面 Input"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -97,6 +97,15 @@
             android:name=".PermissionRequestTransparentActivity"
             android:excludeFromRecents="true"
             android:theme="@style/Transparent" />
+
+        <!-- ===== 双屏: 主屏键盘代理 Activity (Display 0) ===== -->
+        <activity
+            android:name=".KeyboardProxyActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode|navigation"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/KeyboardProxyTheme"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 
         <service
             android:name=".MainService"
