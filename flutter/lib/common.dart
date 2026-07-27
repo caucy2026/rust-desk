@@ -1090,8 +1090,11 @@ class CustomAlertDialog extends StatelessWidget {
       if (!scopeNode.hasFocus) scopeNode.requestFocus();
     });
     bool tabTapped = false;
-    if (isAndroid) gFFI.invokeMethod("enable_soft_keyboard", true);
-
+  if (isAndroid) {
+    gFFI.invokeMethod("enable_soft_keyboard", true);
+    // 双屏键盘: 标记当前焦点请求，native 层检查是否需要代理到主屏
+    gFFI.invokeMethod("request_text_focus", true);
+  }
     return FocusScope(
       node: scopeNode,
       autofocus: true,

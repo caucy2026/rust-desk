@@ -99,6 +99,7 @@ dependencies {
     implementation 'com.google.protobuf:protobuf-javalite:3.25.1'
     implementation "androidx.media:media:1.4.0"
     implementation 'com.github.getActivity:XXPermissions:18.5'
+    implementation 'androidx.lifecycle:lifecycle-process:2.6.2'
     implementation("org.jetbrains.kotlin:kotlin-stdlib") { version { strictly("1.8.22") } }
     implementation 'com.caverock:androidsvg-aar:1.4'
     // v1 removed: rustls not available in China

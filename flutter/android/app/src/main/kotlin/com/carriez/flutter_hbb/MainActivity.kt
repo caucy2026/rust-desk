@@ -107,30 +107,14 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ===== 双屏防呆: 确保 MainActivity 始终运行在主屏 Display 0 =====
-        // 如果系统错误地恢复到了副屏，强制迁回主屏。
+        // ===== 双屏: 允许在任何 Display 上运行 =====
         val currentDisplayId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             display?.displayId ?: Display.DEFAULT_DISPLAY
         } else {
             @Suppress("DEPRECATION")
             (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.displayId
         }
-
-        if (currentDisplayId != Display.DEFAULT_DISPLAY) {
-            Log.w(logTag, "防呆: MainActivity 被启动到 Display $currentDisplayId, 迁回主屏")
-            val intent = Intent(this, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            }
-            if (Build.VERSION.SDK_INT >= 26) {
-                val options = ActivityOptions.makeBasic()
-                options.launchDisplayId = Display.DEFAULT_DISPLAY  // 公开 API，无需反射
-                startActivity(intent, options.toBundle())
-            } else {
-                startActivity(intent)
-            }
-            finish()
-            return
-        }
+        Log.i(logTag, "MainActivity running on Display $currentDisplayId")
 
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
@@ -140,6 +124,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
+        KeyboardProxyManager.release("activity_destroyed")
         mainService?.let {
             unbindService(serviceConnection)
         }
@@ -259,7 +244,6 @@ class MainActivity : FlutterActivity() {
                         window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
                     }
                     result.success(true)
-
                 }
                 "try_sync_clipboard" -> {
                     rdClipboardManager?.syncClipboard(true)
@@ -342,6 +326,32 @@ class MainActivity : FlutterActivity() {
                     // 关闭副屏 RemoteActivity
                     SessionState.remoteMethodChannel?.invokeMethod("finish_activity", null)
                     SessionState.reset()
+                    result.success(true)
+                }
+                "keyboard_proxy_open" -> {
+                    result.success(
+                        KeyboardProxyManager.open(
+                            this@MainActivity,
+                            requireNotNull(flutterMethodChannel),
+                            call.argument<String>("sessionId").orEmpty()
+                        )
+                    )
+                }
+                "keyboard_proxy_prepare" -> {
+                    result.success(
+                        KeyboardProxyManager.prepare(
+                            this@MainActivity,
+                            requireNotNull(flutterMethodChannel)
+                        )
+                    )
+                }
+                "keyboard_proxy_close" -> {
+                    val expectedRequestId = call.argument<Number>("requestId")?.toLong()
+                    KeyboardProxyManager.close("close_requested", expectedRequestId)
+                    result.success(true)
+                }
+                "keyboard_proxy_release" -> {
+                    KeyboardProxyManager.release()
                     result.success(true)
                 }
                 else -> {
