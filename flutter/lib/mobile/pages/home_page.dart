@@ -9,6 +9,8 @@ import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'connection_page.dart';
 
+const String kKemiPadAppTitle = 'KEMI远程桌面PAD版';
+
 abstract class PageShape extends Widget {
   final String title = "";
   final Widget icon = Icon(null);
@@ -29,6 +31,7 @@ class HomePageState extends State<HomePage> {
   int get selectedIndex => _selectedIndex;
   final List<PageShape> _pages = [];
   int _chatPageTabIndex = -1;
+  String _appVersion = '';
   bool get isChatPageCurrentTab => isAndroid
       ? _selectedIndex == _chatPageTabIndex
       : false; // change this when ios have chat page
@@ -43,6 +46,17 @@ class HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     initPages();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final version = await bind.mainGetVersion();
+      if (!mounted) return;
+      setState(() {
+        _appVersion = version.trim();
+      });
+    } catch (_) {}
   }
 
   void initPages() {
@@ -150,7 +164,8 @@ class HomePageState extends State<HomePage> {
         ],
       );
     }
-    return Text(bind.mainGetAppNameSync());
+    final versionText = _appVersion.isEmpty ? '' : ' v$_appVersion';
+    return Text('$kKemiPadAppTitle$versionText');
   }
 }
 
@@ -166,7 +181,7 @@ class WebHomePage extends StatelessWidget {
       // backgroundColor: MyTheme.grayBg,
       appBar: AppBar(
         centerTitle: true,
-        title: Text("${bind.mainGetAppNameSync()} (Preview)"),
+        title: Text('$kKemiPadAppTitle (Preview)'),
         actions: connectionPage.appBarActions,
       ),
       body: connectionPage,

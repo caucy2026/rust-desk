@@ -851,6 +851,19 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final x = 120.0;
     final y = size.height;
     final mobileActionMenus = _getMobileActionMenus();
+    if (isAndroid) {
+      mobileActionMenus.insert(
+        0,
+        TTextMenu(
+          child: Text(translate('Transfer file')),
+          onPressed: () {
+            final connToken = bind.sessionGetConnToken(sessionId: gFFI.sessionId);
+            connect(context, id,
+                isFileTransfer: true, connToken: connToken);
+          },
+        ),
+      );
+    }
     final menus = toolbarControls(context, id, gFFI);
 
     final List<PopupMenuEntry<int>> more = [
