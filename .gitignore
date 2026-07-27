@@ -1,0 +1,31 @@
+# Build artifacts
+build/
+*.apk
+*.aab
+*.dex
+*.class
+
+# Android
+local.properties
+*.iml
+.idea/
+.gradle/
+flutter/android/app/.cxx/
+flutter/android/.gradle/
+flutter/build/
+
+# Rust
+target/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated
+flutter/lib/generated_bridge.dart
+generated/
