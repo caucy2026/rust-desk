@@ -16,13 +16,13 @@ use crate::{
 /// MediaCodec mime type name
 const H264_MIME_TYPE: &str = "video/avc";
 const H265_MIME_TYPE: &str = "video/hevc";
-// const VP8_MIME_TYPE: &str = "video/x-vnd.on2.vp8";
-// const VP9_MIME_TYPE: &str = "video/x-vnd.on2.vp9";
-
-// TODO MediaCodecEncoder
+const VP9_MIME_TYPE: &str = "video/x-vnd.on2.vp9";
+const AV1_MIME_TYPE: &str = "video/av01";
 
 pub static H264_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 pub static H265_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
+pub static VP9_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
+pub static AV1_DECODER_SUPPORT: AtomicBool = AtomicBool::new(false);
 
 pub struct MediaCodecDecoder {
     decoder: MediaCodec,
@@ -42,8 +42,10 @@ impl MediaCodecDecoder {
         match format {
             CodecFormat::H264 => create_media_codec(H264_MIME_TYPE, MediaCodecDirection::Decoder),
             CodecFormat::H265 => create_media_codec(H265_MIME_TYPE, MediaCodecDirection::Decoder),
+            CodecFormat::VP9 => create_media_codec(VP9_MIME_TYPE, MediaCodecDirection::Decoder),
+            CodecFormat::AV1 => create_media_codec(AV1_MIME_TYPE, MediaCodecDirection::Decoder),
             _ => {
-                log::error!("Unsupported codec format: {}", format);
+                log::error!("Unsupported codec format for MediaCodec: {}", format);
                 None
             }
         }
