@@ -198,6 +198,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       trySyncClipboard();
+      // For Android 10/11+, file permission request may jump to Settings.
+      // Complete pending flow after returning to foreground.
+      if (AndroidPermissionManager.isWaitingFile()) {
+        () async {
+          AndroidPermissionManager.complete(
+              kManageExternalStorage,
+              await AndroidPermissionManager.check(kManageExternalStorage));
+        }();
+      }
     }
   }
 
@@ -851,20 +860,27 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final x = 120.0;
     final y = size.height;
     final mobileActionMenus = _getMobileActionMenus();
-    if (isAndroid) {
-      mobileActionMenus.insert(
-        0,
-        TTextMenu(
-          child: Text(translate('Transfer file')),
-          onPressed: () {
-            final connToken = bind.sessionGetConnToken(sessionId: gFFI.sessionId);
-            connect(context, id,
-                isFileTransfer: true, connToken: connToken);
-          },
-        ),
-      );
-    }
+    final transferFileMenu = isAndroid
+        ? TTextMenu(
+            child: Text(translate('Transfer file')),
+            onPressed: () async {
+              try {
+                final connToken =
+                    bind.sessionGetConnToken(sessionId: gFFI.sessionId);
+                await connect(context, id,
+                    isFileTransfer: true, connToken: connToken);
+              } catch (e) {
+                debugPrint('Transfer file action failed: $e');
+                showToast(translate('Failed'));
+              }
+            },
+          )
+        : null;
     final menus = toolbarControls(context, id, gFFI);
+    final combinedMenus = <TTextMenu>[...mobileActionMenus, ...menus];
+    if (transferFileMenu != null) {
+      combinedMenus.add(transferFileMenu);
+    }
 
     final List<PopupMenuEntry<int>> more = [
       ...mobileActionMenus
@@ -881,6 +897,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               child: e.value.getChild(),
               value: e.key + mobileActionMenus.length))
           .toList(),
+      if (transferFileMenu != null && combinedMenus.length > 1)
+        PopupMenuDivider(),
+      if (transferFileMenu != null)
+        PopupMenuItem<int>(
+            child: transferFileMenu.getChild(),
+            value: combinedMenus.length - 1),
     ];
     () async {
       var index = await showMenu(
@@ -890,10 +912,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         elevation: 8,
       );
       if (index != null) {
-        if (index < mobileActionMenus.length) {
-          mobileActionMenus[index].onPressed?.call();
-        } else if (index < mobileActionMenus.length + more.length) {
-          menus[index - mobileActionMenus.length].onPressed?.call();
+        if (index >= 0 && index < combinedMenus.length) {
+          combinedMenus[index].onPressed?.call();
         }
       }
     }();

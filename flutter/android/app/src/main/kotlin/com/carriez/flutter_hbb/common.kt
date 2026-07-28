@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat.getSystemService
 import com.hjq.permissions.Permission
 import com.hjq.permissions.XXPermissions
 import ffi.FFI
+import io.flutter.plugin.common.MethodChannel
 import java.nio.ByteBuffer
 import java.util.*
 
@@ -69,11 +70,15 @@ fun isSupportVoiceCall(): Boolean {
 }
 
 fun requestPermission(context: Context, type: String) {
+    requestPermission(context, type, MainActivity.flutterMethodChannel)
+}
+
+fun requestPermission(context: Context, type: String, channel: MethodChannel?) {
     XXPermissions.with(context)
         .permission(type)
         .request { _, all ->
             Handler(Looper.getMainLooper()).post {
-                MainActivity.flutterMethodChannel?.invokeMethod(
+                channel?.invokeMethod(
                     "on_android_permission_result",
                     mapOf("type" to type, "result" to all)
                 )

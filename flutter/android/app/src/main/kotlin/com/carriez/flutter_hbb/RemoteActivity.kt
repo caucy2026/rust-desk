@@ -23,6 +23,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.Display
 import android.view.WindowManager
+import com.hjq.permissions.XXPermissions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -149,6 +150,50 @@ class RemoteActivity : FlutterActivity() {
         val mChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mChannel")
         mChannel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "check_permission" -> {
+                    if (call.arguments is String) {
+                        result.success(XXPermissions.isGranted(context, call.arguments as String))
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "request_permission" -> {
+                    if (call.arguments is String) {
+                        requestPermission(context, call.arguments as String, mChannel)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                START_ACTION -> {
+                    if (call.arguments is String) {
+                        startAction(context, call.arguments as String)
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                "enable_soft_keyboard" -> {
+                    // RemoteActivity uses cross-display keyboard proxy on Android.
+                    // Do not mutate window IME flags here; it can interfere with
+                    // proxy focus/IME routing between displays.
+                    result.success(true)
+                }
+                "try_sync_clipboard" -> {
+                    MainActivity.rdClipboardManager?.syncClipboard(true)
+                    result.success(true)
+                }
+                GET_VALUE -> {
+                    if (call.arguments is String) {
+                        if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {
+                            result.success(isSupportVoiceCall())
+                        } else {
+                            result.error("-1", "No such key", null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
+                }
                 "keyboard_proxy_open" -> {
                     result.success(
                         KeyboardProxyManager.open(

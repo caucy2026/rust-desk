@@ -5,6 +5,7 @@ import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
@@ -13,6 +14,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -26,9 +29,10 @@ class KeyboardProxyActivity : Activity() {
         private const val EXTRA_REQUEST_ID = "request_id"
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_TARGET_DISPLAY_ID = "target_display_id"
-        private const val IME_RETRY_DELAY_MS = 2_000L
-        private const val MAX_IME_REQUEST_ATTEMPTS = 3
+        private const val IME_RETRY_DELAY_MS = 350L
+        private const val MAX_IME_REQUEST_ATTEMPTS = 16
         private const val FINISH_AFTER_HIDE_TIMEOUT_MS = 2_000L
+        private const val DUPLICATE_COMMIT_WINDOW_MS = 250L
 
         fun launch(
             context: Context,
@@ -62,6 +66,9 @@ class KeyboardProxyActivity : Activity() {
     private var imeRequestAttempts = 0
     private var lastLoggedImeVisible: Boolean? = null
     private var lastLoggedImeBottom = -1
+    private var lastForwardedText = ""
+    private var lastForwardedSource = ""
+    private var lastForwardedAtMs = 0L
     private var active = false
     private var closeRequested = false
     private var releaseRequested = false
@@ -69,13 +76,11 @@ class KeyboardProxyActivity : Activity() {
     private val requestIme = object : Runnable {
         override fun run() {
             if (!active || closeRequested || isFinishing || isDestroyed || !::editText.isInitialized) return
-            if (!hasWindowFocus()) {
-                editText.postDelayed(this, IME_RETRY_DELAY_MS)
-                return
+            if (!editText.isFocused) {
+                editText.requestFocus()
             }
-
-            if (!editText.isFocused) editText.requestFocus()
             val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethodManager.restartInput(editText)
             imeRequestAttempts++
             val accepted = inputMethodManager.showSoftInput(
                 editText,
@@ -91,6 +96,32 @@ class KeyboardProxyActivity : Activity() {
                 editText.postDelayed(this, IME_RETRY_DELAY_MS)
             }
         }
+    }
+
+    private fun forwardCommittedText(text: CharSequence?, source: String) {
+        if (!active || closeRequested || releaseRequested) return
+        val committed = text?.toString().orEmpty()
+        if (committed.isEmpty()) return
+        val now = SystemClock.elapsedRealtime()
+        if (
+            committed == lastForwardedText &&
+            now - lastForwardedAtMs <= DUPLICATE_COMMIT_WINDOW_MS
+        ) {
+            Log.i(
+                TAG,
+                "skip_duplicate_commit_text src=$source lastSrc=$lastForwardedSource " +
+                    "len=${committed.length} deltaMs=${now - lastForwardedAtMs} request=$requestId"
+            )
+            return
+        }
+        lastForwardedText = committed
+        lastForwardedSource = source
+        lastForwardedAtMs = now
+        Log.i(
+            TAG,
+            "forward_commit_text src=$source len=${committed.length} request=$requestId"
+        )
+        KeyboardProxyManager.commitText(requestId, sessionId, committed)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,17 +141,122 @@ class KeyboardProxyActivity : Activity() {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
         )
-        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         rootView = FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             isFocusable = true
             isFocusableInTouchMode = true
+            isClickable = true
         }
-        editText = EditText(this).apply {
+        editText = object : EditText(this) {
+            override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
+                val base = super.onCreateInputConnection(outAttrs)
+                val host = this
+                return object : InputConnectionWrapper(base, true) {
+                    override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                        forwardCommittedText(text, "commitText")
+                        val handled = super.commitText(text, newCursorPosition)
+                        host.post {
+                            if (!ignoreTextChange) {
+                                ignoreTextChange = true
+                                host.text?.clear()
+                                ignoreTextChange = false
+                            }
+                        }
+                        return handled
+                    }
+
+                    override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                        Log.i(
+                            TAG,
+                            "set_composing_text len=${text?.length ?: 0} request=$requestId"
+                        )
+                        // Keep IME composition local; only final commitText is forwarded.
+                        return super.setComposingText(text, newCursorPosition)
+                    }
+
+                    override fun finishComposingText(): Boolean {
+                        val handled = super.finishComposingText()
+                        val composed = host.text?.toString().orEmpty()
+                        Log.i(
+                            TAG,
+                            "finish_composing_text len=${composed.length} request=$requestId"
+                        )
+                        if (composed.isNotEmpty()) {
+                            forwardCommittedText(composed, "finishComposingText")
+                            host.post {
+                                if (!ignoreTextChange) {
+                                    ignoreTextChange = true
+                                    host.text?.clear()
+                                    ignoreTextChange = false
+                                }
+                            }
+                        }
+                        return handled
+                    }
+
+                    override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
+                        val composingStart = BaseInputConnection.getComposingSpanStart(host.text)
+                        Log.i(
+                            TAG,
+                            "delete_surrounding_text before=$beforeLength after=$afterLength " +
+                                "composingStart=$composingStart request=$requestId"
+                        )
+                        // During composition: let IME manage pinyin/ composing text locally.
+                        // Do NOT forward to remote — user is editing the composition, not remote content.
+                        if (composingStart >= 0) {
+                            return super.deleteSurroundingText(beforeLength, afterLength)
+                        }
+                        // No active composition: local EditText is empty (cleared after each commit).
+                        // Forward delete to remote side for each character before the cursor (Backspace).
+                        var forwarded = false
+                        for (i in 0 until beforeLength) {
+                            KeyboardProxyManager.sendKey(requestId, sessionId, "VK_BACK")
+                            forwarded = true
+                        }
+                        // Forward-delete (Delete key, not Backspace) — rare on mobile but handle it.
+                        for (i in 0 until afterLength) {
+                            KeyboardProxyManager.sendKey(requestId, sessionId, "VK_DELETE")
+                            forwarded = true
+                        }
+                        // Still call super so IME stays consistent; clear any text the IME
+                        // may have set during this operation.
+                        val superHandled = super.deleteSurroundingText(beforeLength, afterLength)
+                        host.post {
+                            if (!ignoreTextChange) {
+                                ignoreTextChange = true
+                                host.text?.clear()
+                                ignoreTextChange = false
+                            }
+                        }
+                        return superHandled || forwarded
+                    }
+
+                    override fun sendKeyEvent(event: KeyEvent?): Boolean {
+                        if (event != null &&
+                            event.action == KeyEvent.ACTION_DOWN &&
+                            event.keyCode == KeyEvent.KEYCODE_DEL
+                        ) {
+                            val composingStart = BaseInputConnection.getComposingSpanStart(host.text)
+                            Log.i(
+                                TAG,
+                                "send_key_event DEL composingStart=$composingStart request=$requestId"
+                            )
+                            // Only forward when not in composition (same logic as deleteSurroundingText).
+                            if (composingStart < 0) {
+                                KeyboardProxyManager.sendKey(requestId, sessionId, "VK_BACK")
+                                return true
+                            }
+                        }
+                        return super.sendKeyEvent(event)
+                    }
+                }
+            }
+        }.apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(android.graphics.Color.TRANSPARENT)
             isCursorVisible = false
-            isFocusable = false
+            isFocusable = true
+            isFocusableInTouchMode = true
             inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE
             imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
 
@@ -129,9 +265,15 @@ class KeyboardProxyActivity : Activity() {
 
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     if (ignoreTextChange) return
+                    // Safety net for IMEs that bypass commitText callback.
                     val committed = s?.toString().orEmpty()
-                    if (committed.isEmpty() || BaseInputConnection.getComposingSpanStart(editableText) >= 0) return
-                    KeyboardProxyManager.commitText(requestId, sessionId, committed)
+                    val composingStart = BaseInputConnection.getComposingSpanStart(editableText)
+                    Log.i(
+                        TAG,
+                        "watcher_text_changed len=${committed.length} composingStart=$composingStart request=$requestId"
+                    )
+                    if (committed.isEmpty() || composingStart >= 0) return
+                    forwardCommittedText(committed, "textWatcher")
                     ignoreTextChange = true
                     text.clear()
                     ignoreTextChange = false
@@ -185,12 +327,17 @@ class KeyboardProxyActivity : Activity() {
         closeRequested = false
         releaseRequested = false
         imeRequestAttempts = 0
+        lastForwardedText = ""
+        lastForwardedSource = ""
+        lastForwardedAtMs = 0L
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(finishAfterHideTimeout)
+        editText.isFocusable = true
         editText.isFocusableInTouchMode = true
         editText.requestFocus()
+        window.decorView.requestFocus()
         ViewCompat.requestApplyInsets(window.decorView)
-        if (hasWindowFocus()) editText.post(requestIme)
+        editText.post(requestIme)
     }
 
     private fun reportImeInsets(insets: WindowInsetsCompat) {

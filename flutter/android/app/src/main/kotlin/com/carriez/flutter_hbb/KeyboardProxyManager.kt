@@ -136,6 +136,10 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     @Synchronized
     fun commitText(activityRequestId: Long, activitySessionId: String, text: String) {
         if (activityRequestId != requestId || activitySessionId != sessionId || state != "visible" || text.isEmpty()) return
+        Log.i(
+            TAG,
+            "commit_text request=$activityRequestId session=$activitySessionId len=${text.length}"
+        )
         channel?.invokeMethod(
             "keyboard_proxy_commit_text",
             mapOf("requestId" to requestId, "sessionId" to sessionId, "text" to text)

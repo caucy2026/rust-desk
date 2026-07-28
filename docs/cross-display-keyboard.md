@@ -520,3 +520,94 @@ Activity 的 theme 和 window 配置应保证：
 - 反向方向 `Display 2 -> Display 0` 需同口径计时并留档。
 - `FLAG_NOT_TOUCHABLE` 在该机型可用，但跨 ROM 兼容性仍需回归。
 - 若后续首发仍偶发 `accepted=false`，应先保留可靠路径，再评估是否缩短重试间隔。
+
+## 17. 双向申请键盘实现原理（主屏 <-> 副屏）
+
+本节描述“主屏 APK 申请键盘，键盘弹到副屏”和“副屏 APK 申请键盘，键盘弹到主屏”的同一套实现机制。
+
+### 17.1 核心原则
+
+- 键盘不跟随“哪个 APK 实例”决定，而是跟随“当前发起请求的 Activity 所在 Display”决定。
+- 目标屏计算规则固定为“对面屏优先”：
+  - 源为 `Display 0` 时，目标取可用非 0 屏（当前设备通常为 `Display 2`）。
+  - 源为非 0 屏时，目标固定回 `Display 0`。
+- Flutter 只表达 open/close 意图，不做 Display 选择，不做键盘可见性判断。
+- Android 原生层是状态唯一真源，Flutter 仅渲染状态与禁点控制。
+
+### 17.2 主屏 APK 申请键盘 -> 键盘弹到副屏
+
+1. 主屏远程页点击键盘按钮，Flutter 发送 `keyboard_proxy_open(sessionId)`。
+2. `KeyboardProxyManager` 读取当前 Activity 的 `sourceDisplayId=0`。
+3. Manager 枚举在线 Display，选择首个可用非 0 屏作为 `targetDisplayId`。
+4. Manager 生成本次 `requestId`，状态切 `opening`。
+5. Manager 通过 `ActivityOptions.launchDisplayId(targetDisplayId)` 启动 `KeyboardProxyActivity`。
+6. 代理 Activity 创建原生 `EditText/InputConnection` 并请求 `showSoftInput()`。
+7. 当目标窗口 `WindowInsets.Type.ime()` 真实可见，Manager 发布 `visible`。
+8. Flutter 收到 `keyboard_proxy_state` 后将按钮置激活色。
+
+### 17.3 副屏 APK 申请键盘 -> 键盘弹到主屏
+
+1. 副屏远程页点击键盘按钮，Flutter 同样发送 `keyboard_proxy_open(sessionId)`。
+2. Manager 读取当前 Activity 的 `sourceDisplayId!=0`（例如 `2`）。
+3. 目标屏直接选 `targetDisplayId=0`。
+4. 后续流程与 17.2 完全一致：`opening -> visible -> closing -> hidden`。
+
+说明：
+- 双向流程复用同一套状态机与协议，不需要两套代码。
+- 差异只在“目标屏计算”一步；其余输入连接、状态回传、关闭清理完全一致。
+
+### 17.4 关键实现细节
+
+#### 17.4.1 为什么必须用 Activity，而不是当前页隐藏输入框
+
+- 当前页隐藏输入框会触发本屏 `viewInsets` 变化，导致布局/状态栏联动，违反“页面不动”要求。
+- 目标屏代理 Activity 提供独立输入连接，能让键盘出现在对面屏，且不影响当前屏布局。
+
+#### 17.4.2 为什么要有 `requestId` + `sessionId`
+
+- `requestId` 防止旧代理延迟回调污染新请求（典型在快速连点或系统调度抖动时发生）。
+- `sessionId` 防止输入误发到新会话（连接切换或页面重建时尤为关键）。
+
+#### 17.4.3 为什么 `visible` 不能在 open 返回时就认定
+
+- `open` 返回仅表示请求被接受，不代表 IME 已显示。
+- 必须等待目标窗口 Insets 的真实可见回调，才能认为已成功打开。
+
+#### 17.4.4 关闭必须幂等
+
+- 用户点击关闭、用户手势收起、App 后台、Display 断开，都可能同时触发关闭路径。
+- 关闭逻辑必须允许重复进入，最终只收敛到一次 `hidden`，不能崩溃或卡死。
+
+### 17.5 中间遇到的坑与处理
+
+1. 坑：Presentation/悬浮输入方案在双屏 ROM 下焦点不稳定。
+        - 现象：偶发拿不到输入焦点，键盘不弹或弹出后无法稳定输入。
+        - 处理：统一改为目标屏真实 Activity 承载输入连接。
+
+2. 坑：用当前屏可见性推断对面屏键盘状态，按钮状态经常错。
+        - 现象：按钮已亮但对面没键盘，或对面已收起但按钮仍亮。
+        - 处理：状态真源改为代理窗口 Insets，Flutter 不再自行推断。
+
+3. 坑：快速连点导致 open/close 串扰。
+        - 现象：用户本意关闭，结果因为延迟回调又被重新打开。
+        - 处理：引入 `opening/closing` 禁点 + `onPointerDown` 意图快照 + `requestId` 过滤。
+
+4. 坑：跨屏迁移时输入法服务停启，首开耗时长。
+        - 现象：`open_requested -> visible` 出现 2~4 秒长尾。
+        - 处理：代理路径保持可靠关闭；输入法侧采用短暂宽限保活，减少停启重建。
+
+5. 坑：Android 权限/通道方法在某些上下文可能缺失，导致红屏。
+        - 现象：点击“传输文件”等入口时抛 `PlatformException(No such method)`。
+        - 处理：对通道调用统一加异常兜底，避免未捕获异常触发 Flutter 红屏。
+
+### 17.6 排障建议（现场执行顺序）
+
+1. 先看状态链是否完整：`hidden -> opening -> visible -> closing -> hidden`。
+2. 再看 Display 链是否正确：`sourceDisplayId` 与 `targetDisplayId` 是否对向。
+3. 再看输入链：提交文本是否携带并匹配当前 `requestId/sessionId`。
+4. 最后看系统链：IME 服务是否在跨屏时发生销毁重建长尾。
+
+若只有“副屏->主屏”失败，优先检查：
+- 源 Activity 实际 displayId 识别是否正确。
+- 目标 `Display 0` 启动参数是否被 ROM 策略覆盖。
+- 代理 Activity 是否在主屏真正获得焦点与 Insets 回调。

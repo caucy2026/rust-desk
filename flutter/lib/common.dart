@@ -1535,12 +1535,21 @@ class AndroidPermissionManager {
     if (isDesktop || isWeb) {
       return Future.value(true);
     }
-    return gFFI.invokeMethod("check_permission", type);
+    return gFFI
+        .invokeMethod("check_permission", type)
+        .then((v) => v == true)
+        .catchError((e) {
+      debugPrint('check_permission failed for $type: $e');
+      return false;
+    });
   }
 
   // startActivity goto Android Setting's page to request permission manually by user
   static void startAction(String action) {
-    gFFI.invokeMethod(AndroidChannel.kStartAction, action);
+    gFFI.invokeMethod(AndroidChannel.kStartAction, action).catchError((e) {
+      debugPrint('startAction failed for $action: $e');
+      return false;
+    });
   }
 
   /// We use XXPermissions to request permissions,
@@ -1549,8 +1558,6 @@ class AndroidPermissionManager {
     if (isDesktop || isWeb) {
       return Future.value(true);
     }
-
-    gFFI.invokeMethod("request_permission", type);
 
     // clear last task
     if (_completer?.isCompleted == false) {
@@ -1569,6 +1576,18 @@ class AndroidPermissionManager {
       _completer = null;
       _current = "";
     });
+
+    gFFI.invokeMethod("request_permission", type).catchError((e) {
+      debugPrint('request_permission failed for $type: $e');
+      _timer?.cancel();
+      if (_completer != null && !_completer!.isCompleted) {
+        _completer!.complete(false);
+      }
+      _completer = null;
+      _current = "";
+      return false;
+    });
+
     return _completer!.future;
   }
 
@@ -2640,10 +2659,17 @@ connect(BuildContext context, String id,
   } else {
     if (isFileTransfer) {
       if (isAndroid) {
-        if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
-          if (!await AndroidPermissionManager.request(kManageExternalStorage)) {
-            return;
+        try {
+          if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
+            if (!await AndroidPermissionManager.request(
+                kManageExternalStorage)) {
+              return;
+            }
           }
+        } on PlatformException catch (e) {
+          // Some remote-session channels do not expose permission methods.
+          // Keep navigation alive to avoid a Flutter red screen.
+          debugPrint('Skip file permission check: ${e.message}');
         }
       }
       if (isWeb) {
@@ -2787,7 +2813,10 @@ class WakelockManager {
     }
     if (!_enabled) {
       _enabled = true;
-      WakelockPlus.enable();
+      WakelockPlus.enable().catchError((e) {
+        debugPrint('Wakelock enable failed: $e');
+        _enabled = false;
+      });
     }
   }
 
@@ -2799,7 +2828,9 @@ class WakelockManager {
       }
     }
     if (_enabled) {
-      WakelockPlus.disable();
+      WakelockPlus.disable().catchError((e) {
+        debugPrint('Wakelock disable failed: $e');
+      });
       _enabled = false;
     }
   }

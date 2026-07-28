@@ -279,7 +279,20 @@ class PlatformFFI {
 
   invokeMethod(String method, [dynamic arguments]) async {
     if (!isAndroid) return Future<bool>(() => false);
-    return await _toAndroidChannel.invokeMethod(method, arguments);
+    try {
+      return await _toAndroidChannel.invokeMethod(method, arguments);
+    } on MissingPluginException catch (e) {
+      debugPrint('invokeMethod missing plugin: $method, $e');
+      return false;
+    } on PlatformException catch (e) {
+      // RemoteActivity's channel only implements a subset of methods.
+      // Unimplemented methods must not crash the UI flow.
+      debugPrint('invokeMethod platform exception: $method, ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('invokeMethod failed: $method, $e');
+      return false;
+    }
   }
 
   void syncAndroidServiceAppDirConfigPath() {
