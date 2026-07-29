@@ -39,13 +39,39 @@ class CustomTouchGestureRecognizer extends ScaleGestureRecognizer {
 
   var _currentState = GestureState.none;
   Timer? _debounceTimer;
+  final Set<int> _activePointers = <int>{};
+  bool _multiTouchSequence = false;
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _activePointers.add(event.pointer);
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void handleEvent(PointerEvent event) {
+    super.handleEvent(event);
+    if (event is PointerUpEvent || event is PointerCancelEvent) {
+      _activePointers.remove(event.pointer);
+      if (_activePointers.isEmpty) {
+        _debounceTimer?.cancel();
+        _currentState = GestureState.none;
+        _multiTouchSequence = false;
+      }
+    }
+  }
 
   void _init() {
     debugPrint("CustomTouchGestureRecognizer init");
     // onStart = (d) {};
     onUpdate = (d) {
       _debounceTimer?.cancel();
-      if (d.pointerCount == 1 && _currentState != GestureState.oneFingerPan) {
+      if (d.pointerCount >= 2) {
+        _multiTouchSequence = true;
+      }
+      if (d.pointerCount == 1 &&
+          !_multiTouchSequence &&
+          _currentState != GestureState.oneFingerPan) {
         onOneFingerStartDebounce(d);
       } else if (d.pointerCount == 2 &&
           _currentState != GestureState.twoFingerScale) {
@@ -114,9 +140,9 @@ class CustomTouchGestureRecognizer extends ScaleGestureRecognizer {
         default:
           break;
       }
-      _debounceTimer = Timer(Duration(milliseconds: 200), () {
-        _currentState = GestureState.none;
-      });
+      // Keep a multi-touch sequence active until its final pointer is lifted.
+      // `handleEvent` then clears it synchronously, so the next independent
+      // single tap cannot inherit a stale two-finger gesture state.
     };
   }
 
