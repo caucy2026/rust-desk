@@ -16,6 +16,8 @@ flutter/build/
 
 # Rust
 target/
+# 本地 macOS 构建依赖，由 vcpkg 管理，不纳入源码仓库。
+vcpkg/
 
 # IDE
 .vscode/

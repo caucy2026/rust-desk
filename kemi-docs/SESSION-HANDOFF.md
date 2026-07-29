@@ -564,6 +564,31 @@ flutter build apk --debug
 
 不要看到 release 的 Rosetta 提示就声称整个项目无法编译，也不要未经用户确认安装系统依赖。
 
+### 11.3.1 macOS Apple Silicon 完整包（已验证，1.4.21+79）
+
+2026-07-30 已在 Apple Silicon 完整构建成功。首次准备本机构建环境时，`vcpkg/` 仅作为本地工具目录（已被根 `.gitignore` 忽略），需要其中的 `libyuv`、`libvpx`；CocoaPods 使用当前用户安装的 1.15.2。系统 Ruby 2.6 下运行 pod 时需要预加载 `logger`。
+
+```bash
+cd /Users/newlink/kemi/RustDesk/client
+VCPKG_ROOT=$PWD/vcpkg cargo build --locked --features flutter --release
+cp target/release/liblibrustdesk.dylib target/release/librustdesk.dylib
+
+cd flutter
+PATH=/Users/newlink/.gem/ruby/2.6.0/bin:$PATH RUBYOPT=-rlogger \
+  FLUTTER_XCODE_ARCHS=arm64 FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES \
+  /Users/newlink/flutter/bin/flutter build macos --release
+cp ../target/release/service \
+  build/macos/Build/Products/Release/KEMI-远程桌面.app/Contents/MacOS/service
+codesign --force --deep --sign - \
+  build/macos/Build/Products/Release/KEMI-远程桌面.app
+codesign --verify --deep --strict --verbose=2 \
+  build/macos/Build/Products/Release/KEMI-远程桌面.app
+```
+
+- 缺失 `macos/Runner/bridge_generated.h` 时，按 `flutter/run.sh` 生成：`PATH=/Users/newlink/flutter/bin:$PATH RUST_LOG=info ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output ./lib/generated_bridge.dart --c-output ./macos/Runner/bridge_generated.h`。
+- 产物路径：`flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app`；已核验版本 `1.4.21+79`、主程序和 `service` 均为 arm64。
+- 此流程生成 ad-hoc 签名，仅适合本机测试。安装到 `/Applications` 或对外分发前，需要明确确认，并使用对应的 Developer ID 签名与公证流程。
+
 ### 11.4 安装
 
 ```bash

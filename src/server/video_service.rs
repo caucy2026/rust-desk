@@ -302,6 +302,12 @@ fn create_capturer(
             #[cfg(not(windows))]
             {
                 log::debug!("Create capturer from scrap");
+                let (display_width, display_height, display_online, display_primary) = (
+                    display.width(),
+                    display.height(),
+                    display.is_online(),
+                    display.is_primary(),
+                );
                 #[cfg(target_os = "macos")]
                 let can_screen_recording = crate::platform::macos::is_can_screen_recording(false);
                 return Ok(Box::new(Capturer::new(display).with_context(|| {
@@ -310,10 +316,10 @@ fn create_capturer(
                         format!(
                             "Failed to create capturer (display_index={}, width={}, height={}, online={}, primary={}, screen_recording={})",
                             _current,
-                            display.width(),
-                            display.height(),
-                            display.is_online(),
-                            display.is_primary(),
+                            display_width,
+                            display_height,
+                            display_online,
+                            display_primary,
                             can_screen_recording,
                         )
                     }
@@ -322,10 +328,10 @@ fn create_capturer(
                         format!(
                             "Failed to create capturer (display_index={}, width={}, height={}, online={}, primary={})",
                             _current,
-                            display.width(),
-                            display.height(),
-                            display.is_online(),
-                            display.is_primary(),
+                            display_width,
+                            display_height,
+                            display_online,
+                            display_primary,
                         )
                     }
                 })?));

@@ -20,6 +20,7 @@ vram = ["hwcodec/vram"]
 cfg-if = "1.0"
 num_cpus = "1.15"
 lazy_static = "1.4"
+log = "0.4"
 hbb_common = { path = "../hbb_common" }
 webm = { git = "https://github.com/rustdesk-org/rust-webm" }
 serde = {version="1.0", features=["derive"]}
@@ -36,7 +37,6 @@ block = "0.1"
 android_logger = "0.13"
 jni = "0.21"
 lazy_static = "1.4"
-log = "0.4"
 serde_json = "1.0"
 ndk = { version = "0.7", features = ["media"], optional = true}
 ndk-context = "0.1"
@@ -65,4 +65,3 @@ optional = true
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
 nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts", features = ["input-native"] }
-
