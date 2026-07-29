@@ -23,6 +23,7 @@ import '../../models/keyboard_proxy_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import '../../utils/image.dart';
+import 'file_manager_page.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
 
@@ -82,6 +83,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
+  bool _handoffToFileTransfer = false;
 
   InputModel get inputModel => gFFI.inputModel;
   SessionID get sessionId => gFFI.sessionId;
@@ -160,14 +162,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
       keyboardProxyController.reset();
     }
-    // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
-    // after several awaits (canvas save, image update, the `enable_soft_keyboard`
-    // platform call), so if the app is backgrounded while this page is disposing,
-    // dispose can be suspended before reaching it and the connection is never torn
-    // down. The reconnect then re-attaches to the leaked session and is stuck on
-    // "Connecting...". Dispatching it here makes teardown happen synchronously on
-    // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
-    unawaited(bind.sessionClose(sessionId: sessionId));
+    if (!_handoffToFileTransfer) {
+      // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
+      // after several awaits (canvas save, image update, the `enable_soft_keyboard`
+      // platform call), so if the app is backgrounded while this page is disposing,
+      // dispose can be suspended before reaching it and the connection is never torn
+      // down. The reconnect then re-attaches to the leaked session and is stuck on
+      // "Connecting...". Dispatching it here makes teardown happen synchronously on
+      // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
+      unawaited(bind.sessionClose(sessionId: sessionId));
+    }
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
@@ -182,7 +186,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     clearWaylandKeyboardPromptSuppressedForConnection(sessionId.toString());
     _waylandKeyboardGateWorker?.dispose();
     inputModel.keyboardInputAllowed = true;
-    await gFFI.close();
+    if (!_handoffToFileTransfer) {
+      await gFFI.close();
+    }
     _timer?.cancel();
     _iosKeyboardWorkaroundTimer?.cancel();
     gFFI.dialogManager.dismissAll();
@@ -201,11 +207,69 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       trySyncClipboard();
+      // For Android 10/11+, file permission request may jump to Settings.
+      // Complete pending flow after returning to foreground.
+      if (AndroidPermissionManager.isWaitingFile()) {
+        () async {
+          AndroidPermissionManager.complete(kManageExternalStorage,
+              await AndroidPermissionManager.check(kManageExternalStorage));
+        }();
+      }
     }
   }
 
   void _onKeyboardProxyChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _openFileTransferFromRemote(String id,
+      {String? connToken}) async {
+    if (_handoffToFileTransfer) return;
+    _handoffToFileTransfer = true;
+    try {
+      if (isAndroid) {
+        unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
+        keyboardProxyController.reset();
+      }
+      // Reuse the current connection token for the parallel transfer session.
+      final token = connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
+
+      // FileManagerPage owns a separate file-transfer session, so this
+      // remote desktop session keeps decoding video behind the overlay.
+      await showGeneralDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierLabel: 'FileTransferOverlay',
+        barrierColor: Colors.black54,
+        transitionDuration: Duration(milliseconds: 250),
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FileManagerPage(
+            id: id,
+            password: widget.password,
+            isSharedPassword: widget.isSharedPassword,
+            forceRelay: widget.forceRelay,
+            connToken: token,
+            isOverlay: true,
+          );
+        },
+      );
+
+      if (isAndroid) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Transfer file overlay failed: $e');
+      showToast(translate('Failed'));
+    } finally {
+      _handoffToFileTransfer = false;
+    }
   }
 
   // For client side
@@ -595,6 +659,38 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _bottomActionButton({
+    required String label,
+    required Widget icon,
+    required VoidCallback? onPressed,
+    Color color = Colors.white,
+    Color? disabledColor,
+  }) {
+    return SizedBox(
+      width: 48,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: label,
+            color: color,
+            disabledColor: disabledColor ?? color,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 44, height: 24),
+            icon: icon,
+            onPressed: onPressed,
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget getBottomAppBar() {
     final ffiModel = Provider.of<FfiModel>(context);
     final proxy = keyboardProxyController.value;
@@ -614,22 +710,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
+      height: 44,
       child: Row(
         mainAxisSize: MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
           Row(
               children: <Widget>[
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.clear),
+                    _bottomActionButton(
+                      label: '断开',
+                      icon: const Icon(Icons.clear),
                       onPressed: () {
                         clientClose(sessionId, gFFI);
                       },
                     ),
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.tv),
+                    _bottomActionButton(
+                      label: '显示',
+                      icon: const Icon(Icons.tv),
                       onPressed: () {
                         setState(() {
                           _showEdit = false;
@@ -647,17 +744,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     ? (_) => _keyboardCloseIntent =
                                         keyboardProxyController.value.isVisible
                                     : null,
-                                child: IconButton(
-                                    color: keyboardColor,
-                                    disabledColor: keyboardColor,
-                                    icon: keyboardIcon,
-                                    onPressed:
-                                        isAndroid && proxy.isTransitioning
-                                            ? null
-                                            : openKeyboard),
+                                child: _bottomActionButton(
+                                  label: '键盘',
+                                  color: keyboardColor,
+                                  disabledColor: keyboardColor,
+                                  icon: keyboardIcon,
+                                  onPressed: isAndroid && proxy.isTransitioning
+                                      ? null
+                                      : openKeyboard,
+                                ),
                               ),
-                              IconButton(
-                                color: Colors.white,
+                              _bottomActionButton(
+                                label: '工具',
                                 icon: const Icon(Icons.build),
                                 onPressed: () => gFFI.dialogManager
                                     .toggleMobileActionsOverlay(ffi: gFFI),
@@ -669,17 +767,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     ? (_) => _keyboardCloseIntent =
                                         keyboardProxyController.value.isVisible
                                     : null,
-                                child: IconButton(
-                                    color: keyboardColor,
-                                    disabledColor: keyboardColor,
-                                    icon: keyboardIcon,
-                                    onPressed:
-                                        isAndroid && proxy.isTransitioning
-                                            ? null
-                                            : openKeyboard),
+                                child: _bottomActionButton(
+                                  label: '键盘',
+                                  color: keyboardColor,
+                                  disabledColor: keyboardColor,
+                                  icon: keyboardIcon,
+                                  onPressed: isAndroid && proxy.isTransitioning
+                                      ? null
+                                      : openKeyboard,
+                                ),
                               ),
-                              IconButton(
-                                color: Colors.white,
+                              _bottomActionButton(
+                                label: '输入',
                                 icon: Icon(gFFI.ffiModel.touchMode
                                     ? Icons.touch_app
                                     : Icons.mouse),
@@ -687,14 +786,22 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     () => _showGestureHelp = !_showGestureHelp),
                               ),
                             ]) +
+                  [
+                    _bottomActionButton(
+                      label: '说明',
+                      icon: const Icon(Icons.help_outline),
+                      onPressed: () => setState(() => _showGestureHelp = true),
+                    ),
+                  ] +
                   (isWeb
                       ? []
                       : <Widget>[
                           futureBuilder(
                               future: gFFI.invokeMethod(
                                   "get_value", "KEY_IS_SUPPORT_VOICE_CALL"),
-                              hasData: (isSupportVoiceCall) => IconButton(
-                                    color: Colors.white,
+                              hasData: (isSupportVoiceCall) =>
+                                  _bottomActionButton(
+                                    label: '聊天',
                                     icon: isAndroid && isSupportVoiceCall
                                         ? SvgPicture.asset('assets/chat.svg',
                                             colorFilter: ColorFilter.mode(
@@ -707,9 +814,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   ))
                         ]) +
                   [
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.more_vert),
+                    _bottomActionButton(
+                      label: '更多',
+                      icon: const Icon(Icons.more_vert),
                       onPressed: () {
                         setState(() {
                           _showEdit = false;
@@ -718,9 +825,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       },
                     ),
                   ]),
-          Obx(() => IconButton(
-                color: Colors.white,
-                icon: Icon(Icons.expand_more),
+          Obx(() => _bottomActionButton(
+                label: '收起',
+                icon: const Icon(Icons.expand_more),
                 onPressed: gFFI.ffiModel.waitForFirstImage.isTrue
                     ? null
                     : () {
@@ -854,20 +961,29 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final x = 120.0;
     final y = size.height;
     final mobileActionMenus = _getMobileActionMenus();
-    if (isAndroid) {
-      mobileActionMenus.insert(
-        0,
-        TTextMenu(
-          child: Text(translate('Transfer file')),
-          onPressed: () {
-            final connToken =
-                bind.sessionGetConnToken(sessionId: gFFI.sessionId);
-            connect(context, id, isFileTransfer: true, connToken: connToken);
-          },
-        ),
-      );
-    }
+    final transferFileMenu = isAndroid
+        ? TTextMenu(
+            child: Text(translate('Transfer file')),
+            onPressed: () async {
+              try {
+                final sessionId = gFFI.sessionId;
+                final connToken =
+                    bind.sessionGetConnToken(sessionId: sessionId);
+                debugPrint(
+                    'Transfer file: id=$id sessionId=$sessionId connToken=$connToken');
+                await _openFileTransferFromRemote(id, connToken: connToken);
+              } catch (e) {
+                debugPrint('Transfer file action failed: $e');
+                showToast(translate('Failed'));
+              }
+            },
+          )
+        : null;
     final menus = toolbarControls(context, id, gFFI);
+    final combinedMenus = <TTextMenu>[...mobileActionMenus, ...menus];
+    if (transferFileMenu != null) {
+      combinedMenus.add(transferFileMenu);
+    }
 
     final List<PopupMenuEntry<int>> more = [
       ...mobileActionMenus
@@ -884,6 +1000,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               child: e.value.getChild(),
               value: e.key + mobileActionMenus.length))
           .toList(),
+      if (transferFileMenu != null && combinedMenus.length > 1)
+        PopupMenuDivider(),
+      if (transferFileMenu != null)
+        PopupMenuItem<int>(
+            child: transferFileMenu.getChild(),
+            value: combinedMenus.length - 1),
     ];
     () async {
       var index = await showMenu(
@@ -893,10 +1015,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         elevation: 8,
       );
       if (index != null) {
-        if (index < mobileActionMenus.length) {
-          mobileActionMenus[index].onPressed?.call();
-        } else if (index < mobileActionMenus.length + more.length) {
-          menus[index - mobileActionMenus.length].onPressed?.call();
+        if (index >= 0 && index < combinedMenus.length) {
+          combinedMenus[index].onPressed?.call();
         }
       }
     }();

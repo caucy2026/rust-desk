@@ -85,13 +85,20 @@ class RawTouchGestureDetectorRegion extends StatefulWidget {
 /// mouseMode only:
 ///   DoubleFiner -> right click
 ///   HoldDrag -> left drag
+enum _TwoFingerGesture { none, scroll, zoom }
+
 class _RawTouchGestureDetectorRegionState
     extends State<RawTouchGestureDetectorRegion> {
   Offset _cacheLongPressPosition = Offset(0, 0);
   // Timestamp of the last long press event.
   int _cacheLongPressPositionTs = 0;
-  double _mouseScrollIntegral = 0; // mouse scroll speed controller
+  double _twoFingerScrollIntegral = 0;
   double _scale = 1;
+  double _twoFingerInitialScale = 1;
+  double _twoFingerVerticalTravel = 0;
+  double _twoFingerHorizontalTravel = 0;
+  bool _twoFingerHasInitialUpdate = false;
+  _TwoFingerGesture _twoFingerGesture = _TwoFingerGesture.none;
 
   // Workaround tap down event when two fingers are used to scale(mobile)
   TapDownDetails? _lastTapDownDetails;
@@ -446,10 +453,26 @@ class _RawTouchGestureDetectorRegionState
   }
 
   // scale + pan event
-  onTwoFingerScaleStart(ScaleStartDetails d) {
+  onTwoFingerScaleStart(ScaleStartDetails d) async {
     _lastTapDownDetails = null;
+    _twoFingerGesture = _TwoFingerGesture.none;
+    _twoFingerScrollIntegral = 0;
+    _scale = 1;
+    _twoFingerInitialScale = 1;
+    _twoFingerVerticalTravel = 0;
+    _twoFingerHorizontalTravel = 0;
+    _twoFingerHasInitialUpdate = false;
     if (isNotTouchBasedDevice()) {
       return;
+    }
+    // A first finger can have started a touch-mode drag just before the
+    // second finger lands. End that drag immediately so a two-finger gesture
+    // cannot be sent to the remote side as a left-button drag.
+    if (isMobile && handleTouch && _touchModePanStarted) {
+      _touchModePanStarted = false;
+      if (!inputModel.relativeMouseMode.value) {
+        await inputModel.sendMouse('up', MouseButtons.left);
+      }
     }
     if (isSpecialHoldDragActive) {
       // Initialize the last focal point to calculate deltas manually.
@@ -484,11 +507,51 @@ class _RawTouchGestureDetectorRegionState
                     .toJson()));
       }
     } else {
-      // mobile
-      ffi.canvasModel.updateScale(d.scale / _scale, d.focalPoint);
-      _scale = d.scale;
-      ffi.canvasModel.panX(d.focalPointDelta.dx);
-      ffi.canvasModel.panY(d.focalPointDelta.dy);
+      // Mobile: preserve the familiar gesture contract. A pinch zooms the
+      // local canvas; a two-finger vertical move sends a remote mouse wheel.
+      // The first ScaleUpdate can include the distance between fingers when
+      // the second finger lands. Do not use that scale value to decide a
+      // pinch, but do retain its movement delta: a short two-finger scroll
+      // can have only one update frame on the PAD.
+      final isFirstUpdate = !_twoFingerHasInitialUpdate;
+      if (isFirstUpdate) {
+        _twoFingerHasInitialUpdate = true;
+        _twoFingerInitialScale = d.scale;
+        _scale = d.scale;
+      }
+
+      if (_twoFingerGesture == _TwoFingerGesture.none) {
+        _twoFingerVerticalTravel += d.focalPointDelta.dy.abs();
+        _twoFingerHorizontalTravel += d.focalPointDelta.dx.abs();
+        if (_twoFingerVerticalTravel > 2 &&
+            _twoFingerVerticalTravel > _twoFingerHorizontalTravel * 1.2) {
+          _twoFingerGesture = _TwoFingerGesture.scroll;
+          // A short PAD gesture can end on this same update. Send its first
+          // wheel tick immediately instead of waiting for another frame.
+          if (d.focalPointDelta.dy != 0) {
+            inputModel.scroll(d.focalPointDelta.dy > 0 ? 1 : -1);
+          }
+          _twoFingerScrollIntegral = 0;
+          return;
+        } else if (!isFirstUpdate &&
+            (d.scale - _twoFingerInitialScale).abs() > 0.05) {
+          _twoFingerGesture = _TwoFingerGesture.zoom;
+        }
+      }
+
+      if (_twoFingerGesture == _TwoFingerGesture.zoom) {
+        ffi.canvasModel.updateScale(d.scale / _scale, d.focalPoint);
+        _scale = d.scale;
+      } else if (_twoFingerGesture == _TwoFingerGesture.scroll) {
+        _twoFingerScrollIntegral += d.focalPointDelta.dy / 4;
+        if (_twoFingerScrollIntegral > 1) {
+          inputModel.scroll(1);
+          _twoFingerScrollIntegral = 0;
+        } else if (_twoFingerScrollIntegral < -1) {
+          inputModel.scroll(-1);
+          _twoFingerScrollIntegral = 0;
+        }
+      }
     }
   }
 
@@ -505,6 +568,12 @@ class _RawTouchGestureDetectorRegionState
     } else {
       // mobile
       _scale = 1;
+      _twoFingerInitialScale = 1;
+      _twoFingerVerticalTravel = 0;
+      _twoFingerHorizontalTravel = 0;
+      _twoFingerHasInitialUpdate = false;
+      _twoFingerGesture = _TwoFingerGesture.none;
+      _twoFingerScrollIntegral = 0;
       // No idea why we need to set the view style to "" here.
       // bind.sessionSetViewStyle(sessionId: sessionId, value: "");
     }
@@ -514,18 +583,10 @@ class _RawTouchGestureDetectorRegionState
   }
 
   get onHoldDragCancel => null;
-  get onThreeFingerVerticalDragUpdate => ffi.ffiModel.isPeerAndroid
-      ? null
-      : (d) {
-          _mouseScrollIntegral += d.delta.dy / 4;
-          if (_mouseScrollIntegral > 1) {
-            inputModel.scroll(1);
-            _mouseScrollIntegral = 0;
-          } else if (_mouseScrollIntegral < -1) {
-            inputModel.scroll(-1);
-            _mouseScrollIntegral = 0;
-          }
-        };
+  get onThreeFingerVerticalDragUpdate => (d) {
+        ffi.canvasModel.panX(d.delta.dx);
+        ffi.canvasModel.panY(d.delta.dy);
+      };
 
   makeGestures(BuildContext context) {
     return <Type, GestureRecognizerFactory>{
