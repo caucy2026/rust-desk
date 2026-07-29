@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -116,6 +117,17 @@ class _RawTouchGestureDetectorRegionState
   Offset? _lastTapDownPositionForMouseMode;
   // Cache global position for onTap (which lacks position info).
   Offset? _lastTapDownGlobalPosition;
+  final Map<int, Offset> _rawTouchPositions = <int, Offset>{};
+  int? _rawTapPointer;
+  Offset? _rawTapStart;
+  Duration? _rawTapStartTime;
+  bool _rawTapCandidate = false;
+  int _rawTapSequence = 0;
+  int _standardTapSequence = -1;
+  Timer? _rawTapTimer;
+  Offset? _rawTwoFingerFocalPoint;
+  double _rawTwoFingerWheelDistance = 0;
+  bool _rawTwoFingerScroll = false;
 
   FFI get ffi => widget.ffi;
   FfiModel get ffiModel => widget.ffiModel;
@@ -125,10 +137,134 @@ class _RawTouchGestureDetectorRegionState
 
   @override
   Widget build(BuildContext context) {
-    return RawGestureDetector(
-      child: widget.child,
-      gestures: makeGestures(context),
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _onRawTouchDown,
+      onPointerMove: _onRawTouchMove,
+      onPointerUp: _onRawTouchUp,
+      onPointerCancel: _onRawTouchCancel,
+      child: RawGestureDetector(
+        child: widget.child,
+        gestures: makeGestures(context),
+      ),
     );
+  }
+
+  bool _isTouchPointer(PointerEvent event) =>
+      kTouchBasedDeviceKinds.contains(event.kind);
+
+  void _onRawTouchDown(PointerDownEvent event) {
+    if (!_isTouchPointer(event)) return;
+    lastDeviceKind = event.kind;
+    _rawTouchPositions[event.pointer] = event.localPosition;
+    if (_rawTouchPositions.length == 1) {
+      _rawTapSequence++;
+      _rawTapPointer = event.pointer;
+      _rawTapStart = event.localPosition;
+      _rawTapStartTime = event.timeStamp;
+      _rawTapCandidate = true;
+      return;
+    }
+    _rawTapCandidate = false;
+    _rawTapTimer?.cancel();
+    _resetRawTwoFingerTracking();
+  }
+
+  void _onRawTouchMove(PointerMoveEvent event) {
+    if (!_isTouchPointer(event) ||
+        !_rawTouchPositions.containsKey(event.pointer)) {
+      return;
+    }
+    _rawTouchPositions[event.pointer] = event.localPosition;
+    final tapStart = _rawTapStart;
+    if (event.pointer == _rawTapPointer &&
+        tapStart != null &&
+        (event.localPosition - tapStart).distance > kTouchSlop) {
+      _rawTapCandidate = false;
+    }
+    _updateRawTwoFingerScroll();
+  }
+
+  void _onRawTouchUp(PointerUpEvent event) {
+    if (!_isTouchPointer(event)) return;
+    final isCandidate = event.pointer == _rawTapPointer &&
+        _rawTapCandidate &&
+        _rawTouchPositions.length == 1 &&
+        _rawTapStartTime != null &&
+        event.timeStamp - _rawTapStartTime! < const Duration(milliseconds: 450);
+    final sequence = _rawTapSequence;
+    _rawTouchPositions.remove(event.pointer);
+    if (isCandidate) {
+      _scheduleRawTapFallback(event, sequence);
+    }
+    if (_rawTouchPositions.length < 2) {
+      _resetRawTwoFingerTracking();
+    }
+    if (_rawTouchPositions.isEmpty) {
+      _rawTapPointer = null;
+      _rawTapStart = null;
+      _rawTapStartTime = null;
+      _rawTapCandidate = false;
+    }
+  }
+
+  void _onRawTouchCancel(PointerCancelEvent event) {
+    if (!_isTouchPointer(event)) return;
+    _rawTouchPositions.remove(event.pointer);
+    _rawTapCandidate = false;
+    _rawTapTimer?.cancel();
+    if (_rawTouchPositions.length < 2) {
+      _resetRawTwoFingerTracking();
+    }
+  }
+
+  void _updateRawTwoFingerScroll() {
+    if (_rawTouchPositions.length != 2) return;
+    final positions = _rawTouchPositions.values.toList(growable: false);
+    final focalPoint = (positions[0] + positions[1]) / 2;
+    final previous = _rawTwoFingerFocalPoint;
+    _rawTwoFingerFocalPoint = focalPoint;
+    if (previous == null) return;
+    final delta = focalPoint - previous;
+    if (!_rawTwoFingerScroll &&
+        delta.dy.abs() > delta.dx.abs() &&
+        delta.dy.abs() > 1) {
+      _rawTwoFingerScroll = true;
+    }
+    if (!_rawTwoFingerScroll) return;
+    _rawTwoFingerWheelDistance += delta.dy;
+    while (_rawTwoFingerWheelDistance.abs() >= 4) {
+      final direction = _rawTwoFingerWheelDistance > 0 ? 1 : -1;
+      inputModel.scroll(direction);
+      _rawTwoFingerWheelDistance -= direction * 4;
+    }
+  }
+
+  void _resetRawTwoFingerTracking() {
+    _rawTwoFingerFocalPoint = null;
+    _rawTwoFingerWheelDistance = 0;
+    _rawTwoFingerScroll = false;
+  }
+
+  void _scheduleRawTapFallback(PointerUpEvent event, int sequence) {
+    _rawTapTimer?.cancel();
+    final localPosition = event.localPosition;
+    final globalPosition = event.position;
+    _rawTapTimer = Timer(const Duration(milliseconds: 120), () async {
+      if (_standardTapSequence == sequence) return;
+      lastDeviceKind = event.kind;
+      if (handleTouch) {
+        final moved =
+            await ffi.cursorModel.move(localPosition.dx, localPosition.dy);
+        if (moved) await inputModel.tap(MouseButtons.left);
+      } else {
+        _lastTapDownPositionForMouseMode = localPosition;
+        _lastTapDownGlobalPosition = globalPosition;
+        if (!shouldBlockMouseModeEvent()) {
+          await inputModel.tap(MouseButtons.left);
+        }
+      }
+    });
   }
 
   bool isNotTouchBasedDevice() {
@@ -159,6 +295,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onTapUp(TapUpDetails d) async {
+    _standardTapSequence = _rawTapSequence;
     final TapDownDetails? lastTapDownDetails = _lastTapDownDetails;
     _lastTapDownDetails = null;
     if (isNotTouchBasedDevice()) {
@@ -182,6 +319,7 @@ class _RawTouchGestureDetectorRegionState
   }
 
   onTap() async {
+    _standardTapSequence = _rawTapSequence;
     if (isNotTouchBasedDevice()) {
       return;
     }
@@ -507,6 +645,7 @@ class _RawTouchGestureDetectorRegionState
                     .toJson()));
       }
     } else {
+      if (_rawTwoFingerScroll) return;
       // Mobile: preserve the familiar gesture contract. A pinch zooms the
       // local canvas; a two-finger vertical move sends a remote mouse wheel.
       // The first ScaleUpdate can include the distance between fingers when

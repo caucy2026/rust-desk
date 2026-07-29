@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-29
-> 当前版本：`1.4.19+77`
+> 当前版本：`1.4.20+78`
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -27,7 +27,7 @@
 6. 涉及键盘时阅读 kemi-docs/cross-display-keyboard.md，并以该文档最新章节和当前代码为准
 7. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前版本为 1.4.19+77，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前版本为 1.4.20+78，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -41,7 +41,7 @@
 - 当前触摸约定：单指轻触为左键、单指长按为右键、单指移动为拖动；双指纵向滑动为远端滚轮、双指捏合缩放本地画布、三指滑动平移本地画布。
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
-- 当前版本源必须一致：Cargo.toml=1.4.19、Cargo.lock rustdesk=1.4.19、flutter/pubspec.yaml=1.4.19+77。
+- 当前版本源必须一致：Cargo.toml=1.4.20、Cargo.lock rustdesk=1.4.20、flutter/pubspec.yaml=1.4.20+78。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -430,15 +430,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.19"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.19"` |
-| `flutter/pubspec.yaml` | `version: 1.4.19+77` |
+| `Cargo.toml` | `version = "1.4.20"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.20"` |
+| `flutter/pubspec.yaml` | `version: 1.4.20+78` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.19
-versionCode=77
+versionName=1.4.20
+versionCode=78
 ```
 
 ### 9.2 首页版本号
@@ -448,7 +448,7 @@ versionCode=77
 - 标题：`KEMI远程桌面PAD版`
 - 版本来源：`PackageInfo.fromPlatform().version`
 
-必须读取 APK 的 PackageInfo。不要改回 `bind.mainGetVersion()`，因为当前预编译 Rust `.so` 可能返回旧版本 `1.4.9`，会出现 APK 是 1.4.19、首页却显示 1.4.9 的假象。
+必须读取 APK 的 PackageInfo。不要改回 `bind.mainGetVersion()`，因为当前预编译 Rust `.so` 可能返回旧版本 `1.4.9`，会出现 APK 是 1.4.20、首页却显示 1.4.9 的假象。
 
 ### 9.3 Android 包
 
@@ -574,8 +574,8 @@ adb -s 192.168.1.10:5555 shell dumpsys package com.carriez.flutter_hbb \
 期望：
 
 ```text
-versionCode=77
-versionName=1.4.19
+versionCode=78
+versionName=1.4.20
 ```
 
 设备验证时必须核对 `lastUpdateTime`。以前出现过“本地 APK 已构建，但安装命令被取消，设备仍运行旧 APK”的问题；不能只凭源代码或 APK 文件时间判断设备已更新。
@@ -598,7 +598,7 @@ adb -s 192.168.1.10:5555 logcat \
 
 实机至少验证：
 
-1. 首页显示 `KEMI远程桌面PAD版 v1.4.19`。
+1. 首页显示 `KEMI远程桌面PAD版 v1.4.20`。
 2. 从主屏发起远控，副屏 RemoteActivity 显示远程视频。
 3. 点击远控页三点菜单，确认存在“传输文件”。
 4. 点击后出现居中、圆角、60% 宽 × 60% 高浮窗。
