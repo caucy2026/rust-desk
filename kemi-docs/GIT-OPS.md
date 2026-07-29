@@ -19,7 +19,7 @@ rust-desk/client/  ← 同步自 RustDesk/rustdesk/
 ├── flutter/       ← flutter/
 ├── src/           ← src/
 ├── libs/          ← libs/
-└── docs/          ← docs/
+├── kemi-docs/          ← KEMI 开发文档
 ```
 
 ---
@@ -171,9 +171,9 @@ git push origin main
    - 确认开发仓当前状态与最近提交
 2. `cd /Users/newlink/kemi/rust-desk && git log --oneline -10`
    - 确认备份仓最新同步版本
-3. 阅读 `docs/cross-display-keyboard.md`
+3. 阅读 `kemi-docs/cross-display-keyboard.md`
    - 跨屏键盘的完整需求、设计、调试记录
-4. 阅读 `docs/dual-screen-port.md`
+4. 阅读 `kemi-docs/dual-screen-port.md`
    - 双屏移植总体架构
 5. 阅读本文件 `GIT-OPS.md`
    - 按第二节流程继续工作
