@@ -23,6 +23,7 @@ import '../../models/keyboard_proxy_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import '../../utils/image.dart';
+import 'file_manager_page.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
 
@@ -80,6 +81,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
+  bool _handoffToFileTransfer = false;
 
   InputModel get inputModel => gFFI.inputModel;
   SessionID get sessionId => gFFI.sessionId;
@@ -157,14 +159,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
       keyboardProxyController.reset();
     }
-    // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
-    // after several awaits (canvas save, image update, the `enable_soft_keyboard`
-    // platform call), so if the app is backgrounded while this page is disposing,
-    // dispose can be suspended before reaching it and the connection is never torn
-    // down. The reconnect then re-attaches to the leaked session and is stuck on
-    // "Connecting...". Dispatching it here makes teardown happen synchronously on
-    // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
-    unawaited(bind.sessionClose(sessionId: sessionId));
+    if (!_handoffToFileTransfer) {
+      // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
+      // after several awaits (canvas save, image update, the `enable_soft_keyboard`
+      // platform call), so if the app is backgrounded while this page is disposing,
+      // dispose can be suspended before reaching it and the connection is never torn
+      // down. The reconnect then re-attaches to the leaked session and is stuck on
+      // "Connecting...". Dispatching it here makes teardown happen synchronously on
+      // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
+      unawaited(bind.sessionClose(sessionId: sessionId));
+    }
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
@@ -179,7 +183,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     clearWaylandKeyboardPromptSuppressedForConnection(sessionId.toString());
     _waylandKeyboardGateWorker?.dispose();
     inputModel.keyboardInputAllowed = true;
-    await gFFI.close();
+    if (!_handoffToFileTransfer) {
+      await gFFI.close();
+    }
     _timer?.cancel();
     _iosKeyboardWorkaroundTimer?.cancel();
     gFFI.dialogManager.dismissAll();
@@ -212,6 +218,37 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   void _onKeyboardProxyChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _openFileTransferFromRemote(String id, {String? connToken}) async {
+    if (_handoffToFileTransfer) return;
+    _handoffToFileTransfer = true;
+    try {
+      if (isAndroid) {
+        unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
+        keyboardProxyController.reset();
+      }
+      // Mobile reuses one session ID, so the desktop session must be removed
+      // before FileManagerPage can register a file-transfer session.
+      await gFFI.close();
+      if (!mounted) return;
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (BuildContext context) => FileManagerPage(
+            id: id,
+            password: widget.password,
+            isSharedPassword: widget.isSharedPassword,
+            forceRelay: widget.forceRelay,
+            connToken: connToken,
+            returnToRemoteOnClose: true,
+          ),
+        ),
+      );
+    } catch (e) {
+      _handoffToFileTransfer = false;
+      debugPrint('Transfer file handoff failed: $e');
+      showToast(translate('Failed'));
+    }
   }
 
   // For client side
@@ -865,10 +902,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             child: Text(translate('Transfer file')),
             onPressed: () async {
               try {
+                final sessionId = gFFI.sessionId;
                 final connToken =
-                    bind.sessionGetConnToken(sessionId: gFFI.sessionId);
-                await connect(context, id,
-                    isFileTransfer: true, connToken: connToken);
+                    bind.sessionGetConnToken(sessionId: sessionId);
+                debugPrint(
+                    'Transfer file: id=$id sessionId=$sessionId connToken=$connToken');
+                await _openFileTransferFromRemote(id, connToken: connToken);
               } catch (e) {
                 debugPrint('Transfer file action failed: $e');
                 showToast(translate('Failed'));

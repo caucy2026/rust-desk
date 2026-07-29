@@ -52,6 +52,7 @@ class FileModel {
   // late final String sessionId;
   late final FileFetcher fileFetcher;
   late final JobController jobController;
+  bool _readyStarted = false;
 
   late final FileController localController;
   late final FileController remoteController;
@@ -84,16 +85,25 @@ class FileModel {
   }
 
   Future<void> onReady() async {
+    if (_readyStarted) {
+      return;
+    }
+    _readyStarted = true;
+    debugPrint('[FileModel] onReady start sessionId=$sessionId');
     await evtLoop.onReady();
     if (!isWeb) await localController.onReady();
     await remoteController.onReady();
   }
 
   Future<void> close() async {
-    await evtLoop.close();
-    parent.target?.dialogManager.dismissAll();
-    await localController.close();
-    await remoteController.close();
+    try {
+      await evtLoop.close();
+      parent.target?.dialogManager.dismissAll();
+      await localController.close();
+      await remoteController.close();
+    } finally {
+      _readyStarted = false;
+    }
   }
 
   Future<void> refreshAll() async {
@@ -102,6 +112,13 @@ class FileModel {
   }
 
   void receiveFileDir(Map<String, dynamic> evt) {
+    try {
+      final fd = FileDirectory.fromJson(jsonDecode(evt['value']));
+      debugPrint(
+          '[FileModel] receiveFileDir isLocal=${evt['is_local']} path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
+    } catch (_) {
+      debugPrint('[FileModel] receiveFileDir parse failed isLocal=${evt['is_local']}');
+    }
     if (evt['is_local'] == "false") {
       // init remote home, the remote connection will send one dir event when established. TODO opt
       remoteController.initDirAndHome(evt);
@@ -110,6 +127,7 @@ class FileModel {
   }
 
   void receiveEmptyDirs(Map<String, dynamic> evt) {
+    debugPrint('[FileModel] receiveEmptyDirs isLocal=${evt['is_local']}');
     fileFetcher.tryCompleteEmptyDirsTask(evt['value'], evt['is_local']);
   }
 
@@ -388,6 +406,7 @@ class FileController {
   }
 
   Future<void> onReady() async {
+    debugPrint('[FileModel] onReady isLocal=$isLocal sessionId=$sessionId');
     if (isLocal) {
       options.value.home = await bind.mainGetHomeDir();
     }
@@ -407,24 +426,37 @@ class FileController {
       final dirs = <String>{
         if (directory.value.path.isNotEmpty) directory.value.path,
         if (savedDir.isNotEmpty) savedDir,
-        options.value.home,
+        if (options.value.home.isNotEmpty) options.value.home,
+        if (isLocal && isAndroid) '/storage/emulated/0',
       };
+      if (dirs.isEmpty) {
+        // Remote side may not have a saved dir on first launch; without a fallback
+        // we never send the first read request and the UI stays at 0 entries.
+        dirs.add(isLocal && isAndroid ? '/storage/emulated/0' : '/');
+      }
+      debugPrint('[FileModel] tryOpenReadyDirs isLocal=$isLocal home=${options.value.home} savedDir=$savedDir current=${directory.value.path} dirs=$dirs');
       for (final dir in dirs) {
+        if (dir.trim().isEmpty) continue;
         if (await _openDirectoryPath(dir, isBack: true)) {
+          debugPrint('[FileModel] tryOpenReadyDirs opened isLocal=$isLocal dir=$dir');
           return true;
         }
       }
       return false;
     }
 
-    var opened = await tryOpenReadyDirs();
-
-    await Future.delayed(Duration(seconds: 1));
-
-    if (!opened) {
-      // The peer may become ready during the reconnect delay, so retry the
-      // same candidates instead of only retrying the default home directory.
-      await tryOpenReadyDirs();
+    var opened = false;
+    // File-transfer session readiness can lag behind page navigation.
+    // Keep retrying candidate directories for a short period so remote
+    // bootstrap does not get stuck at 0 entries on transient timeouts.
+    for (var attempt = 1; attempt <= 8; attempt++) {
+      opened = await tryOpenReadyDirs();
+      if (opened) {
+        break;
+      }
+      debugPrint(
+          '[FileModel] tryOpenReadyDirs retry isLocal=$isLocal attempt=$attempt');
+      await Future.delayed(Duration(seconds: 1));
     }
   }
 
@@ -475,6 +507,19 @@ class FileController {
     if (!isBack) {
       pushHistory();
     }
+    if (path.trim().isEmpty) {
+      if (isLocal) {
+        if (homePath.trim().isNotEmpty) {
+          path = homePath;
+        } else if (isAndroid) {
+          path = '/storage/emulated/0';
+        } else {
+          path = '/';
+        }
+      } else {
+        path = '/';
+      }
+    }
     final showHidden = options.value.showHidden;
     final isWindows = options.value.isWindows;
     // process /C:\ -> C:\ on Windows
@@ -485,7 +530,9 @@ class FileController {
       }
     }
     try {
+      debugPrint('[FileModel] fetchDirectory start isLocal=$isLocal path=$path showHidden=$showHidden sessionId=$sessionId');
       final fd = await fileFetcher.fetchDirectory(path, isLocal, showHidden);
+      debugPrint('[FileModel] fetchDirectory done isLocal=$isLocal path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
       fd.format(isWindows, sort: sortBy.value);
       directory.value = fd;
       return true;
@@ -560,6 +607,7 @@ class FileController {
         options.value.home = fd.path;
         debugPrint("init remote home: ${fd.path}");
         directory.value = fd;
+        debugPrint('[FileModel] initDirAndHome home=${options.value.home} entries=${fd.entries.length}');
       }
     } catch (e) {
       debugPrint("initDirAndHome err=$e");
@@ -1501,11 +1549,13 @@ class FileFetcher {
       String path, bool isLocal, bool showHidden) async {
     try {
       if (isLocal) {
+        debugPrint('[FileFetcher] local read path=$path showHidden=$showHidden');
         final res = await bind.sessionReadLocalDirSync(
             sessionId: sessionId, path: path, showHidden: showHidden);
         final fd = FileDirectory.fromJson(jsonDecode(res));
         return fd;
       } else {
+        debugPrint('[FileFetcher] remote read request path=$path showHidden=$showHidden');
         await bind.sessionReadRemoteDir(
             sessionId: sessionId, path: path, includeHidden: showHidden);
         return registerReadTask(isLocal, path);

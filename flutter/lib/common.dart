@@ -2660,16 +2660,19 @@ connect(BuildContext context, String id,
     if (isFileTransfer) {
       if (isAndroid) {
         try {
-          if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
-            if (!await AndroidPermissionManager.request(
-                kManageExternalStorage)) {
-              return;
-            }
+          final hasPermission =
+              await AndroidPermissionManager.check(kManageExternalStorage);
+          if (!hasPermission) {
+            debugPrint(
+                'File transfer: MANAGE_EXTERNAL_STORAGE not granted, open settings');
+            // MANAGE_EXTERNAL_STORAGE cannot be granted via normal dialog on Android 11+.
+            // Open system settings so user can grant "All files access".
+            // Do NOT use request() — it will hang waiting for a callback that never comes.
+            AndroidPermissionManager.startAction(
+                kActionApplicationDetailsSettings);
           }
-        } on PlatformException catch (e) {
-          // Some remote-session channels do not expose permission methods.
-          // Keep navigation alive to avoid a Flutter red screen.
-          debugPrint('Skip file permission check: ${e.message}');
+        } catch (e) {
+          debugPrint('File transfer: skip permission check: $e');
         }
       }
       if (isWeb) {

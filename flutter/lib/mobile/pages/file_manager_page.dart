@@ -8,6 +8,7 @@ import 'package:toggle_switch/toggle_switch.dart';
 
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
+import 'remote_page.dart';
 
 class FileManagerPage extends StatefulWidget {
   FileManagerPage(
@@ -15,12 +16,16 @@ class FileManagerPage extends StatefulWidget {
       required this.id,
       this.password,
       this.isSharedPassword,
-      this.forceRelay})
+      this.forceRelay,
+  this.connToken,
+  this.returnToRemoteOnClose = false})
       : super(key: key);
   final String id;
   final String? password;
   final bool? isSharedPassword;
   final bool? forceRelay;
+  final String? connToken;
+  final bool returnToRemoteOnClose;
 
   @override
   State<StatefulWidget> createState() => _FileManagerPageState();
@@ -64,6 +69,7 @@ extension SelectModeExt on Rx<SelectMode> {
 class _FileManagerPageState extends State<FileManagerPage> {
   final model = gFFI.fileModel;
   final selectMode = SelectMode.none.obs;
+  bool _navigatingBackToRemote = false;
 
   var showLocal = true;
 
@@ -73,20 +79,37 @@ class _FileManagerPageState extends State<FileManagerPage> {
   DirectoryOptions get currentOptions => currentFileController.options.value;
   final _uniqueKey = UniqueKey();
 
+  // PAD requires a read-only transfer experience in this build.
+  bool get _deleteEnabled => !isAndroid;
+
   @override
   void initState() {
     super.initState();
-    gFFI.start(widget.id,
-        isFileTransfer: true,
-        password: widget.password,
-        isSharedPassword: widget.isSharedPassword,
-        forceRelay: widget.forceRelay);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      gFFI.dialogManager
-          .showLoading(translate('Connecting...'), onCancel: closeConnection);
+      if (!mounted) return;
+      try {
+        debugPrint(
+            '[FileManagerPage] init start id=${widget.id} session=${gFFI.sessionId}');
+        gFFI.start(widget.id,
+            isFileTransfer: true,
+            password: widget.password,
+            isSharedPassword: widget.isSharedPassword,
+            forceRelay: widget.forceRelay,
+            connToken: widget.connToken);
+        debugPrint(
+            '[FileManagerPage] after gFFI.start session=${gFFI.sessionId}');
+        gFFI.dialogManager
+            .showLoading(translate('Connecting...'), onCancel: closeConnection);
+        gFFI.ffiModel.updateEventListener(gFFI.sessionId, widget.id);
+        WakelockManager.enable(_uniqueKey);
+      } catch (e) {
+        debugPrint('FileManagerPage initState error: $e');
+        if (mounted) {
+          gFFI.dialogManager.dismissAll();
+          showToast(translate('Failed'));
+        }
+      }
     });
-    gFFI.ffiModel.updateEventListener(gFFI.sessionId, widget.id);
-    WakelockManager.enable(_uniqueKey);
   }
 
   @override
@@ -116,8 +139,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
         appBar: AppBar(
           leading: Row(children: [
             IconButton(
-                icon: Icon(Icons.close),
-                onPressed: () => clientClose(gFFI.sessionId, gFFI)),
+                icon: Icon(widget.returnToRemoteOnClose
+                    ? Icons.desktop_windows_outlined
+                    : Icons.close),
+                tooltip: widget.returnToRemoteOnClose
+                    ? translate('Back')
+                    : translate('Close'),
+                onPressed: () async {
+                  if (widget.returnToRemoteOnClose) {
+                    await _backToRemoteDesktop();
+                  } else {
+                    clientClose(gFFI.sessionId, gFFI);
+                  }
+                }),
           ]),
           centerTitle: true,
           title: ToggleSwitch(
@@ -268,10 +302,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ? FileManagerView(
                 controller: model.localController,
                 selectMode: selectMode,
+                deleteEnabled: _deleteEnabled,
               )
             : FileManagerView(
                 controller: model.remoteController,
                 selectMode: selectMode,
+                deleteEnabled: _deleteEnabled,
               ),
         bottomSheet: bottomSheet(),
       ));
@@ -306,7 +342,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_forever),
-                  onPressed: selectedItems != null
+                  onPressed: _deleteEnabled && selectedItems != null
                       ? () async {
                           if (selectedItems.items.isNotEmpty) {
                             await currentFileController
@@ -424,8 +460,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
 class FileManagerView extends StatefulWidget {
   final FileController controller;
   final Rx<SelectMode> selectMode;
+  final bool deleteEnabled;
 
-  FileManagerView({required this.controller, required this.selectMode});
+  FileManagerView(
+      {required this.controller,
+      required this.selectMode,
+      required this.deleteEnabled});
 
   @override
   State<StatefulWidget> createState() => _FileManagerViewState();
@@ -517,6 +557,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                             itemBuilder: (context) {
                               return [
                                 PopupMenuItem(
+                                  enabled: widget.deleteEnabled,
                                   child: Text(translate("Delete")),
                                   value: "delete",
                                 ),
@@ -541,6 +582,9 @@ class _FileManagerViewState extends State<FileManagerView> {
                             },
                             onSelected: (v) {
                               if (v == "delete") {
+                                if (!widget.deleteEnabled) {
+                                  return;
+                                }
                                 final items = SelectedItems(isLocal: isLocal);
                                 items.add(entries[index]);
                                 controller.removeAction(items);
@@ -765,5 +809,30 @@ class BottomSheetBody extends StatelessWidget {
       // backgroundColor: MyTheme.grayBg,
       enableDrag: false,
     );
+  }
+}
+
+extension on _FileManagerPageState {
+  Future<void> _backToRemoteDesktop() async {
+    if (_navigatingBackToRemote) return;
+    _navigatingBackToRemote = true;
+    try {
+      await gFFI.close();
+      if (!mounted) return;
+      await Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (BuildContext context) => RemotePage(
+            id: widget.id,
+            password: widget.password,
+            isSharedPassword: widget.isSharedPassword,
+            forceRelay: widget.forceRelay,
+          ),
+        ),
+      );
+    } catch (e) {
+      _navigatingBackToRemote = false;
+      debugPrint('Back to remote desktop failed: $e');
+      showToast(translate('Failed'));
+    }
   }
 }
