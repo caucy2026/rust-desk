@@ -2,6 +2,12 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 十六、2026-07-29 PAD 手势说明翻译回退
+
+- Android Flutter 打包使用预编译 Rust 桥接库，新增 Rust 翻译词条未必随 APK 即时重编。
+- 手势说明对 `Two-Finger vertically` 增加 Flutter 中文回退：原生翻译未命中且系统语言为简体/繁体中文时，分别显示“双指上下滑动”/“雙指上下滑動”。
+- `Cargo.toml` 与 `Cargo.lock` 升级为 `1.4.15`；`flutter/pubspec.yaml` 升级为 `1.4.15+73`，Android `versionCode` 为 `73`。
+
 ## 十五、2026-07-29 PAD 双指滚轮短滑动与中文说明修复
 
 ### 15.1 手势修复

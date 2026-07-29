@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
 import 'package:toggle_switch/toggle_switch.dart';
 
@@ -63,6 +64,23 @@ class _GestureHelpState extends State<GestureHelp> {
       : _virtualMouseMode = virtualMouseMode {
     _touchMode = touchMode;
     _selectedIndex = _touchMode ? 1 : 0;
+  }
+
+  String _gestureText(String key) {
+    final text = translate(key);
+    if (key != 'Two-Finger vertically' || text != key) {
+      return text;
+    }
+
+    // Android debug APKs use a precompiled Rust bridge. If its translation
+    // table predates a newly added key, keep this PAD help text localized.
+    final locale = localeName.toLowerCase();
+    if (!locale.startsWith('zh')) {
+      return text;
+    }
+    return locale.contains('tw') || locale.contains('hant')
+        ? '雙指上下滑動'
+        : '双指上下滑动';
   }
 
   /// Helper to exit relative mouse mode when certain conditions are met.
@@ -304,7 +322,7 @@ class _GestureHelpState extends State<GestureHelp> {
                           GestureInfo(
                               width,
                               GestureIcons.iconGestureFDrag,
-                              translate("Two-Finger vertically"),
+                              _gestureText("Two-Finger vertically"),
                               translate("Mouse Wheel")),
                           GestureInfo(
                               width,
@@ -336,7 +354,7 @@ class _GestureHelpState extends State<GestureHelp> {
                           GestureInfo(
                               width,
                               GestureIcons.iconGestureFDrag,
-                              translate("Two-Finger vertically"),
+                              _gestureText("Two-Finger vertically"),
                               translate("Mouse Wheel")),
                           GestureInfo(
                               width,
