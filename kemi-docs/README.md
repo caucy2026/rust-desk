@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) v1.4.9 (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前 KEMI 客户端版本为 **1.4.10+68**。
 
 ### 核心定制功能
 
 | 功能 | 说明 |
 |------|------|
 | **双屏适配** | Android PAD 主屏键控 + 副屏远控画面，跨屏触摸与键盘转发 |
-| **文件传输** | PAD 与 Mac 间双向文件传输，移动端适配（只读删除权限） |
+| **文件传输** | 60% × 60% 圆角浮窗，独立 Session 与远控视频并行，Android 默认 Download |
 | **品牌定制** | KEMI 启动画面、应用命名、权限引导流程 |
 | **信令服务** | 自建 rendezvous 服务器，Mac ARM 交叉编译 Linux x86_64 |
 
@@ -27,10 +27,14 @@
 ```
 kemi-docs/
 ├── README.md                    ← 本文件（项目简介与文档导航）
+├── SESSION-HANDOFF.md           ← 跨会话接续手册、完整架构与构建部署流程
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 └── dual-screen-port.md          ← 安卓双屏移植总体架构
+
+.github/prompts/
+└── continue-kemi-rustdesk.prompt.md  ← VS Code 中可直接运行的接续提示词
 ```
 
 ---
@@ -41,13 +45,25 @@ kemi-docs/
 
 项目简介、文档目录导航、快速入门指引。**新成员入职第一份阅读材料。**
 
+### SESSION-HANDOFF.md
+
+**跨会话接续的第一事实入口**：
+
+- 可直接复制给新会话的完整提示词
+- 当前 Git 基线、不可回退行为和三层目录架构
+- 双屏、键盘、并行文件传输 Session 的数据流
+- Flutter/Java/Rust/ADB 环境与 Debug APK 构建、部署、验收命令
+- 当前真实 GitHub `backup/master` 推送与恢复流程
+
+> 新会话必须先读本文件，再根据任务进入具体模块文档。
+
 ### CHANGELOG-KEMI.md
 
 **开发调试记录**，按时间倒序记录每次功能改动：
 
 - 每节包含：问题、根因、修复文件、改动细节、验证结果
 - 末尾维护"暂未完成任务"清单
-- 当前最新：第七节（文件传输与会话切换稳定化）、第八节（返回远控黑屏修复）
+- 当前最新：第十节（跨会话接续手册、VS Code prompt 和真实 GitHub 备份流程）
 
 > 每次提交代码前应同步更新本文档。
 
@@ -55,12 +71,12 @@ kemi-docs/
 
 **Git 操作与 GitHub 备份指南**，独立于外部对话记录：
 
-- 仓库地图（开发仓 vs 备份仓）
-- 日常备份流程（提交 → 同步 → 推送）
+- 真实远端地图（官方 `origin` vs KEMI `backup`）
+- 日常备份流程（提交 → fetch/rebase → `git push backup master`）
 - 从备份仓恢复的完整步骤
-- 紧急恢复清单（上下文丢失后的恢复顺序）
+- 分叉处理、冲突解决和远端完整哈希核验
 
-> 此文档可独立用于团队协作和灾备恢复，不依赖 AI 对话上下文。
+> 不再复制文件到第二个本地仓库，也不再推送旧的 `origin main`。
 
 ### cross-display-keyboard.md
 
@@ -92,20 +108,22 @@ kemi-docs/
 ### 新成员上手顺序
 
 1. **README.md**（本文件）— 了解项目全貌
-2. **dual-screen-port.md** — 理解双屏架构
-3. **cross-display-keyboard.md** — 理解键盘模块
-4. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
-5. **GIT-OPS.md** — 掌握代码提交与备份流程
+2. **SESSION-HANDOFF.md** — 核对当前事实、基线、环境和不可回退行为
+3. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
+4. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
+5. **cross-display-keyboard.md** — 理解键盘模块
+6. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
 
 ### 日常开发速查
 
 ```bash
 # 构建 PAD APK
+export PATH=/Users/newlink/flutter/bin:$PATH
 cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
 flutter build apk --debug
 
 # 安装到设备
-adb -s <device_ip>:5555 install -r build/app/outputs/flutter-apk/app-debug.apk
+adb -s 192.168.1.10:5555 install -r -d build/app/outputs/flutter-apk/app-debug.apk
 
 # 查看改动
 cd /Users/newlink/kemi/RustDesk/rustdesk
@@ -116,6 +134,10 @@ git diff --stat
 git add <files>
 git commit -m "feat(xxx): 描述"
 git push backup master
+
+# 核对远端与本地哈希
+git ls-remote backup refs/heads/master
+git rev-parse HEAD
 ```
 
 ---

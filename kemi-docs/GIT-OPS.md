@@ -1,184 +1,315 @@
-# RustDesk KEMI — Git 操作与 GitHub 备份指南
+# RustDesk KEMI：Git 操作与 GitHub 备份指南
 
-> 用途：代码备份到 GitHub、恢复操作、多仓库协作流程。
-> 防止上下文丢失后无法恢复工作，本文独立保存，不依赖外部对话记录。
-
----
-
-## 一、仓库地图
-
-| 仓库 | 本地路径 | 远端 | 用途 |
-|------|---------|------|------|
-| **开发仓** | `/Users/newlink/kemi/RustDesk/rustdesk/` | `origin` → `git@github.com:rustdesk/rustdesk.git` | 日常开发、编译 APK |
-| **备份仓** | `/Users/newlink/kemi/rust-desk/` | `origin` → `git@github.com:caucy2026/rust-desk.git` | 代码备份、团队共享 |
-
-### 目录对应关系
-
-```
-rust-desk/client/  ← 同步自 RustDesk/rustdesk/
-├── flutter/       ← flutter/
-├── src/           ← src/
-├── libs/          ← libs/
-├── kemi-docs/          ← KEMI 开发文档
-```
+> 用途：在真实开发仓中安全提交 KEMI 定制、备份到 GitHub、处理分叉和恢复项目。
+>
+> 当前基线日期：2026-07-29。完整项目上下文见 `kemi-docs/SESSION-HANDOFF.md`。
 
 ---
 
-## 二、日常备份流程
+## 一、真实仓库模型
 
-### 2.1 在开发仓 (`RustDesk/rustdesk`) 提交
+本项目只使用一个本地开发仓：
 
-```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
-git status                          # 查看改动
-git add <files>                     # 按功能分步添加
-git commit -m "feat(xxx): 描述"
+```text
+/Users/newlink/kemi/RustDesk/rustdesk
 ```
 
-**提交规范**：
+该仓配置两个远端：
 
-- `docs:` — 纯文档变更
-- `feat(android):` — Android 功能
-- `feat(scrap):` — 编解码/采集
-- `fix(xxx):` — Bug 修复，附根因
+| 远端 | 地址 | 用途 | 是否推送 KEMI 代码 |
+|---|---|---|---|
+| `origin` | `git@github.com:rustdesk/rustdesk.git` | RustDesk 官方上游 | 否 |
+| `backup` | `git@github.com:caucy2026/rust-desk.git` | KEMI GitHub 备份 | 是，推送 `master` |
 
-### 2.2 同步到备份仓 (`rust-desk`) 并推送
+检查命令：
 
 ```bash
-# 确认开发仓干净且已提交
 cd /Users/newlink/kemi/RustDesk/rustdesk
+git remote -v
+git branch --show-current
 git status --short
-
-# 列出本次要同步的文件
-# 只同步已提交的文件，不做增量复制
-# 示例：跨屏键盘相关文件
-
-src=/Users/newlink/kemi/RustDesk/rustdesk
-dst=/Users/newlink/kemi/rust-desk/client
-
-# 复制已改动的文件
-cp "$src"/flutter/lib/mobile/pages/remote_page.dart "$dst"/flutter/lib/mobile/pages/
-cp "$src"/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/KeyboardProxyManager.kt "$dst"/flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/
-# ... 按需添加
-
-# 在备份仓提交并推送
-cd /Users/newlink/kemi/rust-desk
-git add client/
-git commit -m "backup(client): 描述同步内容"
-git push origin main
 ```
 
-### 2.3 验证推送成功
+预期当前分支为 `master`。
 
-```bash
-cd /Users/newlink/kemi/rust-desk
-git rev-list --left-right --count HEAD...@{u}
-# 期望输出: 0  0（本地与远端一致）
-```
+以下历史流程已经废弃：
+
+- 不再复制文件到 `/Users/newlink/kemi/rust-desk/client`。
+- 不再在第二个本地仓重复提交。
+- 不再推送 `origin main`。
 
 ---
 
-## 三、从备份仓恢复
+## 二、提交前检查
 
-### 3.1 同事下载编译
+### 2.1 查看当前状态
 
 ```bash
-git clone https://github.com/caucy2026/rust-desk
-cd rust-desk/client/flutter
+cd /Users/newlink/kemi/RustDesk/rustdesk
+
+git status --short
+git diff --stat
+git diff --check
+```
+
+逐项确认：
+
+1. 没有覆盖其他人的未提交改动。
+2. 没有混入 `build/`、`target/`、APK、日志或临时文件。
+3. 只修改当前任务需要的文件。
+4. `kemi-docs/CHANGELOG-KEMI.md` 已记录功能、根因和验证结果。
+5. 已完成与改动风险匹配的静态检查和构建。
+
+不要为了让工作区变干净而使用 `git reset --hard` 或 `git checkout --`。遇到不属于当前任务的修改时保留并绕开。
+
+### 2.2 常用验证
+
+Flutter 修改至少执行：
+
+```bash
+export PATH=/Users/newlink/flutter/bin:$PATH
+cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+
+flutter analyze <本次修改的 Dart 文件>
 flutter build apk --debug
 ```
 
-### 3.2 本地从备份仓恢复文件
+Debug APK：
+
+```text
+/Users/newlink/kemi/RustDesk/rustdesk/flutter/build/app/outputs/flutter-apk/app-debug.apk
+```
+
+文档修改至少执行：
 
 ```bash
-# 恢复单个文件
-cp /Users/newlink/kemi/rust-desk/client/flutter/lib/mobile/pages/remote_page.dart \
-   /Users/newlink/kemi/RustDesk/rustdesk/flutter/lib/mobile/pages/
-
-# 恢复整个目录
-cp -r /Users/newlink/kemi/rust-desk/client/flutter/lib/ \
-   /Users/newlink/kemi/RustDesk/rustdesk/flutter/lib/
+cd /Users/newlink/kemi/RustDesk/rustdesk
+git diff --check -- kemi-docs .github/prompts
 ```
 
 ---
 
-## 四、多仓库操作速查
+## 三、本地提交
 
-### 开发仓常用命令
+### 3.1 精确暂存
 
 ```bash
 cd /Users/newlink/kemi/RustDesk/rustdesk
 
-# 查看改动
-git status --short
-git diff --stat
-git diff -- <file>
-
-# 查看历史
-git log --oneline -10
-git log --oneline -- <file>
-
-# 构建 APK
-cd flutter
-flutter clean && flutter pub get && flutter build apk --debug
-
-# 安装到设备
-adb -s 192.168.0.111:5555 install -r build/app/outputs/flutter-apk/app-debug.apk
+git add flutter/lib/mobile/pages/remote_page.dart
+git add flutter/lib/mobile/pages/file_manager_page.dart
+git add kemi-docs/CHANGELOG-KEMI.md
+git diff --cached --stat
+git diff --cached --check
 ```
 
-### 备份仓常用命令
+上面只是文件列表示例。使用本次真实改动文件，不要默认 `git add -A`。
+
+### 3.2 提交消息
 
 ```bash
-cd /Users/newlink/kemi/rust-desk
+git commit -m "feat(mobile): 描述用户可见行为"
+```
 
-# 查看改动
+常用前缀：
+
+| 类型 | 用途 |
+|---|---|
+| `feat(mobile):` | Flutter 移动端功能 |
+| `feat(android):` | Kotlin/Android 原生功能 |
+| `fix(mobile):` | Flutter 行为修复 |
+| `fix(android):` | Android 原生修复 |
+| `docs:` | 纯文档和接续说明 |
+
+提交后检查：
+
+```bash
+git show --stat --oneline HEAD
 git status --short
-
-# 查看历史
-git log --oneline -10
-
-# 推送
-git push origin main
 ```
 
 ---
 
-## 五、重要注意事项
+## 四、同步 GitHub 状态
 
-1. **开发仓的 origin 是 rustdesk/rustdesk（无推送权限）**
-   - 开发仓提交只能留在本地，不能 `git push origin master`
-   - 必须通过备份仓 `caucy2026/rust-desk` 推送
+推送前获取备份仓最新状态：
 
-2. **备份仓是纯备份，不在其中编译**
-   - 备份仓只在根目录做 `git push`
-   - 不在备份仓内执行 Flutter/Gradle 构建
+```bash
+cd /Users/newlink/kemi/RustDesk/rustdesk
+git fetch backup master
+git log --graph --oneline --decorate --max-count=12 master backup/master
+git rev-list --left-right --count backup/master...master
+```
 
-3. **文件同步要精确**
-   - 不要用 `cp -r` 全量覆盖，会导致无关文件进入备份仓
-   - 只同步已提交的改动文件
+最后一个命令的输出含义：
 
-4. **按功能拆分提交**
-   - 键盘、视频解码、文档各独立提交
-   - 方便以后单独回退或 cherry-pick
-
----
-
-## 六、紧急恢复清单
-
-如果上下文丢失，按以下顺序恢复：
-
-1. `cd /Users/newlink/kemi/RustDesk/rustdesk && git status --short && git log --oneline -10`
-   - 确认开发仓当前状态与最近提交
-2. `cd /Users/newlink/kemi/rust-desk && git log --oneline -10`
-   - 确认备份仓最新同步版本
-3. 阅读 `kemi-docs/cross-display-keyboard.md`
-   - 跨屏键盘的完整需求、设计、调试记录
-4. 阅读 `kemi-docs/dual-screen-port.md`
-   - 双屏移植总体架构
-5. 阅读本文件 `GIT-OPS.md`
-   - 按第二节流程继续工作
+```text
+0 N  本地 master 领先 N 个提交，可以正常推送
+N 0  backup/master 领先，先 rebase
+N M  双方分叉，先 rebase 并解决冲突
+0 0  本地与远端一致，无需推送
+```
 
 ---
 
-> 最后更新：2026-07-27
+## 五、分叉与冲突处理
+
+如果 `backup/master` 有本地没有的提交：
+
+```bash
+git rebase backup/master
+```
+
+发生冲突时：
+
+```bash
+git status
+```
+
+逐个读取冲突文件，结合当前产品要求和远端历史处理。处理完成后：
+
+```bash
+git add <已解决的冲突文件>
+GIT_EDITOR=true git rebase --continue
+```
+
+需要放弃本次 rebase 时：
+
+```bash
+git rebase --abort
+```
+
+冲突处理原则：
+
+1. 保留远端已有且不冲突的历史。
+2. 保留当前最终产品行为，不恢复旧实现。
+3. 文件传输冲突必须保留 60% × 60% 浮窗、独立 FFI Session、后台视频持续播放和 Android Download 默认目录。
+4. rebase 改写本地提交哈希后，要以新哈希为准更新交付记录。
+5. 不使用 `git push --force`。只有用户明确授权并理解影响后才考虑强推。
+
+rebase 后重新验证：
+
+```bash
+git diff --check backup/master..HEAD
+git log --oneline --max-count=8
+```
+
+代码冲突还必须重新运行静态检查和构建。
+
+---
+
+## 六、推送到 KEMI GitHub
+
+确认本地历史已包含 `backup/master` 后：
+
+```bash
+git push backup master
+```
+
+禁止将 KEMI 定制推送到官方上游：
+
+```bash
+# 不要执行
+git push origin master
+```
+
+如果网络或 SSH 身份失败，先保留本地提交，报告真实错误；不要改写远端地址或改用强推规避问题。
+
+---
+
+## 七、推送后强校验
+
+```bash
+cd /Users/newlink/kemi/RustDesk/rustdesk
+
+git rev-parse HEAD
+git ls-remote backup refs/heads/master
+git status --short
+```
+
+验收条件：
+
+- `git rev-parse HEAD` 与 `git ls-remote` 第一列完全相同。
+- `git status --short` 无输出。
+- GitHub 分支是 `master`。
+
+当前已验证基线：
+
+```text
+8f4c18c577a2352ba7d270ec4a350ef22c3d9abc
+```
+
+---
+
+## 八、从 GitHub 恢复
+
+### 8.1 克隆完整 KEMI 仓库
+
+SSH：
+
+```bash
+git clone git@github.com:caucy2026/rust-desk.git
+cd rust-desk
+git checkout master
+```
+
+HTTPS：
+
+```bash
+git clone https://github.com/caucy2026/rust-desk.git
+cd rust-desk
+git checkout master
+```
+
+这已经是完整可构建仓库，不存在旧流程中的 `client/` 子目录。
+
+### 8.2 核对恢复结果
+
+```bash
+git remote -v
+git log -1 --oneline
+grep -n '^version' Cargo.toml flutter/pubspec.yaml
+test -f kemi-docs/SESSION-HANDOFF.md
+```
+
+### 8.3 构建恢复后的 APK
+
+```bash
+export PATH=/Users/newlink/flutter/bin:$PATH
+cd flutter
+flutter pub get
+flutter build apk --debug
+```
+
+Apple Silicon 无 Rosetta 时，release AOT 可能因 x64 `gen_snapshot` 失败；当前已验证的恢复检查使用 Debug APK。
+
+---
+
+## 九、紧急接续清单
+
+聊天上下文丢失或由新开发者接手时：
+
+```bash
+cd /Users/newlink/kemi/RustDesk/rustdesk
+
+git status --short
+git log --oneline -8
+git remote -v
+git rev-parse HEAD
+git ls-remote backup refs/heads/master
+```
+
+然后按顺序阅读：
+
+1. `AGENTS.md`
+2. `kemi-docs/SESSION-HANDOFF.md`
+3. `kemi-docs/CHANGELOG-KEMI.md` 最新章节
+4. 当前任务对应的专项文档
+5. 本文件
+
+不要只凭旧聊天摘要或旧文档中的 IP、SDK 路径和版本开始修改。
+
+---
+
+> 最后更新：2026-07-29
 > 维护：KEMI 远程桌面团队

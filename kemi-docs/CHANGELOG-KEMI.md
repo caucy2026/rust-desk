@@ -178,3 +178,35 @@
 - 设备 `192.168.1.10:5555` 覆盖安装成功。
 - 设备包信息：`versionName=1.4.10`、`versionCode=68`。
 - 设备安装更新时间：`2026-07-29 15:34:52`。
+
+---
+
+## 十、2026-07-29 跨会话接续文档与 GitHub 流程整理
+
+### 10.1 接续文档
+
+- 新增 `kemi-docs/SESSION-HANDOFF.md`，集中记录：
+	- 可直接交给下一会话的完整提示词；
+	- 当前提交、版本、远端和不可回退产品行为；
+	- Flutter、Rust、Android Kotlin 三层目录和数据流；
+	- 双屏、跨屏键盘和独立文件传输 Session 架构；
+	- 当前工具链、Debug APK 构建、ADB 安装和实机验收命令；
+	- 已知风险、常见误判和新会话启动检查清单。
+- 新增 `.github/prompts/continue-kemi-rustdesk.prompt.md`，可在 VS Code Chat 中直接选择“继续 KEMI RustDesk 开发”。
+
+### 10.2 文档导航和 GitHub 流程
+
+- `kemi-docs/README.md` 更新到 `1.4.10+68`，加入接续手册和 prompt 导航。
+- `kemi-docs/GIT-OPS.md` 删除旧的第二本地仓复制流程，改为当前真实流程：
+	- 开发仓 `/Users/newlink/kemi/RustDesk/rustdesk`；
+	- 官方上游 `origin` 只读；
+	- KEMI 备份使用 `backup`；
+	- 提交后执行 `fetch/rebase`、`git push backup master`；
+	- 推送后使用 `git ls-remote` 核对远端完整哈希。
+
+### 10.3 验证
+
+- `git diff --check -- kemi-docs .github/prompts`：通过。
+- 四份接续文档的 Markdown 代码围栏均成对。
+- VS Code 对新 prompt 和三份 Markdown 文档诊断：零错误。
+- 旧 `/tmp/flutter_sdk`、`192.168.0.111`、复制到 `rust-desk/client` 和 `git push origin main` 均未作为可执行命令保留。
