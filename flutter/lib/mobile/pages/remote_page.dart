@@ -666,27 +666,43 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     Color color = Colors.white,
     Color? disabledColor,
   }) {
+    final actionColor = onPressed == null ? (disabledColor ?? color) : color;
     return SizedBox(
       width: 48,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: label,
-            color: color,
-            disabledColor: disabledColor ?? color,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 44, height: 24),
-            icon: icon,
-            onPressed: onPressed,
+      height: 44,
+      child: Semantics(
+        label: label,
+        button: true,
+        enabled: onPressed != null,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(6),
+            splashColor: Colors.white24,
+            highlightColor: Colors.white10,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 24,
+                  child: Center(
+                    child: IconTheme(
+                      data: IconThemeData(color: actionColor),
+                      child: icon,
+                    ),
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: actionColor, fontSize: 10),
+                ),
+              ],
+            ),
           ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white, fontSize: 10),
-          ),
-        ],
+        ),
       ),
     );
   }
