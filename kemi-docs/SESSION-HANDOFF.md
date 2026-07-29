@@ -43,6 +43,7 @@
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 当前版本源必须一致：Cargo.toml=1.4.22、Cargo.lock rustdesk=1.4.22、flutter/pubspec.yaml=1.4.22+80。Android 未重新构建部署前，设备仍显示最后验证的 1.4.21+79。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.22`。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
