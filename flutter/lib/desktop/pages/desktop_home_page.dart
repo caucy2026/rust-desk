@@ -38,7 +38,7 @@ const borderColor = Color(0xFF2F65BA);
 class _DesktopHomePageState extends State<DesktopHomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final _leftPaneScrollController = ScrollController();
-static const _kMacPermissionFlowVersion = 'v1.0.4';
+  static const _kMacPermissionFlowVersion = 'v1.0.5';
 
   @override
   bool get wantKeepAlive => true;
@@ -492,13 +492,15 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
       if (!hasScreenPermission ||
           !hasAccessibilityPermission ||
           !hasInputMonitoringPermission) {
-        return buildInstallCard("Permissions", "config_screen", "Configure",
-            () async {
+        return buildInstallCard(
+            "权限设置",
+            "要允许远程查看和控制本机，请在 macOS 中授权 KEMI-远程桌面使用屏幕录制、辅助功能和输入监控。",
+            "去授权", () async {
           await _requestAllMissingMacPermissions();
-          },
-              help: 'Help',
-              link: translate("doc_mac_permission"),
-              footerText: 'Permission flow $_kMacPermissionFlowVersion');
+        },
+            help: '查看说明',
+            link: translate("doc_mac_permission"),
+            footerText: '授权流程 $_kMacPermissionFlowVersion');
       } else if (!isOutgoingOnly &&
           !svcStopped.value &&
           bind.mainIsInstalled() &&
@@ -680,16 +682,16 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
                                       )).marginOnly(top: 6)),
                             ]
                           : <Widget>[]) +
-                        (footerText != null
+                      (footerText != null
                           ? <Widget>[
-                            Center(
-                              child: Text(
-                            footerText,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.85),
-                              fontSize: 10.5),
-                            ).marginOnly(top: 8)),
-                          ]
+                              Center(
+                                  child: Text(
+                                footerText,
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.85),
+                                    fontSize: 10.5),
+                              ).marginOnly(top: 8)),
+                            ]
                           : <Widget>[]))),
         ),
         if (closeButton != null && closeButton == true)
@@ -718,7 +720,7 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
           color: granted ? Colors.green : Colors.orange,
         ).marginOnly(right: 8),
         Expanded(child: Text(title)),
-        Text(granted ? 'Granted' : 'Missing'),
+        Text(granted ? '已授权' : '未授权'),
       ],
     ).marginOnly(bottom: 6);
   }
@@ -748,24 +750,24 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Enable the following macOS permissions to allow remote view and input:',
+                '开启以下 macOS 权限，即可允许远程查看和控制本机：',
                 style: const TextStyle(fontSize: 14),
               ).marginOnly(bottom: 12),
               _buildMacPermissionStatusRow(
-                'Screen Recording',
+                '屏幕录制',
                 canScreenRecording,
               ),
               _buildMacPermissionStatusRow(
-                'Accessibility',
+                '辅助功能',
                 canTrusted,
               ),
               _buildMacPermissionStatusRow(
-                'Input Monitoring',
+                '输入监控',
                 canInputMonitoring,
               ),
               const SizedBox(height: 6),
               Text(
-                'After granting permission in System Settings, quit and reopen the app.',
+                '完成授权后，请退出并重新打开 KEMI-远程桌面。',
                 style: TextStyle(
                   fontSize: 13,
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -775,11 +777,11 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
           ),
         ),
         actions: [
-          dialogButton('Help', onPressed: () async {
+          dialogButton('查看说明', onPressed: () async {
             await launchUrl(Uri.parse(translate('doc_mac_permission')));
           }, isOutline: true),
-          dialogButton('Close', onPressed: close, isOutline: true),
-          dialogButton('Request Permissions', onPressed: () {
+          dialogButton('关闭', onPressed: close, isOutline: true),
+          dialogButton('申请授权', onPressed: () {
             if (!canScreenRecording) {
               bind.mainIsCanScreenRecording(prompt: true);
               watchIsCanScreenRecording = true;
@@ -933,7 +935,8 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
 
     bool isChattyMethod(String methodName) {
       switch (methodName) {
-        case kWindowBumpMouse: return true;
+        case kWindowBumpMouse:
+          return true;
       }
 
       return false;
@@ -942,7 +945,7 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
       if (!isChattyMethod(call.method)) {
         debugPrint(
-          "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+            "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
       }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);
@@ -977,9 +980,8 @@ static const _kMacPermissionFlowVersion = 'v1.0.4';
           connToken: call.arguments['connToken'],
         );
       } else if (call.method == kWindowBumpMouse) {
-        return RdPlatformChannel.instance.bumpMouse(
-          dx: call.arguments['dx'],
-          dy: call.arguments['dy']);
+        return RdPlatformChannel.instance
+            .bumpMouse(dx: call.arguments['dx'], dy: call.arguments['dy']);
       } else if (call.method == kWindowEventMoveTabToNewWindow) {
         final args = call.arguments.split(',');
         int? windowId;

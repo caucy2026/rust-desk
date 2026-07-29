@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-29
-> 当前版本：`1.4.21+79`
+> 当前桌面端版本：`1.4.22+80`；PAD 已安装验证版本：`1.4.21+79`
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -27,7 +27,7 @@
 6. 涉及键盘时阅读 kemi-docs/cross-display-keyboard.md，并以该文档最新章节和当前代码为准
 7. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前版本为 1.4.21+79，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前桌面端源码版本为 1.4.22+80，PAD 已安装验证版本为 1.4.21+79；文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -42,7 +42,7 @@
 - macOS 被控端收到首个远程鼠标或键盘事件时，必须统一检查并申请屏幕录制、辅助功能、输入监控；未授予“辅助功能”时禁止注入 CGEvent，并在 Mac 日志中写明原因。
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
-- 当前版本源必须一致：Cargo.toml=1.4.21、Cargo.lock rustdesk=1.4.21、flutter/pubspec.yaml=1.4.21+79。
+- 当前版本源必须一致：Cargo.toml=1.4.22、Cargo.lock rustdesk=1.4.22、flutter/pubspec.yaml=1.4.22+80。Android 未重新构建部署前，设备仍显示最后验证的 1.4.21+79。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -431,9 +431,9 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.21"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.21"` |
-| `flutter/pubspec.yaml` | `version: 1.4.21+79` |
+| `Cargo.toml` | `version = "1.4.22"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.22"` |
+| `flutter/pubspec.yaml` | `version: 1.4.22+80` |
 
 Android 最终应显示：
 

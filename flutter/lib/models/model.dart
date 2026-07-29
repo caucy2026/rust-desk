@@ -246,18 +246,17 @@ class FfiModel with ChangeNotifier {
     }
 
     if (!hasKeyboardPerm &&
-      _pi.platform == kPeerPlatformMacOS &&
-      !_macInputPermissionHintShown &&
-      parent.target != null) {
+        _pi.platform == kPeerPlatformMacOS &&
+        !_macInputPermissionHintShown &&
+        parent.target != null) {
       _macInputPermissionHintShown = true;
-      final helpText =
-        'Connected, but remote control input is blocked on the Mac side.\n\n'
-        'Please check on the Mac:\n'
-        '1. System Settings -> Privacy & Security -> Accessibility, and allow KEMI-远程桌面.\n'
-        '2. System Settings -> Privacy & Security -> Input Monitoring, and allow KEMI-远程桌面.\n'
-        '3. Quit and reopen KEMI-远程桌面 after changing permissions.';
-      showMsgBox(sessionId, 'error', 'Mac input permission required', helpText,
-        '', true, parent.target!.dialogManager);
+      final helpText = '已连接，但 Mac 端未授予远程控制输入权限。\n\n'
+          '请在 Mac 上检查：\n'
+          '1. 系统设置 → 隐私与安全性 → 辅助功能，允许 KEMI-远程桌面。\n'
+          '2. 系统设置 → 隐私与安全性 → 输入监控，允许 KEMI-远程桌面。\n'
+          '3. 修改权限后，退出并重新打开 KEMI-远程桌面。';
+      showMsgBox(sessionId, 'error', '需要 Mac 输入权限', helpText, '', true,
+          parent.target!.dialogManager);
     } else if (hasKeyboardPerm) {
       _macInputPermissionHintShown = false;
     }
@@ -1195,30 +1194,28 @@ class FfiModel with ChangeNotifier {
     }
 
     showMacCaptureHelp() {
-      final helpText =
-          'Connected, but no image frames are coming from the remote Mac.\n\n'
-          'Please check on the Mac side:\n'
-          '1. System Settings -> Privacy & Security -> Screen Recording, and allow RustDesk.\n'
-          '2. Quit and reopen RustDesk on Mac after changing permission.\n'
-          '3. Start sharing screen again on Mac.';
-      showMsgBox(sessionId, 'error', 'No image from remote Mac', helpText, '',
-          true, dialogManager);
+      final helpText = '已连接，但远端 Mac 没有传来画面。\n\n'
+          '请在 Mac 上检查：\n'
+          '1. 系统设置 → 隐私与安全性 → 屏幕录制，允许 KEMI-远程桌面。\n'
+          '2. 修改权限后，退出并重新打开 KEMI-远程桌面。\n'
+          '3. 重新发起 Mac 端屏幕共享。';
+      showMsgBox(
+          sessionId, 'error', '远端 Mac 没有画面', helpText, '', true, dialogManager);
     }
 
     if (waitForFirstImage.isFalse) return;
     final isMacPeer = _pi.platform == kPeerPlatformMacOS;
-    final waitingText = isMacPeer
-        ? '$text\n\nIf this takes too long, the remote Mac may have failed to start screen capture.'
-        : text;
+    final waitingText = isMacPeer ? '$text\n\n等待过久时，远端 Mac 可能未能启动屏幕采集。' : text;
 
     dialogManager.show(
       (setState, close, context) => CustomAlertDialog(
           title: null,
-          content: SelectionArea(child: msgboxContent(type, title, waitingText)),
+          content:
+              SelectionArea(child: msgboxContent(type, title, waitingText)),
           actions: [
             if (isMacPeer)
-              dialogButton("Mac Capture Help", onPressed: showMacCaptureHelp,
-                  isOutline: true),
+              dialogButton("Mac Capture Help",
+                  onPressed: showMacCaptureHelp, isOutline: true),
             dialogButton("Cancel", onPressed: onClose, isOutline: true)
           ],
           onCancel: onClose),
