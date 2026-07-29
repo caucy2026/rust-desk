@@ -18,8 +18,9 @@ class FileManagerPage extends StatefulWidget {
       this.password,
       this.isSharedPassword,
       this.forceRelay,
-  this.connToken,
-  this.returnToRemoteOnClose = false})
+      this.connToken,
+      this.returnToRemoteOnClose = false,
+      this.isOverlay = false})
       : super(key: key);
   final String id;
   final String? password;
@@ -27,6 +28,9 @@ class FileManagerPage extends StatefulWidget {
   final bool? forceRelay;
   final String? connToken;
   final bool returnToRemoteOnClose;
+  /// When true, renders as a floating card instead of a full-page Scaffold.
+  /// Used when shown as an overlay on top of the remote desktop.
+  final bool isOverlay;
 
   @override
   State<StatefulWidget> createState() => _FileManagerPageState();
@@ -116,7 +120,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void dispose() {
     model.close().whenComplete(() {
-      if (!_navigatingBackToRemote) {
+      // In overlay mode, the parent (RemotePage) owns the session
+      // lifecycle.  Closing here would race with RemotePage's
+      // reconnection and shut down the newly created session.
+      if (!widget.isOverlay && !_navigatingBackToRemote) {
         gFFI.close();
       }
       gFFI.dialogManager.dismissAll();
@@ -127,193 +134,235 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   @override
-  Widget build(BuildContext context) => WillPopScope(
-      onWillPop: () async {
-        if (selectMode.value != SelectMode.none) {
-          selectMode.value = SelectMode.none;
-          setState(() {});
-        } else {
-          currentFileController.goBack();
-        }
-        return false;
-      },
-      child: Scaffold(
-        // backgroundColor: MyTheme.grayBg,
-        appBar: AppBar(
-          leading: Row(children: [
-            IconButton(
-                icon: Icon(widget.returnToRemoteOnClose
-                    ? Icons.desktop_windows_outlined
-                    : Icons.close),
-                tooltip: widget.returnToRemoteOnClose
-                    ? translate('Back')
-                    : translate('Close'),
-                onPressed: () async {
-                  if (widget.returnToRemoteOnClose) {
-                    await _backToRemoteDesktop();
-                  } else {
-                    clientClose(gFFI.sessionId, gFFI);
-                  }
-                }),
-          ]),
-          centerTitle: true,
-          title: ToggleSwitch(
-            initialLabelIndex: showLocal ? 0 : 1,
-            activeBgColor: [MyTheme.idColor],
-            inactiveBgColor: Theme.of(context).brightness == Brightness.light
-                ? MyTheme.grayBg
-                : null,
-            inactiveFgColor: Theme.of(context).brightness == Brightness.light
-                ? Colors.black54
-                : null,
-            totalSwitches: 2,
-            minWidth: 100,
-            fontSize: 15,
-            iconSize: 18,
-            labels: [translate("Local"), translate("Remote")],
-            icons: [Icons.phone_android_sharp, Icons.screen_share],
-            onToggle: (index) {
-              final current = showLocal ? 0 : 1;
-              if (index != current) {
-                setState(() => showLocal = !showLocal);
-              }
-            },
-          ),
-          actions: [
-            PopupMenuButton<String>(
-                tooltip: "",
-                icon: Icon(Icons.more_vert),
-                itemBuilder: (context) {
-                  return [
-                    PopupMenuItem(
-                      child: Row(
-                        children: [
-                          Icon(Icons.refresh,
-                              color: Theme.of(context).iconTheme.color),
-                          SizedBox(width: 5),
-                          Text(translate("Refresh File"))
-                        ],
-                      ),
-                      value: "refresh",
-                    ),
-                    PopupMenuItem(
-                      enabled: currentDir.path != "/",
-                      child: Row(
-                        children: [
-                          Icon(Icons.check,
-                              color: Theme.of(context).iconTheme.color),
-                          SizedBox(width: 5),
-                          Text(translate("Multi Select"))
-                        ],
-                      ),
-                      value: "select",
-                    ),
-                    PopupMenuItem(
-                      enabled: currentDir.path != "/",
-                      child: Row(
-                        children: [
-                          Icon(Icons.folder_outlined,
-                              color: Theme.of(context).iconTheme.color),
-                          SizedBox(width: 5),
-                          Text(translate("Create Folder"))
-                        ],
-                      ),
-                      value: "folder",
-                    ),
-                    PopupMenuItem(
-                      enabled: currentDir.path != "/",
-                      child: Row(
-                        children: [
-                          Icon(
-                              currentOptions.showHidden
-                                  ? Icons.check_box_outlined
-                                  : Icons.check_box_outline_blank,
-                              color: Theme.of(context).iconTheme.color),
-                          SizedBox(width: 5),
-                          Text(translate("Show Hidden Files"))
-                        ],
-                      ),
-                      value: "hidden",
-                    )
-                  ];
-                },
-                onSelected: (v) {
-                  if (v == "refresh") {
-                    currentFileController.refresh();
-                  } else if (v == "select") {
-                    model.localController.selectedItems.clear();
-                    model.remoteController.selectedItems.clear();
-                    selectMode.toggle(showLocal);
-                    setState(() {});
-                  } else if (v == "folder") {
-                    final name = TextEditingController();
-                    String? errorText;
-                    gFFI.dialogManager.show((setState, close, context) {
-                      name.addListener(() {
-                        if (errorText != null) {
-                          setState(() {
-                            errorText = null;
-                          });
-                        }
-                      });
-                      return CustomAlertDialog(
-                          title: Text(translate("Create Folder")),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              TextFormField(
-                                decoration: InputDecoration(
-                                  labelText:
-                                      translate("Please enter the folder name"),
-                                  errorText: errorText,
-                                ),
-                                controller: name,
-                              ).workaroundFreezeLinuxMint(),
-                            ],
-                          ),
-                          actions: [
-                            dialogButton("Cancel",
-                                onPressed: () => close(false), isOutline: true),
-                            dialogButton("OK", onPressed: () {
-                              if (name.value.text.isNotEmpty) {
-                                if (!PathUtil.validName(
-                                    name.value.text,
-                                    currentFileController
-                                        .options.value.isWindows)) {
+  Widget build(BuildContext context) {
+    final content = WillPopScope(
+        onWillPop: () async {
+          if (selectMode.value != SelectMode.none) {
+            selectMode.value = SelectMode.none;
+            setState(() {});
+          } else {
+            currentFileController.goBack();
+          }
+          return false;
+        },
+        child: Scaffold(
+          backgroundColor: widget.isOverlay ? Colors.transparent : null,
+          appBar: AppBar(
+            leading: Row(children: [
+              IconButton(
+                  icon: Icon(widget.isOverlay
+                      ? Icons.close
+                      : widget.returnToRemoteOnClose
+                          ? Icons.desktop_windows_outlined
+                          : Icons.close),
+                  tooltip: widget.isOverlay
+                      ? translate('Close')
+                      : widget.returnToRemoteOnClose
+                          ? translate('Back')
+                          : translate('Close'),
+                  onPressed: () async {
+                    if (widget.isOverlay) {
+                      // Overlay mode: simply dismiss the dialog.
+                      // The parent (RemotePage) handles session
+                      // teardown and reconnection.
+                      Navigator.of(context).pop();
+                    } else if (widget.returnToRemoteOnClose) {
+                      await _backToRemoteDesktop();
+                    } else {
+                      clientClose(gFFI.sessionId, gFFI);
+                    }
+                  }),
+            ]),
+            centerTitle: true,
+            title: ToggleSwitch(
+              initialLabelIndex: showLocal ? 0 : 1,
+              activeBgColor: [MyTheme.idColor],
+              inactiveBgColor: Theme.of(context).brightness == Brightness.light
+                  ? MyTheme.grayBg
+                  : null,
+              inactiveFgColor: Theme.of(context).brightness == Brightness.light
+                  ? Colors.black54
+                  : null,
+              totalSwitches: 2,
+              minWidth: 100,
+              fontSize: 15,
+              iconSize: 18,
+              labels: [translate("Local"), translate("Remote")],
+              icons: [Icons.phone_android_sharp, Icons.screen_share],
+              onToggle: (index) {
+                final current = showLocal ? 0 : 1;
+                if (index != current) {
+                  setState(() => showLocal = !showLocal);
+                }
+              },
+            ),
+            actions: widget.isOverlay
+                ? null
+                : [
+                    PopupMenuButton<String>(
+                        tooltip: "",
+                        icon: Icon(Icons.more_vert),
+                        itemBuilder: (context) {
+                          return [
+                            PopupMenuItem(
+                              child: Row(
+                                children: [
+                                  Icon(Icons.refresh,
+                                      color:
+                                          Theme.of(context).iconTheme.color),
+                                  SizedBox(width: 5),
+                                  Text(translate("Refresh File"))
+                                ],
+                              ),
+                              value: "refresh",
+                            ),
+                            PopupMenuItem(
+                              enabled: currentDir.path != "/",
+                              child: Row(
+                                children: [
+                                  Icon(Icons.check,
+                                      color:
+                                          Theme.of(context).iconTheme.color),
+                                  SizedBox(width: 5),
+                                  Text(translate("Multi Select"))
+                                ],
+                              ),
+                              value: "select",
+                            ),
+                            PopupMenuItem(
+                              enabled: currentDir.path != "/",
+                              child: Row(
+                                children: [
+                                  Icon(Icons.folder_outlined,
+                                      color:
+                                          Theme.of(context).iconTheme.color),
+                                  SizedBox(width: 5),
+                                  Text(translate("Create Folder"))
+                                ],
+                              ),
+                              value: "folder",
+                            ),
+                            PopupMenuItem(
+                              enabled: currentDir.path != "/",
+                              child: Row(
+                                children: [
+                                  Icon(
+                                      currentOptions.showHidden
+                                          ? Icons.check_box_outlined
+                                          : Icons.check_box_outline_blank,
+                                      color:
+                                          Theme.of(context).iconTheme.color),
+                                  SizedBox(width: 5),
+                                  Text(translate("Show Hidden Files"))
+                                ],
+                              ),
+                              value: "hidden",
+                            )
+                          ];
+                        },
+                        onSelected: (v) {
+                          if (v == "refresh") {
+                            currentFileController.refresh();
+                          } else if (v == "select") {
+                            model.localController.selectedItems.clear();
+                            model.remoteController.selectedItems.clear();
+                            selectMode.toggle(showLocal);
+                            setState(() {});
+                          } else if (v == "folder") {
+                            final name = TextEditingController();
+                            String? errorText;
+                            gFFI.dialogManager
+                                .show((setState, close, context) {
+                              name.addListener(() {
+                                if (errorText != null) {
                                   setState(() {
-                                    errorText =
-                                        translate("Invalid folder name");
+                                    errorText = null;
                                   });
-                                  return;
                                 }
-                                currentFileController.createDir(PathUtil.join(
-                                    currentDir.path,
-                                    name.value.text,
-                                    currentOptions.isWindows));
-                                close();
-                              }
-                            })
-                          ]);
-                    });
-                  } else if (v == "hidden") {
-                    currentFileController.toggleShowHidden();
-                  }
-                }),
-          ],
+                              });
+                              return CustomAlertDialog(
+                                  title: Text(translate("Create Folder")),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextFormField(
+                                        decoration: InputDecoration(
+                                          labelText: translate(
+                                              "Please enter the folder name"),
+                                          errorText: errorText,
+                                        ),
+                                        controller: name,
+                                      ).workaroundFreezeLinuxMint(),
+                                    ],
+                                  ),
+                                  actions: [
+                                    dialogButton("Cancel",
+                                        onPressed: () => close(false),
+                                        isOutline: true),
+                                    dialogButton("OK", onPressed: () {
+                                      if (name.value.text.isNotEmpty) {
+                                        if (!PathUtil.validName(
+                                            name.value.text,
+                                            currentFileController
+                                                .options.value.isWindows)) {
+                                          setState(() {
+                                            errorText = translate(
+                                                "Invalid folder name");
+                                          });
+                                          return;
+                                        }
+                                        currentFileController
+                                            .createDir(PathUtil.join(
+                                                currentDir.path,
+                                                name.value.text,
+                                                currentOptions.isWindows));
+                                        close();
+                                      }
+                                    })
+                                  ]);
+                            });
+                          } else if (v == "hidden") {
+                            currentFileController.toggleShowHidden();
+                          }
+                        }),
+                  ],
+          ),
+          body: showLocal
+              ? FileManagerView(
+                  controller: model.localController,
+                  selectMode: selectMode,
+                  deleteEnabled: _deleteEnabled,
+                )
+              : FileManagerView(
+                  controller: model.remoteController,
+                  selectMode: selectMode,
+                  deleteEnabled: _deleteEnabled,
+                ),
+          bottomSheet: bottomSheet(),
+        ));
+
+    if (widget.isOverlay) {
+      return SafeArea(
+        child: Center(
+          child: Container(
+            height: MediaQuery.of(context).size.height * 0.88,
+            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black38, blurRadius: 24, offset: Offset(0, 8))
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: content,
+          ),
         ),
-        body: showLocal
-            ? FileManagerView(
-                controller: model.localController,
-                selectMode: selectMode,
-                deleteEnabled: _deleteEnabled,
-              )
-            : FileManagerView(
-                controller: model.remoteController,
-                selectMode: selectMode,
-                deleteEnabled: _deleteEnabled,
-              ),
-        bottomSheet: bottomSheet(),
-      ));
+      );
+    }
+    return content;
+  }
 
   Widget? bottomSheet() {
     return Obx(() {

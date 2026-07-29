@@ -231,26 +231,74 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
         keyboardProxyController.reset();
       }
-      // Mobile reuses one session ID, so the desktop session must be removed
-      // before FileManagerPage can register a file-transfer session.
+      // Capture connToken from current session before closing it.
+      final token =
+          connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
+      // Close remote desktop session so the file-transfer session can
+      // reuse the mobile session ID.
       await gFFI.close();
       if (!mounted) return;
-      await Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (BuildContext context) => FileManagerPage(
+
+      // Show file transfer as a floating card overlay on top of the
+      // remote desktop page.  The overlay manages its own file-transfer
+      // session; when the user closes it we reconnect to the desktop.
+      await showGeneralDialog(
+        context: context,
+        barrierDismissible: false,
+        barrierLabel: 'FileTransferOverlay',
+        barrierColor: Colors.black54,
+        transitionDuration: Duration(milliseconds: 250),
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FileManagerPage(
             id: id,
             password: widget.password,
             isSharedPassword: widget.isSharedPassword,
             forceRelay: widget.forceRelay,
-            connToken: connToken,
-            returnToRemoteOnClose: true,
-          ),
-        ),
+            connToken: token,
+            isOverlay: true,
+          );
+        },
       );
+
+      // Overlay dismissed — reconnect to remote desktop.
+      if (!mounted) return;
+      gFFI.start(
+        widget.id,
+        password: widget.password,
+        isSharedPassword: widget.isSharedPassword,
+        forceRelay: widget.forceRelay,
+        connToken: token,
+      );
+      gFFI.ffiModel.updateEventListener(sessionId, widget.id);
+      WakelockManager.enable(_uniqueKey);
+      gFFI.dialogManager.showLoading(
+          translate('Connecting...'), onCancel: closeConnection);
+      if (isAndroid) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+          }
+        });
+      }
     } catch (e) {
-      _handoffToFileTransfer = false;
-      debugPrint('Transfer file handoff failed: $e');
+      debugPrint('Transfer file overlay failed: $e');
       showToast(translate('Failed'));
+      // Best-effort reconnect so user isn't left stranded.
+      if (mounted) {
+        try {
+          gFFI.start(
+            widget.id,
+            password: widget.password,
+            isSharedPassword: widget.isSharedPassword,
+            forceRelay: widget.forceRelay,
+          );
+        } catch (_) {}
+      }
+    } finally {
+      _handoffToFileTransfer = false;
     }
   }
 
