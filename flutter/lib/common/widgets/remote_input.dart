@@ -94,6 +94,10 @@ class _RawTouchGestureDetectorRegionState
   int _cacheLongPressPositionTs = 0;
   double _twoFingerScrollIntegral = 0;
   double _scale = 1;
+  double _twoFingerInitialScale = 1;
+  double _twoFingerVerticalTravel = 0;
+  double _twoFingerHorizontalTravel = 0;
+  bool _twoFingerHasInitialUpdate = false;
   _TwoFingerGesture _twoFingerGesture = _TwoFingerGesture.none;
 
   // Workaround tap down event when two fingers are used to scale(mobile)
@@ -449,13 +453,26 @@ class _RawTouchGestureDetectorRegionState
   }
 
   // scale + pan event
-  onTwoFingerScaleStart(ScaleStartDetails d) {
+  onTwoFingerScaleStart(ScaleStartDetails d) async {
     _lastTapDownDetails = null;
     _twoFingerGesture = _TwoFingerGesture.none;
     _twoFingerScrollIntegral = 0;
     _scale = 1;
+    _twoFingerInitialScale = 1;
+    _twoFingerVerticalTravel = 0;
+    _twoFingerHorizontalTravel = 0;
+    _twoFingerHasInitialUpdate = false;
     if (isNotTouchBasedDevice()) {
       return;
+    }
+    // A first finger can have started a touch-mode drag just before the
+    // second finger lands. End that drag immediately so a two-finger gesture
+    // cannot be sent to the remote side as a left-button drag.
+    if (isMobile && handleTouch && _touchModePanStarted) {
+      _touchModePanStarted = false;
+      if (!inputModel.relativeMouseMode.value) {
+        await inputModel.sendMouse('up', MouseButtons.left);
+      }
     }
     if (isSpecialHoldDragActive) {
       // Initialize the last focal point to calculate deltas manually.
@@ -492,12 +509,24 @@ class _RawTouchGestureDetectorRegionState
     } else {
       // Mobile: preserve the familiar gesture contract. A pinch zooms the
       // local canvas; a two-finger vertical move sends a remote mouse wheel.
+      // The first ScaleUpdate can include the distance between fingers when
+      // the second finger lands. Use it only as the baseline; otherwise a
+      // normal two-finger slide is often misclassified as a pinch.
+      if (!_twoFingerHasInitialUpdate) {
+        _twoFingerHasInitialUpdate = true;
+        _twoFingerInitialScale = d.scale;
+        _scale = d.scale;
+        return;
+      }
+
       if (_twoFingerGesture == _TwoFingerGesture.none) {
-        if ((d.scale - 1).abs() > 0.02) {
-          _twoFingerGesture = _TwoFingerGesture.zoom;
-        } else if (d.focalPointDelta.dy.abs() > d.focalPointDelta.dx.abs() &&
-            d.focalPointDelta.dy.abs() > 1) {
+        _twoFingerVerticalTravel += d.focalPointDelta.dy.abs();
+        _twoFingerHorizontalTravel += d.focalPointDelta.dx.abs();
+        if (_twoFingerVerticalTravel > 8 &&
+            _twoFingerVerticalTravel > _twoFingerHorizontalTravel * 1.2) {
           _twoFingerGesture = _TwoFingerGesture.scroll;
+        } else if ((d.scale - _twoFingerInitialScale).abs() > 0.05) {
+          _twoFingerGesture = _TwoFingerGesture.zoom;
         }
       }
 
@@ -530,6 +559,10 @@ class _RawTouchGestureDetectorRegionState
     } else {
       // mobile
       _scale = 1;
+      _twoFingerInitialScale = 1;
+      _twoFingerVerticalTravel = 0;
+      _twoFingerHorizontalTravel = 0;
+      _twoFingerHasInitialUpdate = false;
       _twoFingerGesture = _TwoFingerGesture.none;
       _twoFingerScrollIntegral = 0;
       // No idea why we need to set the view style to "" here.

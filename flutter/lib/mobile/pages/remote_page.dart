@@ -667,7 +667,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     Color? disabledColor,
   }) {
     return SizedBox(
-      width: 54,
+      width: 48,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -676,7 +676,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             color: color,
             disabledColor: disabledColor ?? color,
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 48, height: 38),
+            constraints: const BoxConstraints.tightFor(width: 44, height: 24),
             icon: icon,
             onPressed: onPressed,
           ),
@@ -710,7 +710,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
-      height: 68,
+      height: 44,
       child: Row(
         mainAxisSize: MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
