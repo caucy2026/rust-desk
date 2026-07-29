@@ -51,7 +51,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var watchIsCanRecordAudio = false;
   var _macPermissionAutoPrompted = false;
   var _macPermissionGuideShownInSession = false;
-  static const _kOptionMacPermissionGuideShown = 'mac-permission-guide-shown';
+  static const _kOptionMacPermissionGuideShown =
+      'mac-permission-guide-shown-v1.0.5';
   Timer? _updateTimer;
   bool isCardClosed = false;
 
