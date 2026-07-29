@@ -2,6 +2,27 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 十二、2026-07-29 PAD 远端目录恢复优先级与版本 1.4.11
+
+### 12.1 文件传输目录恢复
+
+- 对方目录关闭时仍按设备保存为 `remote_dir`。
+- PAD 再次打开文件传输时，优先读取并打开该 `remote_dir`。
+- 若目录不存在、无权限或读取失败，则保留原有回退链：远端初始化目录、远端 home、最后的根目录。
+- 本地 Android 的 Download 优先级保持不变。
+
+### 12.2 版本
+
+- `Cargo.toml` 与 `Cargo.lock` 的 RustDesk 版本升级为 `1.4.11`。
+- `flutter/pubspec.yaml` 升级为 `1.4.11+69`，Android `versionCode` 为 `69`。
+
+### 12.3 验证
+
+- `flutter analyze`：无 error；仅保留既有 info 级弃用与风格提示。
+- `flutter build apk --debug`：成功生成 Debug APK。
+- PAD `192.168.1.10:5555`：卸载旧包后全新安装成功；`dumpsys package` 核验 `versionName=1.4.11`、`versionCode=69`、`lastUpdateTime=2026-07-29 16:54:19`。
+- 通过 `am start` 启动 `MainActivity`，设备前台 Activity 为 `com.carriez.flutter_hbb/.MainActivity`。
+
 ## 十一、2026-07-29 工作区与文档整理
 
 ### 11.1 统一目录

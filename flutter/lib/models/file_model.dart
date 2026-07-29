@@ -425,10 +425,14 @@ class FileController {
         sessionId: sessionId, name: isLocal ? "local_dir" : "remote_dir"));
     Future<bool> tryOpenReadyDirs() async {
       final dirs = <String>{
+        // Restore the per-peer remote directory before accepting the initial
+        // directory event sent by the peer. If it no longer exists or cannot
+        // be read, the remaining candidates provide the existing fallback.
+        if (!isLocal && savedDir.isNotEmpty) savedDir,
         if (isLocal && isAndroid && options.value.home.isNotEmpty)
           options.value.home,
         if (directory.value.path.isNotEmpty) directory.value.path,
-        if (savedDir.isNotEmpty) savedDir,
+        if (isLocal && savedDir.isNotEmpty) savedDir,
         if (!(isLocal && isAndroid) && options.value.home.isNotEmpty)
           options.value.home,
         if (isLocal && isAndroid) '/storage/emulated/0',
