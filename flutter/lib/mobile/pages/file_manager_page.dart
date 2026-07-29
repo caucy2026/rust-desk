@@ -8,6 +8,7 @@ import 'package:toggle_switch/toggle_switch.dart';
 
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
+import '../../models/platform_model.dart';
 import 'remote_page.dart';
 
 class FileManagerPage extends StatefulWidget {
@@ -115,7 +116,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void dispose() {
     model.close().whenComplete(() {
-      gFFI.close();
+      if (!_navigatingBackToRemote) {
+        gFFI.close();
+      }
       gFFI.dialogManager.dismissAll();
       WakelockManager.disable(_uniqueKey);
     });
@@ -817,6 +820,10 @@ extension on _FileManagerPageState {
     if (_navigatingBackToRemote) return;
     _navigatingBackToRemote = true;
     try {
+      // Capture the connToken before closing the file-transfer session
+      // so the new RemotePage can resume the same peer connection.
+      final connToken =
+          bind.sessionGetConnToken(sessionId: gFFI.sessionId);
       await gFFI.close();
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
@@ -826,6 +833,7 @@ extension on _FileManagerPageState {
             password: widget.password,
             isSharedPassword: widget.isSharedPassword,
             forceRelay: widget.forceRelay,
+            connToken: connToken,
           ),
         ),
       );

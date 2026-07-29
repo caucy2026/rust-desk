@@ -119,6 +119,28 @@
 
 ### 7.4 暂未完成任务（Pending）
 
-- [ ] 补一份“返回共享桌面后显示远控操作层”的可视化证据（当前截图为黑屏画布态，需再抓一张带控制层按钮的图）
-- [ ] 以同一流程再跑一遍“远端目录读写 + 小文件双向传输 + Hash 对比”并归档到文档
+- [ ] 以同一流程再跑一遍"远端目录读写 + 小文件双向传输 + Hash 对比"并归档到文档
 - [ ] 评估 `src/version.rs` 是否需要在下一次对外交付前升级到 `1.4.10`
+
+---
+
+## 八、2026-07-29 文件传输返回远控黑屏修复
+
+### 8.1 问题
+
+从文件传输页点击左上"返回共享桌面"按钮后，回到 `RemotePage` 时画面黑屏。远控会话处于已连接状态但没有视频帧送达。
+
+### 8.2 根因
+
+`_backToRemoteDesktop()` 关闭文件传输会话后，`Navigator.pushReplacement` 到 `RemotePage`。此时 `RemotePage.initState()` 调用 `gFFI.start()` 没有传递 `connToken`，导致 Rust 侧需要通过 rendezvous 重新建立对等连接。与此同时，旧的文件传输会话仍在拆卸中，对等端（Mac server）无法正确处理新会话请求，视频帧不送达。
+
+### 8.3 修复
+
+- `_backToRemoteDesktop()`：关闭会话前获取 `connToken`，传给 `RemotePage`
+- `RemotePage`：新增 `connToken` 可选参数，透传给 `gFFI.start()`
+- `FileManagerPage.dispose()`：增加 `_navigatingBackToRemote` 守卫，防止回跳后 dispose 再次调用 `gFFI.close()` 造成重复关闭
+
+### 8.4 验证结果（2026-07-29）
+
+- 从文件传输页点击返回按钮，成功回到远控桌面，画面正常显示 Mac 桌面（非黑屏）
+- 日志确认：文件传输会话关闭（`model 260262802 closed`）→ RemotePage 手势识别器初始化（`CustomTouchGestureRecognizer init`）
