@@ -510,22 +510,31 @@ class _RawTouchGestureDetectorRegionState
       // Mobile: preserve the familiar gesture contract. A pinch zooms the
       // local canvas; a two-finger vertical move sends a remote mouse wheel.
       // The first ScaleUpdate can include the distance between fingers when
-      // the second finger lands. Use it only as the baseline; otherwise a
-      // normal two-finger slide is often misclassified as a pinch.
-      if (!_twoFingerHasInitialUpdate) {
+      // the second finger lands. Do not use that scale value to decide a
+      // pinch, but do retain its movement delta: a short two-finger scroll
+      // can have only one update frame on the PAD.
+      final isFirstUpdate = !_twoFingerHasInitialUpdate;
+      if (isFirstUpdate) {
         _twoFingerHasInitialUpdate = true;
         _twoFingerInitialScale = d.scale;
         _scale = d.scale;
-        return;
       }
 
       if (_twoFingerGesture == _TwoFingerGesture.none) {
         _twoFingerVerticalTravel += d.focalPointDelta.dy.abs();
         _twoFingerHorizontalTravel += d.focalPointDelta.dx.abs();
-        if (_twoFingerVerticalTravel > 8 &&
+        if (_twoFingerVerticalTravel > 2 &&
             _twoFingerVerticalTravel > _twoFingerHorizontalTravel * 1.2) {
           _twoFingerGesture = _TwoFingerGesture.scroll;
-        } else if ((d.scale - _twoFingerInitialScale).abs() > 0.05) {
+          // A short PAD gesture can end on this same update. Send its first
+          // wheel tick immediately instead of waiting for another frame.
+          if (d.focalPointDelta.dy != 0) {
+            inputModel.scroll(d.focalPointDelta.dy > 0 ? 1 : -1);
+          }
+          _twoFingerScrollIntegral = 0;
+          return;
+        } else if (!isFirstUpdate &&
+            (d.scale - _twoFingerInitialScale).abs() > 0.05) {
           _twoFingerGesture = _TwoFingerGesture.zoom;
         }
       }
