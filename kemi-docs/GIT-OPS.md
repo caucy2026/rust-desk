@@ -233,11 +233,13 @@ git status --short
 - `git status --short` 无输出。
 - GitHub 分支是 `master`。
 
-当前已验证基线：
+文件传输最终行为对应的功能代码基线：
 
 ```text
 8f4c18c577a2352ba7d270ec4a350ef22c3d9abc
 ```
+
+文档和后续功能提交会使 HEAD 继续前进；实际备份状态始终以上方 `git rev-parse` 与 `git ls-remote` 的实时结果为准。
 
 ---
 

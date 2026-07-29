@@ -4,7 +4,7 @@
 >
 > 当前基线日期：2026-07-29
 > 当前版本：`1.4.10+68`
-> 当前提交：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
+> 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
 ---
@@ -22,12 +22,12 @@
 1. cd /Users/newlink/kemi/RustDesk/rustdesk
 2. 阅读 AGENTS.md
 3. 阅读 kemi-docs/SESSION-HANDOFF.md
-4. 阅读 kemi-docs/CHANGELOG-KEMI.md 的第七、八、九节
+4. 阅读 kemi-docs/CHANGELOG-KEMI.md 的第七至十节
 5. 涉及双屏时阅读 kemi-docs/dual-screen-port.md
 6. 涉及键盘时阅读 kemi-docs/cross-display-keyboard.md，并以该文档最新章节和当前代码为准
 7. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前已验证版本是 1.4.10+68，基线提交为 8f4c18c57。backup/master 应指向同一提交。
+当前已验证版本是 1.4.10+68，功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -104,7 +104,7 @@ backup  git@github.com:caucy2026/rust-desk.git
 - `origin`：RustDesk 官方上游，只用于参考和拉取，不向其推送 KEMI 定制。
 - `backup`：KEMI GitHub 备份仓，开发分支是 `master`。
 
-### 3.3 当前已验证提交
+### 3.3 已验证功能代码基线
 
 ```text
 8f4c18c57 feat(mobile): run file transfer in parallel overlay session
@@ -114,10 +114,17 @@ b5eaedfa2 feat(mobile): shrink file transfer overlay to 60% height, default Andr
 154959586 feat(mobile): stabilize file transfer handoff and disable delete on Android
 ```
 
-当前 `HEAD` 和 `backup/master` 已核对为：
+上述文件传输最终行为对应的功能代码基线为：
 
 ```text
 8f4c18c577a2352ba7d270ec4a350ef22c3d9abc
+```
+
+本接续文档和后续工作会产生新提交，因此不要把该固定哈希当作永远不变的 HEAD。每次接手都执行：
+
+```bash
+git rev-parse HEAD
+git ls-remote backup refs/heads/master
 ```
 
 ---
