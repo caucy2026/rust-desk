@@ -211,8 +211,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       // Complete pending flow after returning to foreground.
       if (AndroidPermissionManager.isWaitingFile()) {
         () async {
-          AndroidPermissionManager.complete(
-              kManageExternalStorage,
+          AndroidPermissionManager.complete(kManageExternalStorage,
               await AndroidPermissionManager.check(kManageExternalStorage));
         }();
       }
@@ -223,7 +222,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  Future<void> _openFileTransferFromRemote(String id, {String? connToken}) async {
+  Future<void> _openFileTransferFromRemote(String id,
+      {String? connToken}) async {
     if (_handoffToFileTransfer) return;
     _handoffToFileTransfer = true;
     try {
@@ -231,17 +231,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
         keyboardProxyController.reset();
       }
-      // Capture connToken from current session before closing it.
-      final token =
-          connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
-      // Close remote desktop session so the file-transfer session can
-      // reuse the mobile session ID.
-      await gFFI.close();
-      if (!mounted) return;
+      // Reuse the current connection token for the parallel transfer session.
+      final token = connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
 
-      // Show file transfer as a floating card overlay on top of the
-      // remote desktop page.  The overlay manages its own file-transfer
-      // session; when the user closes it we reconnect to the desktop.
+      // FileManagerPage owns a separate file-transfer session, so this
+      // remote desktop session keeps decoding video behind the overlay.
       await showGeneralDialog(
         context: context,
         barrierDismissible: false,
@@ -263,19 +257,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         },
       );
 
-      // Overlay dismissed — reconnect to remote desktop.
-      if (!mounted) return;
-      gFFI.start(
-        widget.id,
-        password: widget.password,
-        isSharedPassword: widget.isSharedPassword,
-        forceRelay: widget.forceRelay,
-        connToken: token,
-      );
-      gFFI.ffiModel.updateEventListener(sessionId, widget.id);
-      WakelockManager.enable(_uniqueKey);
-      gFFI.dialogManager.showLoading(
-          translate('Connecting...'), onCancel: closeConnection);
       if (isAndroid) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
@@ -286,17 +267,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('Transfer file overlay failed: $e');
       showToast(translate('Failed'));
-      // Best-effort reconnect so user isn't left stranded.
-      if (mounted) {
-        try {
-          gFFI.start(
-            widget.id,
-            password: widget.password,
-            isSharedPassword: widget.isSharedPassword,
-            forceRelay: widget.forceRelay,
-          );
-        } catch (_) {}
-      }
     } finally {
       _handoffToFileTransfer = false;
     }

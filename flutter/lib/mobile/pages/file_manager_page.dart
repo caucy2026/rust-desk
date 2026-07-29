@@ -5,9 +5,11 @@ import 'package:flutter_breadcrumb/flutter_breadcrumb.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:get/get.dart';
 import 'package:toggle_switch/toggle_switch.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
+import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import 'remote_page.dart';
 
@@ -28,6 +30,7 @@ class FileManagerPage extends StatefulWidget {
   final bool? forceRelay;
   final String? connToken;
   final bool returnToRemoteOnClose;
+
   /// When true, renders as a floating card instead of a full-page Scaffold.
   /// Used when shown as an overlay on top of the remote desktop.
   final bool isOverlay;
@@ -72,7 +75,8 @@ extension SelectModeExt on Rx<SelectMode> {
 }
 
 class _FileManagerPageState extends State<FileManagerPage> {
-  final model = gFFI.fileModel;
+  late final FFI _ffi;
+  late final FileModel model;
   final selectMode = SelectMode.none.obs;
   bool _navigatingBackToRemote = false;
 
@@ -90,27 +94,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void initState() {
     super.initState();
+    _ffi = widget.isOverlay ? FFI(Uuid().v4obj()) : gFFI;
+    model = _ffi.fileModel;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
         debugPrint(
-            '[FileManagerPage] init start id=${widget.id} session=${gFFI.sessionId}');
-        gFFI.start(widget.id,
+            '[FileManagerPage] init start id=${widget.id} session=${_ffi.sessionId}');
+        _ffi.start(widget.id,
             isFileTransfer: true,
             password: widget.password,
             isSharedPassword: widget.isSharedPassword,
             forceRelay: widget.forceRelay,
             connToken: widget.connToken);
-        debugPrint(
-            '[FileManagerPage] after gFFI.start session=${gFFI.sessionId}');
-        gFFI.dialogManager
+        debugPrint('[FileManagerPage] after start session=${_ffi.sessionId}');
+        _ffi.dialogManager
             .showLoading(translate('Connecting...'), onCancel: closeConnection);
-        gFFI.ffiModel.updateEventListener(gFFI.sessionId, widget.id);
+        _ffi.ffiModel.updateEventListener(_ffi.sessionId, widget.id);
         WakelockManager.enable(_uniqueKey);
       } catch (e) {
         debugPrint('FileManagerPage initState error: $e');
         if (mounted) {
-          gFFI.dialogManager.dismissAll();
+          _ffi.dialogManager.dismissAll();
           showToast(translate('Failed'));
         }
       }
@@ -120,13 +125,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void dispose() {
     model.close().whenComplete(() {
-      // In overlay mode, the parent (RemotePage) owns the session
-      // lifecycle.  Closing here would race with RemotePage's
-      // reconnection and shut down the newly created session.
-      if (!widget.isOverlay && !_navigatingBackToRemote) {
-        gFFI.close();
+      if (widget.isOverlay || !_navigatingBackToRemote) {
+        _ffi.close();
       }
-      gFFI.dialogManager.dismissAll();
+      _ffi.dialogManager.dismissAll();
       WakelockManager.disable(_uniqueKey);
     });
     model.jobController.clear();
@@ -169,7 +171,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                     } else if (widget.returnToRemoteOnClose) {
                       await _backToRemoteDesktop();
                     } else {
-                      clientClose(gFFI.sessionId, gFFI);
+                      clientClose(_ffi.sessionId, _ffi);
                     }
                   }),
             ]),
@@ -208,8 +210,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               child: Row(
                                 children: [
                                   Icon(Icons.refresh,
-                                      color:
-                                          Theme.of(context).iconTheme.color),
+                                      color: Theme.of(context).iconTheme.color),
                                   SizedBox(width: 5),
                                   Text(translate("Refresh File"))
                                 ],
@@ -221,8 +222,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               child: Row(
                                 children: [
                                   Icon(Icons.check,
-                                      color:
-                                          Theme.of(context).iconTheme.color),
+                                      color: Theme.of(context).iconTheme.color),
                                   SizedBox(width: 5),
                                   Text(translate("Multi Select"))
                                 ],
@@ -234,8 +234,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                               child: Row(
                                 children: [
                                   Icon(Icons.folder_outlined,
-                                      color:
-                                          Theme.of(context).iconTheme.color),
+                                      color: Theme.of(context).iconTheme.color),
                                   SizedBox(width: 5),
                                   Text(translate("Create Folder"))
                                 ],
@@ -250,8 +249,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                       currentOptions.showHidden
                                           ? Icons.check_box_outlined
                                           : Icons.check_box_outline_blank,
-                                      color:
-                                          Theme.of(context).iconTheme.color),
+                                      color: Theme.of(context).iconTheme.color),
                                   SizedBox(width: 5),
                                   Text(translate("Show Hidden Files"))
                                 ],
@@ -271,8 +269,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           } else if (v == "folder") {
                             final name = TextEditingController();
                             String? errorText;
-                            gFFI.dialogManager
-                                .show((setState, close, context) {
+                            _ffi.dialogManager.show((setState, close, context) {
                               name.addListener(() {
                                 if (errorText != null) {
                                   setState(() {
@@ -311,8 +308,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                           });
                                           return;
                                         }
-                                        currentFileController
-                                            .createDir(PathUtil.join(
+                                        currentFileController.createDir(
+                                            PathUtil.join(
                                                 currentDir.path,
                                                 name.value.text,
                                                 currentOptions.isWindows));
@@ -345,6 +342,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return SafeArea(
         child: Center(
           child: Container(
+            width: MediaQuery.of(context).size.width * 0.60,
             height: MediaQuery.of(context).size.height * 0.60,
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
@@ -623,7 +621,10 @@ class _FileManagerViewState extends State<FileManagerView> {
                                   enabled: false,
                                 ),
                                 if (!entries[index].isDrive &&
-                                    versionCmp(gFFI.ffiModel.pi.version,
+                                    versionCmp(
+                                            controller.rootState.target
+                                                    ?.ffiModel.pi.version ??
+                                                '',
                                             "1.3.0") >=
                                         0)
                                   PopupMenuItem(
@@ -871,9 +872,8 @@ extension on _FileManagerPageState {
     try {
       // Capture the connToken before closing the file-transfer session
       // so the new RemotePage can resume the same peer connection.
-      final connToken =
-          bind.sessionGetConnToken(sessionId: gFFI.sessionId);
-      await gFFI.close();
+      final connToken = bind.sessionGetConnToken(sessionId: _ffi.sessionId);
+      await _ffi.close();
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(

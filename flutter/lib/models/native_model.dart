@@ -60,7 +60,8 @@ class PlatformFFI {
   }
 
   bool registerEventHandler(
-      String eventName, String handlerName, HandleEvent handler, {bool replace = false}) {
+      String eventName, String handlerName, HandleEvent handler,
+      {bool replace = false}) {
     debugPrint('registerEventHandler $eventName $handlerName');
     var handlers = _eventHandlers[eventName];
     if (handlers == null) {
@@ -154,7 +155,8 @@ class PlatformFFI {
       try {
         if (isAndroid) {
           // only support for android
-          final storageDir = (await ExternalPath.getExternalStorageDirectories())[0];
+          final storageDir =
+              (await ExternalPath.getExternalStorageDirectories())[0];
           _homeDir = '$storageDir/Download';
         } else if (isIOS) {
           // The previous code was `_homeDir = (await getDownloadsDirectory())?.path ?? '';`,

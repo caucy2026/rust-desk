@@ -117,7 +117,8 @@ class FileModel {
       debugPrint(
           '[FileModel] receiveFileDir isLocal=${evt['is_local']} path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
     } catch (_) {
-      debugPrint('[FileModel] receiveFileDir parse failed isLocal=${evt['is_local']}');
+      debugPrint(
+          '[FileModel] receiveFileDir parse failed isLocal=${evt['is_local']}');
     }
     if (evt['is_local'] == "false") {
       // init remote home, the remote connection will send one dir event when established. TODO opt
@@ -424,9 +425,12 @@ class FileController {
         sessionId: sessionId, name: isLocal ? "local_dir" : "remote_dir"));
     Future<bool> tryOpenReadyDirs() async {
       final dirs = <String>{
+        if (isLocal && isAndroid && options.value.home.isNotEmpty)
+          options.value.home,
         if (directory.value.path.isNotEmpty) directory.value.path,
         if (savedDir.isNotEmpty) savedDir,
-        if (options.value.home.isNotEmpty) options.value.home,
+        if (!(isLocal && isAndroid) && options.value.home.isNotEmpty)
+          options.value.home,
         if (isLocal && isAndroid) '/storage/emulated/0',
       };
       if (dirs.isEmpty) {
@@ -434,11 +438,13 @@ class FileController {
         // we never send the first read request and the UI stays at 0 entries.
         dirs.add(isLocal && isAndroid ? '/storage/emulated/0' : '/');
       }
-      debugPrint('[FileModel] tryOpenReadyDirs isLocal=$isLocal home=${options.value.home} savedDir=$savedDir current=${directory.value.path} dirs=$dirs');
+      debugPrint(
+          '[FileModel] tryOpenReadyDirs isLocal=$isLocal home=${options.value.home} savedDir=$savedDir current=${directory.value.path} dirs=$dirs');
       for (final dir in dirs) {
         if (dir.trim().isEmpty) continue;
         if (await _openDirectoryPath(dir, isBack: true)) {
-          debugPrint('[FileModel] tryOpenReadyDirs opened isLocal=$isLocal dir=$dir');
+          debugPrint(
+              '[FileModel] tryOpenReadyDirs opened isLocal=$isLocal dir=$dir');
           return true;
         }
       }
@@ -530,9 +536,11 @@ class FileController {
       }
     }
     try {
-      debugPrint('[FileModel] fetchDirectory start isLocal=$isLocal path=$path showHidden=$showHidden sessionId=$sessionId');
+      debugPrint(
+          '[FileModel] fetchDirectory start isLocal=$isLocal path=$path showHidden=$showHidden sessionId=$sessionId');
       final fd = await fileFetcher.fetchDirectory(path, isLocal, showHidden);
-      debugPrint('[FileModel] fetchDirectory done isLocal=$isLocal path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
+      debugPrint(
+          '[FileModel] fetchDirectory done isLocal=$isLocal path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
       fd.format(isWindows, sort: sortBy.value);
       directory.value = fd;
       return true;
@@ -607,7 +615,8 @@ class FileController {
         options.value.home = fd.path;
         debugPrint("init remote home: ${fd.path}");
         directory.value = fd;
-        debugPrint('[FileModel] initDirAndHome home=${options.value.home} entries=${fd.entries.length}');
+        debugPrint(
+            '[FileModel] initDirAndHome home=${options.value.home} entries=${fd.entries.length}');
       }
     } catch (e) {
       debugPrint("initDirAndHome err=$e");
@@ -1549,13 +1558,15 @@ class FileFetcher {
       String path, bool isLocal, bool showHidden) async {
     try {
       if (isLocal) {
-        debugPrint('[FileFetcher] local read path=$path showHidden=$showHidden');
+        debugPrint(
+            '[FileFetcher] local read path=$path showHidden=$showHidden');
         final res = await bind.sessionReadLocalDirSync(
             sessionId: sessionId, path: path, showHidden: showHidden);
         final fd = FileDirectory.fromJson(jsonDecode(res));
         return fd;
       } else {
-        debugPrint('[FileFetcher] remote read request path=$path showHidden=$showHidden');
+        debugPrint(
+            '[FileFetcher] remote read request path=$path showHidden=$showHidden');
         await bind.sessionReadRemoteDir(
             sessionId: sessionId, path: path, includeHidden: showHidden);
         return registerReadTask(isLocal, path);

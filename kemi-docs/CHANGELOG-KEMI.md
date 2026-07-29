@@ -120,7 +120,7 @@
 ### 7.4 暂未完成任务（Pending）
 
 - [ ] 以同一流程再跑一遍"远端目录读写 + 小文件双向传输 + Hash 对比"并归档到文档
-- [ ] 评估 `src/version.rs` 是否需要在下一次对外交付前升级到 `1.4.10`
+- [x] 对外交付版本已统一升级到 `1.4.10+68`（见第九节）
 
 ---
 
@@ -144,3 +144,37 @@
 
 - 从文件传输页点击返回按钮，成功回到远控桌面，画面正常显示 Mac 桌面（非黑屏）
 - 日志确认：文件传输会话关闭（`model 260262802 closed`）→ RemotePage 手势识别器初始化（`CustomTouchGestureRecognizer init`）
+
+---
+
+## 九、2026-07-29 文件传输并行浮窗与版本 1.4.10
+
+### 9.1 最终交互
+
+- 保留远控页三点菜单中的“传输文件”入口，不改入口位置和触发方式。
+- 文件传输以居中的圆角浮窗显示，宽度和高度均为屏幕的 60%。
+- 浮窗使用半透明遮罩，文件浏览、选择和传输均在浮窗内完成。
+- Android 本地文件页默认优先打开 `/storage/emulated/0/Download`。
+
+### 9.2 视频与文件传输并行
+
+- 单个 RustDesk Session 的连接类型仍互斥：一个 Session 只能是远控或文件传输。
+- 远控页继续使用原有 `gFFI` 视频 Session。
+- 文件传输浮窗创建独立 UUID 和独立 `FFI`，建立第二个 `FILE_TRANSFER` Session。
+- 打开浮窗时不再关闭远控 Session，关闭浮窗时只关闭文件传输 Session。
+- 删除关闭浮窗后重新启动远控 Session 的旧逻辑，避免视频中断、黑屏和重复握手。
+
+### 9.3 目录与版本
+
+- Android home directory 设置为外部存储的 `Download` 目录。
+- 本地目录初始化时，Android 的 home directory 优先级高于历史保存的 `local_dir`，避免旧路径覆盖默认 Download。
+- 版本升级为 `1.4.10`，Android `versionCode` 升级为 `68`。
+- 首页版本号改为读取 APK 的 `PackageInfo.version`，与设备包管理器显示保持一致。
+
+### 9.4 验证结果
+
+- `flutter analyze lib/mobile/pages/file_manager_page.dart`：无新增错误，仅有 3 条已有 API 弃用提示。
+- `flutter build apk --debug`：构建成功。
+- 设备 `192.168.1.10:5555` 覆盖安装成功。
+- 设备包信息：`versionName=1.4.10`、`versionCode=68`。
+- 设备安装更新时间：`2026-07-29 15:34:52`。

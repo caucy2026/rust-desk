@@ -3,6 +3,7 @@ import 'package:flutter_hbb/mobile/pages/server_page.dart';
 import 'package:flutter_hbb/mobile/pages/settings_page.dart';
 import 'package:flutter_hbb/web/settings_page.dart';
 import 'package:get/get.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../common.dart';
 import '../../common/widgets/chat_page.dart';
 import '../../models/platform_model.dart';
@@ -51,7 +52,7 @@ class HomePageState extends State<HomePage> {
 
   Future<void> _loadAppVersion() async {
     try {
-      final version = await bind.mainGetVersion();
+      final version = (await PackageInfo.fromPlatform()).version;
       if (!mounted) return;
       setState(() {
         _appVersion = version.trim();
@@ -260,11 +261,11 @@ class WebHomePage extends StatelessWidget {
       }
     }
     if (id != null) {
-      connect(context, id, 
-        isFileTransfer: isFileTransfer, 
-        isViewCamera: isViewCamera, 
-        isTerminal: isTerminal,
-        password: password);
+      connect(context, id,
+          isFileTransfer: isFileTransfer,
+          isViewCamera: isViewCamera,
+          isTerminal: isTerminal,
+          password: password);
     }
   }
 }
