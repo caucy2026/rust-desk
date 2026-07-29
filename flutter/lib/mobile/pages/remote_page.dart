@@ -802,13 +802,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     () => _showGestureHelp = !_showGestureHelp),
                               ),
                             ]) +
-                  [
-                    _bottomActionButton(
-                      label: '说明',
-                      icon: const Icon(Icons.help_outline),
-                      onPressed: () => setState(() => _showGestureHelp = true),
-                    ),
-                  ] +
                   (isWeb
                       ? []
                       : <Widget>[
