@@ -659,6 +659,38 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _bottomActionButton({
+    required String label,
+    required Widget icon,
+    required VoidCallback? onPressed,
+    Color color = Colors.white,
+    Color? disabledColor,
+  }) {
+    return SizedBox(
+      width: 54,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: label,
+            color: color,
+            disabledColor: disabledColor ?? color,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 48, height: 38),
+            icon: icon,
+            onPressed: onPressed,
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget getBottomAppBar() {
     final ffiModel = Provider.of<FfiModel>(context);
     final proxy = keyboardProxyController.value;
@@ -678,22 +710,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
+      height: 68,
       child: Row(
         mainAxisSize: MainAxisSize.max,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: <Widget>[
           Row(
               children: <Widget>[
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.clear),
+                    _bottomActionButton(
+                      label: '断开',
+                      icon: const Icon(Icons.clear),
                       onPressed: () {
                         clientClose(sessionId, gFFI);
                       },
                     ),
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.tv),
+                    _bottomActionButton(
+                      label: '显示',
+                      icon: const Icon(Icons.tv),
                       onPressed: () {
                         setState(() {
                           _showEdit = false;
@@ -711,17 +744,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     ? (_) => _keyboardCloseIntent =
                                         keyboardProxyController.value.isVisible
                                     : null,
-                                child: IconButton(
-                                    color: keyboardColor,
-                                    disabledColor: keyboardColor,
-                                    icon: keyboardIcon,
-                                    onPressed:
-                                        isAndroid && proxy.isTransitioning
-                                            ? null
-                                            : openKeyboard),
+                                child: _bottomActionButton(
+                                  label: '键盘',
+                                  color: keyboardColor,
+                                  disabledColor: keyboardColor,
+                                  icon: keyboardIcon,
+                                  onPressed: isAndroid && proxy.isTransitioning
+                                      ? null
+                                      : openKeyboard,
+                                ),
                               ),
-                              IconButton(
-                                color: Colors.white,
+                              _bottomActionButton(
+                                label: '工具',
                                 icon: const Icon(Icons.build),
                                 onPressed: () => gFFI.dialogManager
                                     .toggleMobileActionsOverlay(ffi: gFFI),
@@ -733,17 +767,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     ? (_) => _keyboardCloseIntent =
                                         keyboardProxyController.value.isVisible
                                     : null,
-                                child: IconButton(
-                                    color: keyboardColor,
-                                    disabledColor: keyboardColor,
-                                    icon: keyboardIcon,
-                                    onPressed:
-                                        isAndroid && proxy.isTransitioning
-                                            ? null
-                                            : openKeyboard),
+                                child: _bottomActionButton(
+                                  label: '键盘',
+                                  color: keyboardColor,
+                                  disabledColor: keyboardColor,
+                                  icon: keyboardIcon,
+                                  onPressed: isAndroid && proxy.isTransitioning
+                                      ? null
+                                      : openKeyboard,
+                                ),
                               ),
-                              IconButton(
-                                color: Colors.white,
+                              _bottomActionButton(
+                                label: '输入',
                                 icon: Icon(gFFI.ffiModel.touchMode
                                     ? Icons.touch_app
                                     : Icons.mouse),
@@ -751,14 +786,22 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     () => _showGestureHelp = !_showGestureHelp),
                               ),
                             ]) +
+                  [
+                    _bottomActionButton(
+                      label: '说明',
+                      icon: const Icon(Icons.help_outline),
+                      onPressed: () => setState(() => _showGestureHelp = true),
+                    ),
+                  ] +
                   (isWeb
                       ? []
                       : <Widget>[
                           futureBuilder(
                               future: gFFI.invokeMethod(
                                   "get_value", "KEY_IS_SUPPORT_VOICE_CALL"),
-                              hasData: (isSupportVoiceCall) => IconButton(
-                                    color: Colors.white,
+                              hasData: (isSupportVoiceCall) =>
+                                  _bottomActionButton(
+                                    label: '聊天',
                                     icon: isAndroid && isSupportVoiceCall
                                         ? SvgPicture.asset('assets/chat.svg',
                                             colorFilter: ColorFilter.mode(
@@ -771,9 +814,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   ))
                         ]) +
                   [
-                    IconButton(
-                      color: Colors.white,
-                      icon: Icon(Icons.more_vert),
+                    _bottomActionButton(
+                      label: '更多',
+                      icon: const Icon(Icons.more_vert),
                       onPressed: () {
                         setState(() {
                           _showEdit = false;
@@ -782,9 +825,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       },
                     ),
                   ]),
-          Obx(() => IconButton(
-                color: Colors.white,
-                icon: Icon(Icons.expand_more),
+          Obx(() => _bottomActionButton(
+                label: '收起',
+                icon: const Icon(Icons.expand_more),
                 onPressed: gFFI.ffiModel.waitForFirstImage.isTrue
                     ? null
                     : () {
