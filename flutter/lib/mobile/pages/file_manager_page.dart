@@ -345,7 +345,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return SafeArea(
         child: Center(
           child: Container(
-            height: MediaQuery.of(context).size.height * 0.88,
+            height: MediaQuery.of(context).size.height * 0.60,
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
