@@ -16,10 +16,10 @@
 ```text
 你正在继续开发 KEMI 远程桌面 Android PAD 项目。项目不是当前 VS Code 的 webcam/android 工作区，真实代码仓固定在：
 
-/Users/newlink/kemi/RustDesk/rustdesk
+/Users/newlink/kemi/RustDesk/client
 
 开始前必须按顺序执行：
-1. cd /Users/newlink/kemi/RustDesk/rustdesk
+1. cd /Users/newlink/kemi/RustDesk/client
 2. 阅读 AGENTS.md
 3. 阅读 kemi-docs/SESSION-HANDOFF.md
 4. 阅读 kemi-docs/CHANGELOG-KEMI.md 的第七至十节
@@ -89,7 +89,7 @@ KEMI 远程桌面是基于 RustDesk 定制的 Android PAD 远程桌面客户端�
 ### 3.1 本地仓库
 
 ```text
-/Users/newlink/kemi/RustDesk/rustdesk
+/Users/newlink/kemi/RustDesk/client
 ```
 
 所有代码阅读、修改、构建和提交都在这个目录进行。不要把 `/Users/newlink/workspace/android` 当作本项目仓库；后者是另一个 webcam 数据维护工作区。
@@ -132,7 +132,7 @@ git ls-remote backup refs/heads/master
 ## 4. 顶层目录架构
 
 ```text
-rustdesk/
+client/
 ├── AGENTS.md                     # 仓库开发规则，第一份必读文档
 ├── Cargo.toml                    # Rust workspace 和 crate 版本
 ├── Cargo.lock                    # Rust 锁文件
@@ -502,7 +502,7 @@ export PATH=/Users/newlink/flutter/bin:$PATH
 
 ```bash
 export PATH=/Users/newlink/flutter/bin:$PATH
-cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+cd /Users/newlink/kemi/RustDesk/client/flutter
 
 flutter analyze \
   lib/mobile/pages/file_manager_page.dart \
@@ -520,14 +520,14 @@ flutter analyze \
 
 ```bash
 export PATH=/Users/newlink/flutter/bin:$PATH
-cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+cd /Users/newlink/kemi/RustDesk/client/flutter
 flutter build apk --debug
 ```
 
 输出：
 
 ```text
-/Users/newlink/kemi/RustDesk/rustdesk/flutter/build/app/outputs/flutter-apk/app-debug.apk
+/Users/newlink/kemi/RustDesk/client/flutter/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
 2026-07-29 最近产物约 151MB。
@@ -557,7 +557,7 @@ flutter build apk --debug
 ```bash
 adb devices -l
 adb -s 192.168.1.10:5555 install -r -d \
-  /Users/newlink/kemi/RustDesk/rustdesk/flutter/build/app/outputs/flutter-apk/app-debug.apk
+  /Users/newlink/kemi/RustDesk/client/flutter/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
 ### 11.5 核验设备实际版本
@@ -619,7 +619,7 @@ adb -s 192.168.1.10:5555 logcat \
 ### 13.1 提交前
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 git status --short
 git diff --stat
@@ -770,7 +770,7 @@ compileSdk 34、targetSdk 33、Kotlin 1.8.22 和当前依赖强制版本是已�
 ## 15. 下一会话启动检查清单
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 # 1. 仓库状态
 git status --short

@@ -11,7 +11,7 @@
 本项目只使用一个本地开发仓：
 
 ```text
-/Users/newlink/kemi/RustDesk/rustdesk
+/Users/newlink/kemi/RustDesk/client
 ```
 
 该仓配置两个远端：
@@ -24,7 +24,7 @@
 检查命令：
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 git remote -v
 git branch --show-current
 git status --short
@@ -34,7 +34,7 @@ git status --short
 
 以下历史流程已经废弃：
 
-- 不再复制文件到 `/Users/newlink/kemi/rust-desk/client`。
+- 不再复制文件到其他本地目录；客户端唯一工作目录是 `/Users/newlink/kemi/RustDesk/client`。
 - 不再在第二个本地仓重复提交。
 - 不再推送 `origin main`。
 
@@ -45,7 +45,7 @@ git status --short
 ### 2.1 查看当前状态
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 git status --short
 git diff --stat
@@ -68,7 +68,7 @@ Flutter 修改至少执行：
 
 ```bash
 export PATH=/Users/newlink/flutter/bin:$PATH
-cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+cd /Users/newlink/kemi/RustDesk/client/flutter
 
 flutter analyze <本次修改的 Dart 文件>
 flutter build apk --debug
@@ -77,13 +77,13 @@ flutter build apk --debug
 Debug APK：
 
 ```text
-/Users/newlink/kemi/RustDesk/rustdesk/flutter/build/app/outputs/flutter-apk/app-debug.apk
+/Users/newlink/kemi/RustDesk/client/flutter/build/app/outputs/flutter-apk/app-debug.apk
 ```
 
 文档修改至少执行：
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 git diff --check -- kemi-docs .github/prompts
 ```
 
@@ -94,7 +94,7 @@ git diff --check -- kemi-docs .github/prompts
 ### 3.1 精确暂存
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 git add flutter/lib/mobile/pages/remote_page.dart
 git add flutter/lib/mobile/pages/file_manager_page.dart
@@ -135,7 +135,7 @@ git status --short
 推送前获取备份仓最新状态：
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 git fetch backup master
 git log --graph --oneline --decorate --max-count=12 master backup/master
 git rev-list --left-right --count backup/master...master
@@ -220,7 +220,7 @@ git push origin master
 ## 七、推送后强校验
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 git rev-parse HEAD
 git ls-remote backup refs/heads/master
@@ -292,7 +292,7 @@ Apple Silicon 无 Rosetta 时，release AOT 可能因 x64 `gen_snapshot` 失败�
 聊天上下文丢失或由新开发者接手时：
 
 ```bash
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 
 git status --short
 git log --oneline -8

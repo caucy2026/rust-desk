@@ -2,6 +2,21 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 十一、2026-07-29 工作区与文档整理
+
+### 11.1 统一目录
+
+- 客户端唯一目录调整为 `/Users/newlink/kemi/RustDesk/client`。
+- 服务端唯一目录调整为 `/Users/newlink/kemi/RustDesk/server`。
+- 不再使用旧的 `/Users/newlink/kemi/rust-desk` 整合副本或 `/Users/newlink/kemi/rusk-server` 服务端副本。
+
+### 11.2 文档边界
+
+- 新增 `kemi-docs/WORKSPACE.md`，说明两个仓库的职责、Git 边界和已退役目录。
+- 新增 `kemi-docs/server-operations.md`，仅作为服务端构建、部署文档入口。
+- 设备与历史架构资料迁入 `kemi-docs/reference/`；当前客户端事实仍以 `SESSION-HANDOFF.md` 为准。
+- 服务端部署脚本和部署说明集中在 `server/bin/`，不再在客户端文档复制完整操作步骤。
+
 ## 一、Mac 权限流程
 
 **文件：** `flutter/lib/desktop/pages/desktop_home_page.dart`
@@ -43,7 +58,7 @@
 
 ## 六、信令服务器
 
-**目录：** `/Users/newlink/kemi/rusk-server`
+**目录：** `/Users/newlink/kemi/RustDesk/server`
 
 - Mac ARM 交叉编译 Linux x86_64：zig + cargo-zigbuild
 - `bin/` 目录含自编译版 + 官方预编译版
@@ -198,7 +213,7 @@
 
 - `kemi-docs/README.md` 更新到 `1.4.10+68`，加入接续手册和 prompt 导航。
 - `kemi-docs/GIT-OPS.md` 删除旧的第二本地仓复制流程，改为当前真实流程：
-	- 开发仓 `/Users/newlink/kemi/RustDesk/rustdesk`；
+	- 开发仓 `/Users/newlink/kemi/RustDesk/client`；
 	- 官方上游 `origin` 只读；
 	- KEMI 备份使用 `backup`；
 	- 提交后执行 `fetch/rebase`、`git push backup master`；

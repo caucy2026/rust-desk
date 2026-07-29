@@ -18,7 +18,7 @@
 - **客户端 UI**: Flutter（`flutter/`）
 - **Rust 核心**: 屏幕采集、编解码、输入控制、网络协议（`src/`、`libs/`）
 - **原生桥接**: Android Kotlin MethodChannel / macOS Swift
-- **信令服务**: Rust（`/Users/newlink/kemi/rusk-server/`）
+- **信令服务**: Rust（`/Users/newlink/kemi/RustDesk/server/`）
 
 ---
 
@@ -27,11 +27,14 @@
 ```
 kemi-docs/
 ├── README.md                    ← 本文件（项目简介与文档导航）
+├── WORKSPACE.md                 ← 工作区、客户端/服务端仓库边界
 ├── SESSION-HANDOFF.md           ← 跨会话接续手册、完整架构与构建部署流程
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
+├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
-└── dual-screen-port.md          ← 安卓双屏移植总体架构
+├── dual-screen-port.md          ← 安卓双屏移植总体架构
+└── reference/                   ← 设备资料与历史架构文档
 
 .github/prompts/
 └── continue-kemi-rustdesk.prompt.md  ← VS Code 中可直接运行的接续提示词
@@ -44,6 +47,10 @@ kemi-docs/
 ### README.md（本文件）
 
 项目简介、文档目录导航、快速入门指引。**新成员入职第一份阅读材料。**
+
+### WORKSPACE.md
+
+唯一工作目录、客户端与服务端的 Git 边界、已退役目录和文档职责。涉及路径、提交或服务端时，先读本文件。
 
 ### SESSION-HANDOFF.md
 
@@ -78,6 +85,10 @@ kemi-docs/
 
 > 不再复制文件到第二个本地仓库，也不再推送旧的 `origin main`。
 
+### server-operations.md
+
+服务端源码路径、构建命令及部署文档入口。服务端的详细部署说明只维护在 `../../server/bin/DEPLOY.md`，不在客户端文档重复复制。
+
 ### cross-display-keyboard.md
 
 **跨屏软键盘需求与设计**，跨屏键盘功能的唯一规格：
@@ -108,25 +119,27 @@ kemi-docs/
 ### 新成员上手顺序
 
 1. **README.md**（本文件）— 了解项目全貌
-2. **SESSION-HANDOFF.md** — 核对当前事实、基线、环境和不可回退行为
-3. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
-4. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
-5. **cross-display-keyboard.md** — 理解键盘模块
-6. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
+2. **WORKSPACE.md** — 确认客户端、服务端与 Git 边界
+3. **SESSION-HANDOFF.md** — 核对当前事实、基线、环境和不可回退行为
+4. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
+5. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
+6. **cross-display-keyboard.md** — 理解键盘模块
+7. **server-operations.md** — 服务端构建与部署入口
+8. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
 
 ### 日常开发速查
 
 ```bash
 # 构建 PAD APK
 export PATH=/Users/newlink/flutter/bin:$PATH
-cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+cd /Users/newlink/kemi/RustDesk/client/flutter
 flutter build apk --debug
 
 # 安装到设备
 adb -s 192.168.1.10:5555 install -r -d build/app/outputs/flutter-apk/app-debug.apk
 
 # 查看改动
-cd /Users/newlink/kemi/RustDesk/rustdesk
+cd /Users/newlink/kemi/RustDesk/client
 git status --short
 git diff --stat
 

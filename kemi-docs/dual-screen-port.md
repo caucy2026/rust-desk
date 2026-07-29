@@ -226,7 +226,7 @@ export PATH="/tmp/flutter_sdk/flutter/bin:$PATH"
 export FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
 export PUB_HOSTED_URL="https://pub.flutter-io.cn"
 
-cd /Users/newlink/kemi/RustDesk/rustdesk/flutter
+cd /Users/newlink/kemi/RustDesk/client/flutter
 flutter build apk --debug --target-platform android-arm64
 ```
 
