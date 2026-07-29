@@ -2,6 +2,21 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 二十三、2026-07-29 macOS 远程输入权限健康检查
+
+### 23.1 根因与修复
+
+- 实机日志确认旧 Mac 被控端存在 `screen_recording=false`，并连续报 `CGDisplayStreamCreateWithDispatchQueue returned null stream`；其隐私权限并未完整授予。
+- macOS 的鼠标点击、滚轮和键盘注入依赖“辅助功能（Accessibility）”。此前接收远程鼠标/键盘事件的路径没有权限健康检查，未授权时系统会静默丢弃 CGEvent，PAD 端会误以为手势失效。
+- 现在在首次远程鼠标或键盘输入时统一检查并请求屏幕录制、辅助功能、输入监控；系统提示每个进程最多触发一次，避免每个事件抢焦点。
+- 仅“辅助功能”会阻止鼠标/键盘注入：授权后即允许单击和滚轮继续工作；屏幕录制与输入监控仍会在同一流程中申请并写入状态日志。
+
+### 23.2 版本
+
+- `Cargo.toml` 与 `Cargo.lock`：`1.4.21`。
+- `flutter/pubspec.yaml`：`1.4.21+79`，Android `versionCode=79`；macOS 同步使用该 Flutter build name/build number。
+- 对应关系维护在 `kemi-docs/README.md` 的“当前版本对应关系”。
+
 ## 二十二、2026-07-29 PAD 直接指针触摸兜底
 
 ### 22.1 触摸修复

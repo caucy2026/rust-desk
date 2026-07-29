@@ -32,7 +32,10 @@ use std::{
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
 };
 
 // macOS boolean_t is defined as `int` in <mach/boolean.h>
@@ -57,6 +60,10 @@ fn get_update_temp_dir_string() -> String {
 /// This prevents race conditions between cursor visibility (hide depth tracking)
 /// and cursor positioning/clipping operations.
 static CG_CURSOR_MUTEX: Mutex<()> = Mutex::new(());
+// macOS privacy prompts are user-facing system dialogs.  Trigger each missing
+// permission set only once per process; subsequent input events should not
+// keep stealing focus from the controlled desktop.
+static REMOTE_INPUT_PERMISSION_PROMPTED: AtomicBool = AtomicBool::new(false);
 
 extern "C" {
     fn CGSCurrentCursorSeed() -> i32;
@@ -110,6 +117,47 @@ pub fn is_can_input_monitoring(prompt: bool) -> bool {
         let value = if prompt { YES } else { NO };
         InputMonitoringAuthStatus(value) == YES
     }
+}
+
+/// Verify the permissions needed by an incoming remote-control session.
+///
+/// Accessibility is mandatory for CGEvent mouse/keyboard injection. Screen
+/// Recording and Input Monitoring are requested together so the controlled
+/// Mac has one complete permission flow, but they do not block mouse injection
+/// after Accessibility has been granted.
+pub fn ensure_remote_input_permissions() -> bool {
+    let accessibility_granted = is_process_trusted(false);
+    let screen_recording_granted = is_can_screen_recording(false);
+    let input_monitoring_granted = is_can_input_monitoring(false);
+
+    if accessibility_granted && screen_recording_granted && input_monitoring_granted {
+        return true;
+    }
+
+    if !REMOTE_INPUT_PERMISSION_PROMPTED.swap(true, Ordering::SeqCst) {
+        log::warn!(
+            "macOS remote-input permission health check: accessibility={}, screen_recording={}, input_monitoring={}; requesting missing permissions",
+            accessibility_granted,
+            screen_recording_granted,
+            input_monitoring_granted,
+        );
+        if !screen_recording_granted {
+            is_can_screen_recording(true);
+        }
+        if !accessibility_granted {
+            is_process_trusted(true);
+        }
+        if !input_monitoring_granted {
+            is_can_input_monitoring(true);
+        }
+    }
+
+    if !accessibility_granted {
+        log::warn!(
+            "macOS remote input blocked: grant KEMI-远程桌面 Accessibility permission to allow mouse and keyboard control"
+        );
+    }
+    accessibility_granted
 }
 
 pub fn is_can_screen_recording(prompt: bool) -> bool {

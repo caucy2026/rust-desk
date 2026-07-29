@@ -1057,6 +1057,11 @@ pub fn handle_mouse_(
 }
 
 pub fn handle_mouse_simulation_(evt: &MouseEvent, conn: i32) {
+    #[cfg(target_os = "macos")]
+    if !crate::platform::macos::ensure_remote_input_permissions() {
+        return;
+    }
+
     if !active_mouse_(conn) {
         return;
     }
@@ -2238,6 +2243,11 @@ fn is_legacy_mode(evt: &KeyEvent) -> bool {
 
 pub fn handle_key_(evt: &KeyEvent) {
     if EXITING.load(Ordering::SeqCst) {
+        return;
+    }
+
+    #[cfg(target_os = "macos")]
+    if !crate::platform::macos::ensure_remote_input_permissions() {
         return;
     }
 
