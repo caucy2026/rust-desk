@@ -37,6 +37,9 @@
 - 打开和关闭文件传输浮窗时，后台远程视频必须持续播放。
 - Android 本地文件默认优先打开 /storage/emulated/0/Download；历史 local_dir 不能覆盖这个初始默认值。
 - Android 文件传输删除功能保持禁用。
+- 远控页底栏固定为 44px 高、每项 48px 宽的中文图文按钮；“输入”是唯一手势说明入口，不再增加重复“说明”按钮。所有可用项必须保持整格水波纹与高亮点击反馈。
+- 当前触摸约定：单指轻触为左键、单指长按为右键、单指移动为拖动；双指纵向滑动为远端滚轮、双指捏合缩放本地画布、三指滑动平移本地画布。
+- 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 当前版本源必须一致：Cargo.toml=1.4.19、Cargo.lock rustdesk=1.4.19、flutter/pubspec.yaml=1.4.19+77。
 
@@ -189,7 +192,8 @@ graph TD
 - `flutter/lib/mobile/pages/remote_page.dart`：远控画面、工具栏、三点菜单、键盘代理入口、文件传输浮窗入口。
 - `flutter/lib/mobile/pages/file_manager_page.dart`：文件浏览、传输 UI、独立文件 Session。
 - `flutter/lib/models/model.dart`：`FFI`、主 Session、视频/输入模型。
-- `flutter/lib/models/file_model.dart`：本地/远端目录读取、传输任务、初始目录顺序。
+- `flutter/lib/models/file_model.dart`：本地/远端目录读取、传输任务、初始目录顺序；远端 `remote_dir` 的优先恢复规则在此维护。
+- `flutter/lib/common/widgets/gestures.dart`：单/双/三指手势状态机；多指结束后必须清空状态，不能影响下一次单点。
 - `flutter/lib/models/native_model.dart`：平台初始化、Android home directory、MethodChannel 封装。
 - `flutter/lib/models/keyboard_proxy_model.dart`：Flutter 侧键盘代理状态。
 
