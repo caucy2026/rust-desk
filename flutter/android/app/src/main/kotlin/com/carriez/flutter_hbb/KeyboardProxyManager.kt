@@ -230,8 +230,13 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
 
     private fun findTargetDisplay(manager: DisplayManager, sourceId: Int): Int {
         if (sourceId != Display.DEFAULT_DISPLAY) return Display.DEFAULT_DISPLAY
-        return manager.displays.firstOrNull {
+        val secondaryDisplay = manager.displays.firstOrNull {
             it.displayId != Display.DEFAULT_DISPLAY && it.state == Display.STATE_ON
-        }?.displayId ?: sourceId
+        }
+        if (secondaryDisplay == null) {
+            Log.i(TAG, "No usable secondary display; use source display=$sourceId for keyboard proxy")
+            return sourceId
+        }
+        return secondaryDisplay.displayId
     }
 }

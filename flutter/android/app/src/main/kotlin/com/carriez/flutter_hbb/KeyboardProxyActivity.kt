@@ -2,13 +2,13 @@ package com.carriez.flutter_hbb
 
 import android.app.Activity
 import android.app.ActivityOptions
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.Display
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -35,25 +35,31 @@ class KeyboardProxyActivity : Activity() {
         private const val DUPLICATE_COMMIT_WINDOW_MS = 250L
 
         fun launch(
-            context: Context,
+            source: Activity,
             requestId: Long,
             sessionId: String,
             targetDisplayId: Int
         ) {
-            val intent = Intent(context, KeyboardProxyActivity::class.java).apply {
+            val intent = Intent(source, KeyboardProxyActivity::class.java).apply {
                 putExtra(EXTRA_REQUEST_ID, requestId)
                 putExtra(EXTRA_SESSION_ID, sessionId)
                 putExtra(EXTRA_TARGET_DISPLAY_ID, targetDisplayId)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                )
+                addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
+            val sourceDisplayId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
+            if (sourceDisplayId == targetDisplayId) {
+                // On a single-display device, use the source Activity directly.
+                // Some ROMs do not reliably honor launchDisplayId=0.
+                source.startActivity(intent)
+                return
+            }
+            intent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            )
             val options = ActivityOptions.makeBasic().apply {
                 launchDisplayId = targetDisplayId
             }
-            context.startActivity(intent, options.toBundle())
+            source.startActivity(intent, options.toBundle())
         }
     }
 

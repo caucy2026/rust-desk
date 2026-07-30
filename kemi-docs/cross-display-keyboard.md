@@ -454,6 +454,7 @@ Activity 的 theme 和 window 配置应保证：
 - `mChannel.invokeMethod` 全路径异常容错：`MissingPluginException` / `PlatformException` / 通用异常降级。
 - 副屏 `RemoteActivity.mChannel` 文件传输平台方法补齐。
 - `enable_soft_keyboard` 改为 no-op：避免跨屏代理模式下干扰键盘代理焦点路由。
+- 单屏回退已落地：没有可用副屏时，Manager 选择发起 Activity 所在 Display，`KeyboardProxyActivity` 由该 Activity 直接启动，不使用 `launchDisplayId=0`；双屏时仍只使用对面 Display 的 `ActivityOptions.launchDisplayId`。
 - `requestPermission` 支持指定 `MethodChannel`：保障副屏权限回调回到副屏引擎。
 
 ### 14.2 与设计仍有偏差

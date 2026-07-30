@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-30
-> 当前源码、Mac 安装版本与 PAD 当前安装：`1.4.34+92`；Mac 测试包使用固定本地代码签名身份
+> 当前源码、Mac 安装版本与 PAD 当前安装：`1.4.35+93`；Mac 测试包使用固定本地代码签名身份
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -28,7 +28,7 @@
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前源码、Mac 安装版本与 PAD 当前安装均为 1.4.34+92；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前源码、Mac 安装版本与 PAD 当前安装均为 1.4.35+93；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -40,6 +40,7 @@
 - Android 文件传输删除功能保持禁用。
 - 远控页底栏固定为 44px 高、每项 48px 宽的中文图文按钮；“输入”是唯一手势说明入口，不再增加重复“说明”按钮。所有可用项必须保持整格水波纹与高亮点击反馈。
 - 当前触摸约定：单指轻触为左键、单指长按为右键、单指移动为拖动；双指纵向滑动为远端滚轮、双指捏合缩放本地画布、三指滑动平移本地画布。
+- Android 软键盘：双屏时必须弹到发起 Activity 的对面可用屏；没有可用副屏时必须弹回当前屏，并由当前 Activity 直接启动代理，不得依赖 `launchDisplayId=0`。
 - Android 共享屏幕启动必须直接调用原生 `MediaProjection` 录屏确认，不能再显示防诈骗或服务启动警告，也不能在此前请求通知、文件访问或悬浮窗权限；这些权限只允许从各自的权限配置入口按需申请。系统录屏弹窗由用户点“允许”或“立即开始”。
 - macOS 远程查看和控制本机只需要两项：屏幕录制和辅助功能。它们只能由 KEMI 主窗口的前台引导申请，不能从首个远程鼠标/键盘事件抢弹系统授权；每项各有独立“申请授权”按钮，说明窗口保持显示、可刷新状态。输入监控仅用于可选的 Mac 本机键盘输入源抓取，绝不能阻止 PAD 控制本机、加入必需权限状态或自动打开 `Privacy_ListenEvent` 页面。
 - macOS 授权引导不再使用“已显示”本地标记。启动缺权限时显示；每次 PAD 新建连接仍缺权限时，把 KEMI 主窗口与引导重新置前（5 秒限频），但不自动关闭引导或连续弹三个系统窗口。
@@ -48,8 +49,8 @@
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
-- 当前版本源必须一致：Cargo.toml=1.4.34、Cargo.lock rustdesk=1.4.34、flutter/pubspec.yaml=1.4.34+92；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.34+92。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.34`。
+- 当前版本源必须一致：Cargo.toml=1.4.35、Cargo.lock rustdesk=1.4.35、flutter/pubspec.yaml=1.4.35+93；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.35+93。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.35`。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -439,15 +440,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.34"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.34"` |
-| `flutter/pubspec.yaml` | `version: 1.4.34+92` |
+| `Cargo.toml` | `version = "1.4.35"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.35"` |
+| `flutter/pubspec.yaml` | `version: 1.4.35+93` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.34
-versionCode=92
+versionName=1.4.35
+versionCode=93
 ```
 
 ### 9.2 首页版本号

@@ -2,6 +2,13 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 三十七、2026-07-30 单屏设备软键盘兼容（1.4.35+93）
+
+- 目标规则保持为“双屏时弹到对面屏；仅一块可用屏幕时弹回当前屏”。本次将单屏回退从“把 `launchDisplayId=0` 交给 ROM 处理”改为由当前 Activity 直接启动键盘代理，避免部分 ROM 对默认 Display 路由不稳定而不显示键盘。
+- `KeyboardProxyManager` 在没有可用副屏时记录并明确选择源 Display；`KeyboardProxyActivity` 仅当源/目标不同才使用 `ActivityOptions.launchDisplayId`。因此双屏 `0 ↔ 2` 的对向键盘逻辑、状态机和输入转发保持不变。
+- 已完成 Kotlin、Rust release 与 PAD debug APK 构建；PAD `192.168.1.10:5555` 已安装并由系统确认 `versionName=1.4.35`、`versionCode=93`，APK v1/v2 签名有效。当前测试机为双屏，已核对其 Display 0（内置）与 Display 2（HDMI）在线；单屏分支需在单屏设备上做最终实机显示验证。
+- macOS release App 已构建、固定签名并部署到 `/Applications` 与 `BIN/`，两份均为 `1.4.35+93` 且通过深度校验。旧 `1.4.34+92` 两份 App 已移入废纸篓，可恢复。
+
 ## 三十六、2026-07-30 Android 共享屏幕直接录屏授权（1.4.34+92）
 
 - 启动共享屏幕时移除防诈骗倒计时和“服务即将启动”的应用内警告；“服务未运行”卡片及“屏幕录制”权限行现在都直接进入同一启动链路。
