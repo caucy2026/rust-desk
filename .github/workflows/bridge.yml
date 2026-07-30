@@ -87,6 +87,12 @@ jobs:
         shell: bash
         run: |
           export PATH="/tmp/flutter_rust_bridge/bin:$PATH"
+          # crates.io can briefly throttle GitHub runners. Keep the retry policy
+          # inside Cargo as well as the outer retry loop, so a transient download
+          # issue does not invalidate both bridge artifacts.
+          export CARGO_NET_RETRY=10
+          export CARGO_HTTP_TIMEOUT=600
+          export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
           install_bridge_tool() {
             local tool="$1"

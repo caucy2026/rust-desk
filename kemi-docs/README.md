@@ -17,7 +17,7 @@
 
 ### 当前版本对应关系
 
-| APK 版本 | 对应功能 |
+| 客户端版本 | 对应功能 |
 |---|---|
 | `1.4.31+89` | macOS 远控必需授权收敛为屏幕录制和辅助功能；输入监控改为不阻塞远控的可选本地键盘功能，移除会打开空白条目的第三项授权 |
 | `1.4.30+88` | macOS 输入监控改用官方 `CGRequestListenEventAccess` 申请、`CGPreflightListenEventAccess` 查询，修复隐私页空白项目 |
@@ -51,6 +51,8 @@ kemi-docs/
 ├── SESSION-HANDOFF.md           ← 跨会话接续手册、完整架构与构建部署流程
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
+├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
+├── ci-build.md                   ← GitHub 跨平台构建、bridge 依赖与验收
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
@@ -105,6 +107,14 @@ kemi-docs/
 
 > 不再复制文件到第二个本地仓库，也不再推送旧的 `origin main`。
 
+### macos-configuration.md
+
+macOS 客户端的唯一操作说明：两项远控必需权限、PAD 输入的真实准入条件、`LSUIElement` 授权窗口恢复、固定测试签名、交付核验、TCC 重置和开机自启动。涉及 Mac 构建、签名或权限时必须先读本文件。
+
+### ci-build.md
+
+GitHub Actions 的唯一构建说明：两个 bridge artifact 与下游平台的依赖关系、Flutter 3.22/3.24/3.44 的临时依赖策略、工具缓存/重试和云端验收命令。涉及 Windows、Linux 或 CI 时必须先读本文件。
+
 ### server-operations.md
 
 服务端源码路径、构建命令及部署文档入口。服务端的详细部署说明只维护在 `../../server/bin/DEPLOY.md`，不在客户端文档重复复制。
@@ -145,7 +155,9 @@ kemi-docs/
 5. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
 6. **cross-display-keyboard.md** — 理解键盘模块
 7. **server-operations.md** — 服务端构建与部署入口
-8. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
+8. **macos-configuration.md** — 涉及 Mac 时阅读
+9. **ci-build.md** — 涉及云端、Windows 或 Linux 构建时阅读
+10. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
 
 ### 日常开发速查
 
@@ -175,5 +187,5 @@ git rev-parse HEAD
 
 ---
 
-> 最后更新：2026-07-29
+> 最后更新：2026-07-30
 > 维护：KEMI 远程桌面团队

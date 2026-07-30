@@ -22,10 +22,11 @@
 1. cd /Users/newlink/kemi/RustDesk/client
 2. 阅读 AGENTS.md
 3. 阅读 kemi-docs/SESSION-HANDOFF.md
-4. 阅读 kemi-docs/CHANGELOG-KEMI.md 的第七至十节
+4. 阅读 kemi-docs/CHANGELOG-KEMI.md 的最新两节
 5. 涉及双屏时阅读 kemi-docs/dual-screen-port.md
 6. 涉及键盘时阅读 kemi-docs/cross-display-keyboard.md，并以该文档最新章节和当前代码为准
-7. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
+7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
+8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
 当前源码与 Mac 安装版本均为 1.4.31+89，PAD 当前安装 1.4.25+83；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
@@ -53,6 +54,7 @@
 - 修改前说明根因和最小方案；不要改无关入口、布局或会话生命周期。
 - 代码修改后先跑针对性 flutter analyze，再跑 flutter build apk --debug。
 - 当前可用 Flutter SDK 是 /Users/newlink/flutter/bin，命令前执行 export PATH=/Users/newlink/flutter/bin:$PATH。
+- 默认跨平台 CI 仍以 Flutter 3.24.5 为基线；仓库 `extended_text` 必须保持精确 `14.0.0`。3.22 bridge 与 3.44 Windows ARM bridge 的临时改动只能在 `.github` 补丁中处理，详见 `kemi-docs/ci-build.md`。
 - Debug APK 输出为 flutter/build/app/outputs/flutter-apk/app-debug.apk。
 - 当前设备为 192.168.1.10:5555，安装后必须用 dumpsys package 核对 versionName/versionCode/lastUpdateTime。
 - 不要因为 release AOT 的 x64 gen_snapshot 在 Apple Silicon 上需要 Rosetta，就误判整个项目不能编译；本项目已验证 flutter build apk --debug 可直接成功。
