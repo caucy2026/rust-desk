@@ -13,7 +13,7 @@ https://github.com/caucy2026/rust-desk
 
 Windows 本地生成的是 Flutter GUI 客户端，必须使用 Windows x64 主机。不要在 WSL 中执行 Windows GUI 打包，也不要使用服务器目录中的 Linux 交叉编译脚本。
 
-完整构建依赖较多，第一次主要耗时在 Visual Studio、Flutter engine 和 vcpkg；依赖准备完成后，后续构建会复用缓存。若只想取得已构建候选包，可直接到 GitHub 的 `KEMI Focused Client Artifacts` 对应 commit run 下载，无需本地重编。
+完整构建依赖较多，第一次主要耗时在 Visual Studio、Flutter engine 和 vcpkg；依赖准备完成后，后续构建会复用缓存。若只想取得已构建候选包，可直接到 GitHub 的 `KEMI Focused Client Artifacts` 对应 commit run 下载；Windows/Linux 都成功后也会生成 `kemi-<完整commit>` 候选 prerelease，无需本地重编。
 
 ## 2. 可直接复制给 VSCode AI 的提示词
 
