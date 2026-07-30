@@ -2,6 +2,14 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 四十九、2026-07-30 BIN 双端交付与 Windows VSCode 构建提示词（1.4.44+102）
+
+- 本机重新生成 PAD debug APK，核验 `versionName=1.4.44`、`versionCode=102`，APK v1/v2签名通过；版本化副本放入根目录 `BIN/KEMI-远程桌面-PAD-1.4.44+102-debug.apk`，SHA-256为 `61d0d32bc5493d6dc7683c2d87ce3f867ed1fbc3bc3964c19122bb5fdc661fd6`。
+- `BIN/KEMI-远程桌面.app` 与当前 macOS release构建的主程序、`service`、版本和 CDHash完全一致，继续保留原固定签名身份；新增 `BIN/KEMI-远程桌面-macOS-arm64-1.4.44+102.zip`，压缩包校验通过，SHA-256为 `a98ed5a211bde86cbe805029d4aa5616ab1c977bc145c2a9dda075b93201d1a3`。
+- 当前登录钥匙串仍显示 `0 valid identities`，现有固定自签名链在本机构建环境显示 `CSSMERR_TP_NOT_TRUSTED`；因此没有用未签名新包覆盖BIN App。恢复原固定证书/私钥之前，可以复用当前已固定签名包，但不能宣称完成新的固定签名。
+- 新增 `windows-vscode-build-prompt.md`：Windows同事可把完整提示词交给VSCode AI，按固定 Visual Studio、LLVM 15、Rust 1.75、Flutter 3.24.5、自定义engine、default bridge和vcpkg commit构建Windows x64便携客户端，并强制记录commit、版本、哈希、签名与启动结果。当前Windows资源仍可能显示RustDesk，仅重命名EXE不算完成KEMI品牌化，提示词要求构建后如实核验并单独登记品牌化任务。
+- GitHub focused run `30541481850` 的default bridge和TopMost x64成功，但Windows x64与Linux x64均在`Build rustdesk`失败；本次只生成`bridge-artifact`和`topmostwindow-artifacts-x64`，没有Windows/Linux最终客户端，不能把中间产物当成交付包。
+
 ## 四十八、2026-07-30 本地/云端分工与精简制品流水线（1.4.44+102）
 
 - 云端审计确认远端最新提交仍为 `262bbedef0d6dc9df39b85c12b315458dcef4117`；`Full Flutter CI #30518880603` 与 `CI #30518880357` 均已失败，并非仍在排队。默认 bridge 成功，但 Windows x64、Linux x64、Android 与 macOS 均在 Build 步骤失败，只留下 bridge 中间 artifact，没有最终 Windows EXE 或 Linux AppImage。

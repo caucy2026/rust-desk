@@ -7,6 +7,13 @@
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
+当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN` 已包含：
+
+- `KEMI-远程桌面.app` 与 `KEMI-远程桌面-macOS-arm64-1.4.44+102.zip`；
+- `KEMI-远程桌面-PAD-1.4.44+102-debug.apk`；
+- Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行
+  `flutter build windows` 或自行升级工具链。
+
 ---
 
 ## 1. 新会话先执行的提示词

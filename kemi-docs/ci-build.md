@@ -130,7 +130,8 @@ preflight 没通过时不要推送碰运气。提交前记录版本号和计划�
 repo='caucy2026/rust-desk'
 commit="$(git rev-parse HEAD)"
 
-curl -fsSL "https://api.github.com/repos/$repo/actions/runs?branch=master&per_page=20" \
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
+  "https://api.github.com/repos/$repo/actions/runs?branch=master&per_page=20" \
   | jq -r --arg commit "$commit" '
       .workflow_runs[]
       | select(.head_sha == $commit)
@@ -141,7 +142,7 @@ curl -fsSL "https://api.github.com/repos/$repo/actions/runs?branch=master&per_pa
 只认名称 `KEMI Focused Client Artifacts`、`head_sha` 完全一致的 run。记录 `<run-id>` 后查询 job：
 
 ```bash
-curl -fsSL \
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/actions/runs/<run-id>/jobs?per_page=100" \
   | jq -r '.jobs[] | [.id,.name,.status,(.conclusion // "-"),.started_at,.completed_at,.html_url] | @tsv'
 ```
@@ -149,7 +150,7 @@ curl -fsSL \
 查询失败步骤：
 
 ```bash
-curl -fsSL \
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/actions/runs/<run-id>/jobs?per_page=100" \
   | jq -r '
       .jobs[]
@@ -161,7 +162,7 @@ curl -fsSL \
 查询失败 check 注释：
 
 ```bash
-curl -fsSL \
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/check-runs/<job-id>/annotations?per_page=100" \
   | jq -r '.[] | [.annotation_level,.path,.start_line,.message] | @tsv'
 ```
@@ -169,7 +170,7 @@ curl -fsSL \
 查询 Actions artifacts：
 
 ```bash
-curl -fsSL \
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/actions/runs/<run-id>/artifacts?per_page=100" \
   | jq -r '.artifacts[] | [.id,.name,.size_in_bytes,.expired,.archive_download_url] | @tsv'
 ```

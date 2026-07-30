@@ -68,6 +68,7 @@ kemi-docs/
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
 ├── ci-build.md                   ← GitHub 跨平台构建、bridge 依赖与验收
+├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
 ├── client-distribution.md         ← PAD 局域网客户端下载与离线包规范
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
@@ -134,6 +135,10 @@ macOS 客户端的唯一操作说明：两项远控必需权限、PAD 输入的�
 ### client-distribution.md
 
 PAD 首页“客户端”入口的唯一说明：同 Wi-Fi 下载原则、HTTP 服务的页面生命周期和安全边界、Android APK 运行时从已安装 `sourceDir` 自分发的机制，以及 macOS/Windows/Linux 离线包导入、四端打包顺序、哈希/签名/安装验收。涉及客户端分发或四端安装包时必须先读本文件。
+
+### windows-vscode-build-prompt.md
+
+给 Windows 同事直接复制到 VSCode AI 的本地构建提示词：先审计 Visual Studio/LLVM/Rust/Flutter/vcpkg，再生成 default bridge、构建 Windows x64 Flutter客户端、打便携 EXE并核验版本、哈希和签名。用于同事自己从 GitHub源码复现 Windows候选包。
 
 ### server-operations.md
 
