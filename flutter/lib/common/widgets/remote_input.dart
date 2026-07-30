@@ -86,18 +86,15 @@ class RawTouchGestureDetectorRegion extends StatefulWidget {
 /// mouseMode only:
 ///   DoubleFiner -> right click
 ///   HoldDrag -> left drag
-enum _TwoFingerGesture { none, scroll, zoom }
+enum _TwoFingerGesture { none, zoom }
 
 class _RawTouchGestureDetectorRegionState
     extends State<RawTouchGestureDetectorRegion> {
   Offset _cacheLongPressPosition = Offset(0, 0);
   // Timestamp of the last long press event.
   int _cacheLongPressPositionTs = 0;
-  double _twoFingerScrollIntegral = 0;
   double _scale = 1;
   double _twoFingerInitialScale = 1;
-  double _twoFingerVerticalTravel = 0;
-  double _twoFingerHorizontalTravel = 0;
   bool _twoFingerHasInitialUpdate = false;
   _TwoFingerGesture _twoFingerGesture = _TwoFingerGesture.none;
 
@@ -125,6 +122,9 @@ class _RawTouchGestureDetectorRegionState
   int _rawTapSequence = 0;
   int _standardTapSequence = -1;
   Timer? _rawTapTimer;
+  final Map<int, Offset> _rawTwoFingerStartPositions = <int, Offset>{};
+  final Map<int, Duration> _rawTwoFingerLastMoveTimes = <int, Duration>{};
+  final Map<int, Offset> _rawTwoFingerLastMoveDeltas = <int, Offset>{};
   Offset? _rawTwoFingerFocalPoint;
   double _rawTwoFingerWheelDistance = 0;
   bool _rawTwoFingerScroll = false;
@@ -168,6 +168,9 @@ class _RawTouchGestureDetectorRegionState
     _rawTapCandidate = false;
     _rawTapTimer?.cancel();
     _resetRawTwoFingerTracking();
+    if (_rawTouchPositions.length == 2) {
+      _rawTwoFingerStartPositions.addAll(_rawTouchPositions);
+    }
   }
 
   void _onRawTouchMove(PointerMoveEvent event) {
@@ -175,6 +178,7 @@ class _RawTouchGestureDetectorRegionState
         !_rawTouchPositions.containsKey(event.pointer)) {
       return;
     }
+    final previousPosition = _rawTouchPositions[event.pointer]!;
     _rawTouchPositions[event.pointer] = event.localPosition;
     final tapStart = _rawTapStart;
     if (event.pointer == _rawTapPointer &&
@@ -182,7 +186,8 @@ class _RawTouchGestureDetectorRegionState
         (event.localPosition - tapStart).distance > kTouchSlop) {
       _rawTapCandidate = false;
     }
-    _updateRawTwoFingerScroll();
+    _updateRawTwoFingerScroll(
+        event.pointer, event.timeStamp, event.localPosition - previousPosition);
   }
 
   void _onRawTouchUp(PointerUpEvent event) {
@@ -218,21 +223,64 @@ class _RawTouchGestureDetectorRegionState
     }
   }
 
-  void _updateRawTwoFingerScroll() {
+  void _updateRawTwoFingerScroll(
+      int movedPointer, Duration timeStamp, Offset moveDelta) {
     if (_rawTouchPositions.length != 2) return;
-    final positions = _rawTouchPositions.values.toList(growable: false);
-    final focalPoint = (positions[0] + positions[1]) / 2;
+    final entries = _rawTouchPositions.entries.toList(growable: false);
+    final firstStart = _rawTwoFingerStartPositions[entries[0].key];
+    final secondStart = _rawTwoFingerStartPositions[entries[1].key];
+    if (firstStart == null || secondStart == null) return;
+
+    final firstDelta = entries[0].value - firstStart;
+    final secondDelta = entries[1].value - secondStart;
+    final focalPoint = (entries[0].value + entries[1].value) / 2;
     final previous = _rawTwoFingerFocalPoint;
     _rawTwoFingerFocalPoint = focalPoint;
     if (previous == null) return;
     final delta = focalPoint - previous;
-    if (!_rawTwoFingerScroll &&
-        delta.dy.abs() > delta.dx.abs() &&
-        delta.dy.abs() > 1) {
-      _rawTwoFingerScroll = true;
+    if (moveDelta != Offset.zero) {
+      _rawTwoFingerLastMoveTimes[movedPointer] = timeStamp;
+      _rawTwoFingerLastMoveDeltas[movedPointer] = moveDelta;
     }
-    if (!_rawTwoFingerScroll) return;
-    _rawTwoFingerWheelDistance += delta.dy;
+
+    final firstLastMoveTime = _rawTwoFingerLastMoveTimes[entries[0].key];
+    final secondLastMoveTime = _rawTwoFingerLastMoveTimes[entries[1].key];
+    final firstLastMoveDelta = _rawTwoFingerLastMoveDeltas[entries[0].key];
+    final secondLastMoveDelta = _rawTwoFingerLastMoveDeltas[entries[1].key];
+    const simultaneousMoveWindow = Duration(milliseconds: 80);
+    final movedTogether = firstLastMoveTime != null &&
+        secondLastMoveTime != null &&
+        (firstLastMoveTime - secondLastMoveTime).abs() <=
+            simultaneousMoveWindow;
+    final sameRecentVerticalDirection = firstLastMoveDelta != null &&
+        secondLastMoveDelta != null &&
+        firstLastMoveDelta.dy != 0 &&
+        secondLastMoveDelta.dy != 0 &&
+        firstLastMoveDelta.dy.isNegative == secondLastMoveDelta.dy.isNegative;
+
+    if (!_rawTwoFingerScroll) {
+      const twoFingerMoveSlop = 6.0;
+      final bothMovedVertically = firstDelta.dy.abs() >= twoFingerMoveSlop &&
+          secondDelta.dy.abs() >= twoFingerMoveSlop;
+      final sameVerticalDirection =
+          firstDelta.dy.isNegative == secondDelta.dy.isNegative;
+      final averageVerticalTravel =
+          (firstDelta.dy.abs() + secondDelta.dy.abs()) / 2;
+      final averageHorizontalTravel =
+          (firstDelta.dx.abs() + secondDelta.dx.abs()) / 2;
+      if (!movedTogether ||
+          !sameRecentVerticalDirection ||
+          !bothMovedVertically ||
+          !sameVerticalDirection ||
+          averageVerticalTravel <= averageHorizontalTravel * 1.2) {
+        return;
+      }
+      _rawTwoFingerScroll = true;
+      _rawTwoFingerWheelDistance += delta.dy;
+    } else {
+      if (!movedTogether || !sameRecentVerticalDirection) return;
+      _rawTwoFingerWheelDistance += delta.dy;
+    }
     while (_rawTwoFingerWheelDistance.abs() >= 4) {
       final direction = _rawTwoFingerWheelDistance > 0 ? 1 : -1;
       inputModel.scroll(direction);
@@ -241,6 +289,9 @@ class _RawTouchGestureDetectorRegionState
   }
 
   void _resetRawTwoFingerTracking() {
+    _rawTwoFingerStartPositions.clear();
+    _rawTwoFingerLastMoveTimes.clear();
+    _rawTwoFingerLastMoveDeltas.clear();
     _rawTwoFingerFocalPoint = null;
     _rawTwoFingerWheelDistance = 0;
     _rawTwoFingerScroll = false;
@@ -594,11 +645,8 @@ class _RawTouchGestureDetectorRegionState
   onTwoFingerScaleStart(ScaleStartDetails d) async {
     _lastTapDownDetails = null;
     _twoFingerGesture = _TwoFingerGesture.none;
-    _twoFingerScrollIntegral = 0;
     _scale = 1;
     _twoFingerInitialScale = 1;
-    _twoFingerVerticalTravel = 0;
-    _twoFingerHorizontalTravel = 0;
     _twoFingerHasInitialUpdate = false;
     if (isNotTouchBasedDevice()) {
       return;
@@ -646,12 +694,10 @@ class _RawTouchGestureDetectorRegionState
       }
     } else {
       if (_rawTwoFingerScroll) return;
-      // Mobile: preserve the familiar gesture contract. A pinch zooms the
-      // local canvas; a two-finger vertical move sends a remote mouse wheel.
-      // The first ScaleUpdate can include the distance between fingers when
-      // the second finger lands. Do not use that scale value to decide a
-      // pinch, but do retain its movement delta: a short two-finger scroll
-      // can have only one update frame on the PAD.
+      // Mobile: the raw pointer path owns two-finger scrolling so it can
+      // require both contacts to move. This scale path only handles pinch
+      // zoom and must never turn a one-finger move plus one held finger into
+      // a remote wheel event.
       final isFirstUpdate = !_twoFingerHasInitialUpdate;
       if (isFirstUpdate) {
         _twoFingerHasInitialUpdate = true;
@@ -660,20 +706,7 @@ class _RawTouchGestureDetectorRegionState
       }
 
       if (_twoFingerGesture == _TwoFingerGesture.none) {
-        _twoFingerVerticalTravel += d.focalPointDelta.dy.abs();
-        _twoFingerHorizontalTravel += d.focalPointDelta.dx.abs();
-        if (_twoFingerVerticalTravel > 2 &&
-            _twoFingerVerticalTravel > _twoFingerHorizontalTravel * 1.2) {
-          _twoFingerGesture = _TwoFingerGesture.scroll;
-          // A short PAD gesture can end on this same update. Send its first
-          // wheel tick immediately instead of waiting for another frame.
-          if (d.focalPointDelta.dy != 0) {
-            inputModel.scroll(d.focalPointDelta.dy > 0 ? 1 : -1);
-          }
-          _twoFingerScrollIntegral = 0;
-          return;
-        } else if (!isFirstUpdate &&
-            (d.scale - _twoFingerInitialScale).abs() > 0.05) {
+        if (!isFirstUpdate && (d.scale - _twoFingerInitialScale).abs() > 0.05) {
           _twoFingerGesture = _TwoFingerGesture.zoom;
         }
       }
@@ -681,15 +714,6 @@ class _RawTouchGestureDetectorRegionState
       if (_twoFingerGesture == _TwoFingerGesture.zoom) {
         ffi.canvasModel.updateScale(d.scale / _scale, d.focalPoint);
         _scale = d.scale;
-      } else if (_twoFingerGesture == _TwoFingerGesture.scroll) {
-        _twoFingerScrollIntegral += d.focalPointDelta.dy / 4;
-        if (_twoFingerScrollIntegral > 1) {
-          inputModel.scroll(1);
-          _twoFingerScrollIntegral = 0;
-        } else if (_twoFingerScrollIntegral < -1) {
-          inputModel.scroll(-1);
-          _twoFingerScrollIntegral = 0;
-        }
       }
     }
   }
@@ -708,11 +732,8 @@ class _RawTouchGestureDetectorRegionState
       // mobile
       _scale = 1;
       _twoFingerInitialScale = 1;
-      _twoFingerVerticalTravel = 0;
-      _twoFingerHorizontalTravel = 0;
       _twoFingerHasInitialUpdate = false;
       _twoFingerGesture = _TwoFingerGesture.none;
-      _twoFingerScrollIntegral = 0;
       // No idea why we need to set the view style to "" here.
       // bind.sessionSetViewStyle(sessionId: sessionId, value: "");
     }

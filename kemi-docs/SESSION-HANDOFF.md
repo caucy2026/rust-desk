@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-30
-> 当前源码、Mac 安装版本与 PAD 当前安装：`1.4.32+90`；Mac 测试包使用固定本地代码签名身份
+> 当前源码、Mac 安装版本与 PAD 当前安装：`1.4.33+91`；Mac 测试包使用固定本地代码签名身份
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -28,7 +28,7 @@
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前源码、Mac 安装版本与 PAD 当前安装均为 1.4.32+90；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前源码、Mac 安装版本与 PAD 当前安装均为 1.4.33+91；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -47,8 +47,8 @@
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
-- 当前版本源必须一致：Cargo.toml=1.4.32、Cargo.lock rustdesk=1.4.32、flutter/pubspec.yaml=1.4.32+90；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.32+90。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.32`。
+- 当前版本源必须一致：Cargo.toml=1.4.33、Cargo.lock rustdesk=1.4.33、flutter/pubspec.yaml=1.4.33+91；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.33+91。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.33`。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -438,15 +438,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.25"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.25"` |
-| `flutter/pubspec.yaml` | `version: 1.4.25+83` |
+| `Cargo.toml` | `version = "1.4.33"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.33"` |
+| `flutter/pubspec.yaml` | `version: 1.4.33+91` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.21
-versionCode=79
+versionName=1.4.33
+versionCode=91
 ```
 
 ### 9.2 首页版本号
