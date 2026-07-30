@@ -73,8 +73,8 @@ jobs:
         id: cache-bridge
         uses: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c # v3
         with:
-          path: /tmp/flutter_rust_bridge
-          key: bridge-${{ matrix.job.flutter-version }}
+          path: /tmp/flutter_rust_bridge/bin
+          key: bridge-tools-${{ runner.os }}-${{ env.RUST_VERSION }}-${{ env.CARGO_EXPAND_VERSION }}-${{ env.FLUTTER_RUST_BRIDGE_VERSION }}
 
       - name: Install flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -86,8 +86,27 @@ jobs:
       - name: Install flutter rust bridge deps
         shell: bash
         run: |
-          cargo install cargo-expand --version ${{ env.CARGO_EXPAND_VERSION }} --locked
-          cargo install flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features "uuid" --locked
+          export PATH="/tmp/flutter_rust_bridge/bin:$PATH"
+
+          install_bridge_tool() {
+            local tool="$1"
+            shift
+            local installed="/tmp/flutter_rust_bridge/bin/$tool"
+            if [[ -x "$installed" ]]; then
+              "$installed" --version
+              return
+            fi
+            for attempt in 1 2 3; do
+              cargo install "$@" --locked --root /tmp/flutter_rust_bridge && return
+              if [[ "$attempt" == 3 ]]; then
+                exit 1
+              fi
+              sleep "$((attempt * 10))"
+            done
+          }
+
+          install_bridge_tool cargo-expand cargo-expand --version ${{ env.CARGO_EXPAND_VERSION }}
+          install_bridge_tool flutter_rust_bridge_codegen flutter_rust_bridge_codegen --version ${{ env.FLUTTER_RUST_BRIDGE_VERSION }} --features uuid
           if [[ "${{ matrix.job.flutter-version }}" == "3.22.3" ]]; then
             # Default Flutter 3.22.3: extended_text 14 needs a newer Dart, so downgrade for resolution.
             sed -i -e 's/extended_text: 14.0.0/extended_text: 13.0.0/g' flutter/pubspec.yaml
@@ -100,7 +119,8 @@ jobs:
 
       - name: Run flutter rust bridge
         run: |
-          ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
+          export PATH="/tmp/flutter_rust_bridge/bin:$PATH"
+          flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
           cp ./flutter/macos/Runner/bridge_generated.h ./flutter/ios/Runner/bridge_generated.h
 
       - name: Upload Artifact

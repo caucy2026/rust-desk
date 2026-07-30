@@ -551,6 +551,7 @@ class _GeneralState extends State<_General> {
           kOptionEnableCheckUpdate,
           isServer: false,
         ),
+      if (Platform.isMacOS) const _MacLaunchAtLoginOption(),
       if (showAutoUpdate)
         _OptionCheckBox(
           context,
@@ -860,6 +861,87 @@ class _GeneralState extends State<_General> {
         enabled: !isOptFixed,
       ).marginOnly(left: _kContentHMargin);
     });
+  }
+}
+
+class _MacLaunchAtLoginOption extends StatefulWidget {
+  const _MacLaunchAtLoginOption();
+
+  @override
+  State<_MacLaunchAtLoginOption> createState() =>
+      _MacLaunchAtLoginOptionState();
+}
+
+class _MacLaunchAtLoginOptionState extends State<_MacLaunchAtLoginOption> {
+  static const _channel = MethodChannel('org.rustdesk.rustdesk/host');
+  bool _enabled = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      _enabled = await _channel.invokeMethod<bool>('getLaunchAtLogin') ?? false;
+    } on PlatformException catch (error) {
+      debugPrint('Unable to read KEMI launch-at-login setting: $error');
+    }
+    if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _setEnabled(bool enabled) async {
+    setState(() => _loading = true);
+    try {
+      final saved =
+          await _channel.invokeMethod<bool>('setLaunchAtLogin', enabled);
+      if (mounted) {
+        setState(() => _enabled = saved ?? enabled);
+      }
+    } on PlatformException catch (error) {
+      debugPrint('Unable to update KEMI launch-at-login setting: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _loading ? null : () => _setEnabled(!_enabled),
+      child: Row(
+        children: [
+          Checkbox(
+            value: _enabled,
+            onChanged: _loading ? null : (value) => _setEnabled(value ?? false),
+          ).marginOnly(right: 5),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(translate('Start on boot')),
+                Text(
+                  translate('Launch KEMI when you log in to this Mac'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          if (_loading)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+        ],
+      ).marginOnly(left: _kCheckBoxLeftMargin),
+    );
   }
 }
 

@@ -254,7 +254,7 @@ class FfiModel with ChangeNotifier {
           '请在 Mac 上检查：\n'
           '1. 系统设置 → 隐私与安全性 → 辅助功能，允许 KEMI-远程桌面。\n'
           '2. 系统设置 → 隐私与安全性 → 输入监控，允许 KEMI-远程桌面。\n'
-          '3. 修改权限后，退出并重新打开 KEMI-远程桌面。';
+          '3. 返回 KEMI 的授权窗口刷新状态，然后重新连接。';
       showMsgBox(sessionId, 'error', '需要 Mac 输入权限', helpText, '', true,
           parent.target!.dialogManager);
     } else if (hasKeyboardPerm) {
@@ -1197,8 +1197,8 @@ class FfiModel with ChangeNotifier {
       final helpText = '已连接，但远端 Mac 没有传来画面。\n\n'
           '请在 Mac 上检查：\n'
           '1. 系统设置 → 隐私与安全性 → 屏幕录制，允许 KEMI-远程桌面。\n'
-          '2. 修改权限后，退出并重新打开 KEMI-远程桌面。\n'
-          '3. 重新发起 Mac 端屏幕共享。';
+          '2. 返回 KEMI 的授权窗口刷新状态。\n'
+          '3. 授权成功后，在 PAD 重新连接。';
       showMsgBox(
           sessionId, 'error', '远端 Mac 没有画面', helpText, '', true, dialogManager);
     }
@@ -1214,9 +1214,9 @@ class FfiModel with ChangeNotifier {
               SelectionArea(child: msgboxContent(type, title, waitingText)),
           actions: [
             if (isMacPeer)
-              dialogButton("Mac Capture Help",
+              dialogButton("Mac 无画面帮助",
                   onPressed: showMacCaptureHelp, isOutline: true),
-            dialogButton("Cancel", onPressed: onClose, isOutline: true)
+            dialogButton("取消连接", onPressed: onClose, isOutline: true)
           ],
           onCancel: onClose),
       tag: '$sessionId-waiting-for-image',

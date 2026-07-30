@@ -45,28 +45,15 @@ extern "C" bool InputMonitoringAuthStatus(bool prompt) {
     return true;
     #else
     if (floor(NSAppKitVersionNumber) >= NSAppKitVersionNumber10_15) {
-        IOHIDAccessType theType = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
-        NSLog(@"IOHIDCheckAccess = %d, kIOHIDAccessTypeGranted = %d", theType, kIOHIDAccessTypeGranted);
-        switch (theType) {
-            case kIOHIDAccessTypeGranted:
-                return true;
-                break;
-            case kIOHIDAccessTypeDenied: {
-                if (prompt) {
-                    NSString *urlString = @"x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
-                    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:urlString]];
-                }
-                break;
-            }
-            case kIOHIDAccessTypeUnknown: {
-                if (prompt) {
-                    bool result = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent);
-                    NSLog(@"IOHIDRequestAccess result = %d", result);
-                }
-                break;
-            }
-            default:
-                break;
+        if (CGPreflightListenEventAccess()) {
+            return true;
+        }
+        if (prompt) {
+            // The Flutter foreground window is the only normal request path.
+            // Keep this native status bridge non-interactive so it cannot
+            // register a helper/FFI caller as an unnamed TCC client.
+            NSString *urlString = @"x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+            [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:urlString]];
         }
     } else {
         return true;

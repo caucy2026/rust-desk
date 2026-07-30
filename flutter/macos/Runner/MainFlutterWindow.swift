@@ -1,6 +1,7 @@
 import Cocoa
 import AVFoundation
 import FlutterMacOS
+import CoreGraphics
 import desktop_multi_window
 // import bitsdojo_window_macos
 
@@ -36,6 +37,57 @@ class RelativeMouseState {
 }
 
 class MainFlutterWindow: NSWindow {
+    private let launchAtLoginLabel = "com.carriez.kemi-remote-desktop"
+
+    private var launchAtLoginPlistURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents")
+            .appendingPathComponent("\(launchAtLoginLabel).plist")
+    }
+
+    private func isLaunchAtLoginEnabled() -> Bool {
+        guard let plist = NSDictionary(contentsOf: launchAtLoginPlistURL) else {
+            return false
+        }
+        return plist["Label"] as? String == launchAtLoginLabel &&
+            (plist["RunAtLoad"] as? Bool ?? false)
+    }
+
+    private func setLaunchAtLogin(enabled: Bool) throws {
+        let fileManager = FileManager.default
+        let plistURL = launchAtLoginPlistURL
+
+        if !enabled {
+            if fileManager.fileExists(atPath: plistURL.path) {
+                try fileManager.removeItem(at: plistURL)
+            }
+            return
+        }
+
+        guard let executablePath = Bundle.main.executablePath else {
+            throw NSError(
+                domain: "KEMILaunchAtLogin",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Unable to locate the KEMI executable."])
+        }
+
+        try fileManager.createDirectory(
+            at: plistURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+
+        let plist: [String: Any] = [
+            "Label": launchAtLoginLabel,
+            "ProgramArguments": [executablePath],
+            "RunAtLoad": true,
+            "ProcessType": "Interactive",
+        ]
+        let data = try PropertyListSerialization.data(
+            fromPropertyList: plist,
+            format: .xml,
+            options: 0)
+        try data.write(to: plistURL, options: .atomic)
+    }
+
     override func awakeFromNib() {
         rustdesk_core_main();
         let flutterViewController = FlutterViewController.init()
@@ -178,6 +230,47 @@ class MainFlutterWindow: NSWindow {
         }
     }
 
+    /// Request Input Monitoring from the foreground KEMI app process.
+    ///
+    /// TCC associates this permission with the calling process. Keeping the
+    /// request in Runner (rather than in the Rust FFI worker) makes the entry
+    /// in System Settings resolve to this app's bundle display name.
+    private func requestInputMonitoringAccess() -> Bool {
+        assert(Thread.isMainThread, "requestInputMonitoringAccess must be called on the main thread")
+
+        if #available(macOS 10.15, *) {
+            // Input Monitoring governs global CGEvent listeners.  Request it
+            // through CoreGraphics so TCC registers the foreground app bundle
+            // in Privacy > Input Monitoring, rather than a raw HID client.
+            if CGPreflightListenEventAccess() {
+                return true
+            }
+
+            if CGRequestListenEventAccess() {
+                return true
+            }
+        }
+
+        // The system does not always display a sheet for this API (for
+        // example after a previous denial). Open the exact page as fallback.
+        if let settingsURL = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(settingsURL)
+        }
+        return false
+    }
+
+    /// Restore the agent-style KEMI window after macOS has completed a TCC
+    /// decision. `LSUIElement` apps can remain alive but lose normal app
+    /// activation when System Settings takes focus, which otherwise looks as
+    /// if KEMI had exited.
+    private func activateMainAppWindow() {
+        assert(Thread.isMainThread, "activateMainAppWindow must be called on the main thread")
+        NSApp.activate(ignoringOtherApps: true)
+        makeKeyAndOrderFront(nil)
+        orderFrontRegardless()
+    }
+
     public func setMethodHandler(registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "org.rustdesk.rustdesk/host", binaryMessenger: registrar.messenger)
         channel.setMethodCallHandler({
@@ -196,6 +289,31 @@ class MainFlutterWindow: NSWindow {
                 case "terminate":
                     NSApplication.shared.terminate(self)
                     result(nil)
+                case "getLaunchAtLogin":
+                    result(self.isLaunchAtLoginEnabled())
+                case "setLaunchAtLogin":
+                    guard let enabled = call.arguments as? Bool else {
+                        result(FlutterError(
+                            code: "invalid_argument",
+                            message: "setLaunchAtLogin expects a boolean value.",
+                            details: nil))
+                        return
+                    }
+                    do {
+                        try self.setLaunchAtLogin(enabled: enabled)
+                        result(self.isLaunchAtLoginEnabled())
+                    } catch {
+                        NSLog("[KEMI] Failed to update launch-at-login setting: \(error)")
+                        result(FlutterError(
+                            code: "launch_at_login_failed",
+                            message: error.localizedDescription,
+                            details: nil))
+                    }
+                case "requestInputMonitoring":
+                    result(self.requestInputMonitoringAccess())
+                case "activateMainAppWindow":
+                    self.activateMainAppWindow()
+                    result(true)
                 case "canRecordAudio":
                     switch AVCaptureDevice.authorizationStatus(for: .audio) {
                     case .authorized:
