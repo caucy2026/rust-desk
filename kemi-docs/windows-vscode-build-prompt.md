@@ -27,7 +27,10 @@ Windows 本地生成的是 Flutter GUI 客户端，必须使用 Windows x64 主�
 
 必须遵守以下规则：
 
-1. 如果仓库还没下载，使用 git clone --recursive；如果已经下载，先运行：
+1. 如果仓库还没下载，必须使用：
+   git clone --recursive --branch master https://github.com/caucy2026/rust-desk.git
+   当前GitHub默认分支仍是旧main，不带--branch master会取得错误的旧目录结构。
+   如果已经下载，先运行：
    git status --short
    git submodule status
    git rev-parse HEAD

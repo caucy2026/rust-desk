@@ -2,7 +2,8 @@
 
 > 用途：在真实开发仓中安全提交 KEMI 定制、备份到 GitHub、处理分叉和恢复项目。
 >
-> 当前基线日期：2026-07-29。完整项目上下文见 `kemi-docs/SESSION-HANDOFF.md`。
+> 当前基线日期：2026-07-30。完整项目上下文见 `kemi-docs/SESSION-HANDOFF.md`；
+> 备份与候选构建冲突的通用方法见 `kemi-docs/ci-build.md`。
 
 ---
 
@@ -19,7 +20,7 @@
 | 远端 | 地址 | 用途 | 是否推送 KEMI 代码 |
 |---|---|---|---|
 | `origin` | `git@github.com:rustdesk/rustdesk.git` | RustDesk 官方上游 | 否 |
-| `backup` | `git@github.com:caucy2026/rust-desk.git` | KEMI GitHub 备份 | 是，推送 `master` |
+| `backup` | `git@github.com:caucy2026/rust-desk.git` | KEMI GitHub 备份 | 是；候选推 `master`，未完成代码推 `wip/*` |
 
 检查命令：
 
@@ -30,7 +31,8 @@ git branch --show-current
 git status --short
 ```
 
-预期当前分支为 `master`。
+准备候选构建时预期分支为 `master`；云端候选尚未完成、只需要备份开发进度时，可以位于
+`wip/*`。备份与云端构建的通用决策规则见 `kemi-docs/ci-build.md`。
 
 以下历史流程已经废弃：
 
@@ -150,6 +152,31 @@ N M  双方分叉，先 rebase 并解决冲突
 0 0  本地与远端一致，无需推送
 ```
 
+### 4.1 云端候选未完成时的备份
+
+如果 `master` 对应的 Windows/Linux run 仍在运行，新功能只需要备份、不准备替换该候选，
+必须推到 WIP 分支：
+
+```bash
+git switch -c wip/20260730-feature-name
+git add <明确文件列表>
+git commit -m "wip: back up feature progress"
+git push -u backup HEAD
+```
+
+如果新进度已经误提交在本地 `master`，但还没有推送：
+
+```bash
+git push backup HEAD:refs/heads/wip/20260730-feature-name
+```
+
+以上两种方式都不会移动远端 `master`，也不会触发或取消
+`KEMI Focused Client Artifacts`。待旧 run 的状态和产物记录完成后，再将 WIP 整理进
+`master`，完成 preflight 后只推送一次。
+
+纯 `kemi-docs/**` 修改可以推 `master`，因为 focused workflow 已忽略该路径；但提交中一旦
+混入源码、资源、锁文件或 workflow，就必须按代码候选处理。
+
 ---
 
 ## 五、分叉与冲突处理
@@ -200,7 +227,7 @@ git log --oneline --max-count=8
 
 ## 六、推送到 KEMI GitHub
 
-确认本地历史已包含 `backup/master` 后：
+确认本地历史已包含 `backup/master`，并且本次提交已准备替换/启动候选构建后：
 
 ```bash
 git push backup master
@@ -214,6 +241,10 @@ git push origin master
 ```
 
 如果网络或 SSH 身份失败，先保留本地提交，报告真实错误；不要改写远端地址或改用强推规避问题。
+
+> 当前 GitHub default branch 仍是旧 `main`，真实客户端开发分支是 `master`。在仓库设置
+> 修正前，新环境必须显式使用 `git clone --recursive --branch master ...`，不能根据 GitHub
+> 首页默认分支判断备份是否存在。
 
 ---
 
@@ -313,5 +344,5 @@ git ls-remote backup refs/heads/master
 
 ---
 
-> 最后更新：2026-07-29
+> 最后更新：2026-07-30
 > 维护：KEMI 远程桌面团队

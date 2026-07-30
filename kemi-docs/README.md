@@ -67,7 +67,7 @@ kemi-docs/
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
-├── ci-build.md                   ← GitHub 跨平台构建、bridge 依赖与验收
+├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
 ├── client-distribution.md         ← PAD 局域网客户端下载与离线包规范
 ├── server-operations.md         ← 服务端构建与部署入口
@@ -99,7 +99,7 @@ kemi-docs/
 - 当前 Git 基线、不可回退行为和三层目录架构
 - 双屏、键盘、并行文件传输 Session 的数据流
 - Flutter/Java/Rust/ADB 环境与 Debug APK 构建、部署、验收命令
-- 当前真实 GitHub `backup/master` 推送与恢复流程
+- 当前真实 GitHub 候选分支、WIP备份与恢复流程
 
 > 新会话必须先读本文件，再根据任务进入具体模块文档。
 
@@ -109,7 +109,7 @@ kemi-docs/
 
 - 每节包含：问题、根因、修复文件、改动细节、验证结果
 - 末尾维护"暂未完成任务"清单
-- 当前最新：第十节（跨会话接续手册、VS Code prompt 和真实 GitHub 备份流程）
+- 当前最新：第五十节（通用备份/云构建协调方法与KEMI特例）
 
 > 每次提交代码前应同步更新本文档。
 
@@ -118,7 +118,7 @@ kemi-docs/
 **Git 操作与 GitHub 备份指南**，独立于外部对话记录：
 
 - 真实远端地图（官方 `origin` vs KEMI `backup`）
-- 日常备份流程（提交 → fetch/rebase → `git push backup master`）
+- 候选提交推`backup/master`、未完成进度推`backup/wip/*`的分流规则
 - 从备份仓恢复的完整步骤
 - 分叉处理、冲突解决和远端完整哈希核验
 
@@ -130,7 +130,10 @@ macOS 客户端的唯一操作说明：两项远控必需权限、PAD 输入的�
 
 ### ci-build.md
 
-本地/云端构建分工和 GitHub Actions 的唯一说明：PAD、Mac 本地推进，Windows x64 与 Linux x86_64 由 focused workflow 并行构建；规定 run 持续监控、失败升级、候选 Release、manifest、SHA-256、导入和最终交付门禁。涉及 Windows、Linux 或 CI 时必须先读本文件。
+本地开发、远端备份与云端构建协调的唯一说明。第一部分是可供其他项目复用的分支职责、
+WIP备份、并发取消、候选身份、失败处理和交付状态；第二部分单列KEMI的`master`/`wip/*`、
+focused workflow、Windows/Linux矩阵、查询命令与当前run。涉及构建期间备份、Windows、
+Linux或CI时必须先读本文件。
 
 ### client-distribution.md
 
@@ -200,13 +203,16 @@ cd /Users/newlink/kemi/RustDesk/client
 git status --short
 git diff --stat
 
-# 备份到 GitHub
+# 旧云构建仍在运行，只备份未完成进度
 git add <files>
-git commit -m "feat(xxx): 描述"
+git commit -m "wip: back up current progress"
+git push backup HEAD:refs/heads/wip/20260730-feature-name
+
+# 功能完成并准备启动下一轮候选时才推 master
 git push backup master
 
-# 核对远端与本地哈希
-git ls-remote backup refs/heads/master
+# 核对实际推送分支与本地哈希
+git ls-remote backup refs/heads/wip/20260730-feature-name
 git rev-parse HEAD
 ```
 

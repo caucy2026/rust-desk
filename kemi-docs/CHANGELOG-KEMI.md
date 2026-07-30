@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 五十、2026-07-30 通用备份与云构建协调文档（1.4.44+102）
+
+- 将`ci-build.md`重构为“通用方法 + KEMI特例”两部分。通用部分明确区分开发备份、候选构建、Actions artifact和候选发布，新增交付分支、`wip/*`、文档路径与tag的职责模型。
+- 补齐“旧run未完成但新代码必须备份”的流程：未完成代码推`wip/*`，不移动交付分支；纯文档只有在workflow真实配置`paths-ignore`且没有混入源码时才可安全推交付分支；准备生成下一轮客户端时才推交付分支。
+- 新增推送决策表、并发组设计、候选唯一身份、失败重试/主动替换条件、`Backed Up → Candidate Submitted → Cloud Ready → Imported → Delivery Done`状态模型，以及默认分支错位、子模块/LFS、本地BIN、workflow变更、紧急修复与monorepo等特例。
+- KEMI特例单列`backup/master`、`wip/*`、focused workflow、Windows/Linux矩阵、API查询和run `30541481850`真实结果；同步更新`WORKSPACE.md`、`GIT-OPS.md`、`SESSION-HANDOFF.md`、README和Windows构建提示词。
+- `.github/prompts/**`当前不在focused workflow的文档忽略路径内；本次没有混入该目录修改，避免纯说明提交触发新一轮Windows/Linux构建。接续prompt的同义规则留到下一次真实代码候选一起更新。
+- GitHub当前default branch仍是旧`main`，真实客户端和文档位于`master`；修正仓库设置前，Windows同事必须使用`git clone --recursive --branch master ...`，避免下载旧monorepo。
+
 ## 四十九、2026-07-30 BIN 双端交付与 Windows VSCode 构建提示词（1.4.44+102）
 
 - 本机重新生成 PAD debug APK，核验 `versionName=1.4.44`、`versionCode=102`，APK v1/v2签名通过；版本化副本放入根目录 `BIN/KEMI-远程桌面-PAD-1.4.44+102-debug.apk`，SHA-256为 `61d0d32bc5493d6dc7683c2d87ce3f867ed1fbc3bc3964c19122bb5fdc661fd6`。

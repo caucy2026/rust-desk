@@ -1,41 +1,362 @@
-# KEMI 本地与 GitHub 构建分工、监控和交付
+# 本地开发、GitHub 备份与云端构建协调
 
-> 适用版本：`1.4.44+102`。本文件是 KEMI 客户端“哪些在本地构建、哪些交给 GitHub、怎样并行、怎样持续监控、怎样取得并导入制品”的唯一执行说明。四端安装包进入 PAD 的规则见 `client-distribution.md`；macOS 签名和权限见 `macos-configuration.md`。
+> 本文前半部分是可复用于其他项目的通用方法，后半部分是 KEMI-远程桌面的具体实现。
+> 核心目标是同时满足：开发进度及时备份、正在执行的候选构建不被误取消、云端资源不被
+> 重复浪费、最终制品可以追溯到唯一源码提交。
 
-## 1. 固定原则
+---
 
-1. **本地能可靠完成的目标不等待 GitHub**；云端只承担当前 Mac 无法可靠交付的目标。
-2. **本地与云端并行**。本地预检通过并形成一个候选 commit 后，立即推送；云端开始 Windows/Linux 构建时，本地继续构建 PAD、Mac 和准备验收，不互相等待。
-3. **一次候选提交对应一次云端 run**。记录完整 commit SHA、run ID 和 URL；出现新 commit 后，旧 run 自动取消，不继续浪费 runner。
-4. **失败立即处理首个失败步骤**。不能等整个大矩阵结束后才看；确定性编译错误不盲目重跑。
-5. **绿色 run 不等于交付完成**。必须依次达到 `Cloud Ready`、`Imported`、`Delivery Done`。
-6. KEMI 常规交付只需要 Windows x64 和 Linux x86_64。Windows ARM64/x86、Linux ARM、Flatpak、RPM、iOS 等只有出现明确需求时才启用完整上游流水线。
+# 第一部分：通用方法
 
-## 2. 当前构建能力与责任边界
+## 1. 先区分四种对象
 
-| 目标 | 默认位置 | 当前能力和约束 | 完成责任 |
+很多冲突来自把“备份”“构建”“发布”当成同一件事。任何项目都应明确区分：
+
+| 对象 | 含义 | 推荐载体 |
+|---|---|---|
+| 开发备份 | 保存尚未达到交付条件的源码进度 | `wip/*` 远端分支 |
+| 候选构建 | 准备让 CI 生成客户端的不可变源码快照 | 交付分支上的一个 commit |
+| 构建制品 | CI 生成但尚未完成目标系统验收的文件 | Actions artifact |
+| 候选发布 | 已汇总版本、commit、哈希的待验收安装包 | prerelease 或制品仓库 |
+
+结论：
+
+- “需要备份”不等于“必须推送交付分支”。
+- “云端构建成功”不等于“客户端已经交付”。
+- 源码 Git、Actions artifact 和正式发布包解决的是三个不同问题。
+
+## 2. 推荐分支职责
+
+每个项目至少约定以下角色，实际分支名称可以不同：
+
+| 分支类型 | 示例 | 用途 | 是否自动构建交付客户端 |
 |---|---|---|---|
-| PAD / Android debug | 本地 Mac | Flutter/Kotlin 包装和 ADB 安装可靠；若 Rust 核心变化，必须先重编 arm64 Android `librustdesk.so`，不能复用旧 JNI 冒充完整更新 | 本地构建与 PAD 实机验收 |
-| PAD / Android release | 本地优先，有条件云端 | 当前 Apple Silicon Mac 缺 Rosetta 时 release AOT 不可靠；先补齐 Rosetta/NDK 后本地，否则才用云端 | 本地环境负责人 |
-| macOS arm64 | 本地 Mac | GUI 编译可靠；固定测试证书/私钥必须在登录钥匙串可见后才能签名交付。当前若 `security find-identity -p codesigning` 为 0，只能称“编译完成”，不能称“交付完成” | 本地构建、签名和 Mac 实机验收 |
-| Windows x64 GUI / EXE | GitHub Windows runner | 本机没有 Windows、MSVC、Windows SDK、Flutter Windows runner 和对应 vcpkg，不能可靠交叉编译 | 云端构建与 Windows 实机验收 |
-| Linux x86_64 GUI / AppImage | GitHub Linux runner | 本机 Zig 交叉编译只适用于 `server/rustdesk-server`，不是 Flutter Linux GUI；GUI 还依赖 GTK、音频/X11、x64 vcpkg 和 Linux Flutter bundle | 云端构建与 Linux 实机验收 |
+| 交付分支 | `main`、`master`、`release-candidate` | 只接收通过本地预检、准备生成候选包的提交 | 是 |
+| 工作备份分支 | `wip/日期-功能` | 备份未完成代码，允许继续修改 | 否 |
+| 文档分支或文档路径 | `docs/*`、`docs/**` | 说明、记录、交接 | 通常否 |
+| 正式发布引用 | `v1.2.3` tag | 锁定正式交付源码 | 只运行发布流水线 |
 
-不要把 `server/build.sh linux` 生成的 Linux 服务端 ELF 当成 Linux GUI 客户端，也不要把旧 `flutter/android/app/src/main/jniLibs` 当成本次新编译的 Rust 核心。
+交付分支必须保持单一语义：每次非纯文档提交都代表“允许启动下一轮候选构建”。
 
-## 3. 高效流水线结构
+## 3. 构建未完成时如何备份新代码
 
-### 3.1 常规 KEMI 交付入口
+### 3.1 尚未提交的新改动
 
-唯一入口：
+从当前候选提交创建工作分支，在工作分支提交并推送：
 
-```text
-.github/workflows/kemi-distribution.yml
-显示名：KEMI Focused Client Artifacts
-触发：master 有非纯文档 push，或手动 workflow_dispatch
+```bash
+git switch -c wip/20260730-feature-name
+git status --short
+git add <明确文件列表>
+git commit -m "wip: back up feature progress"
+git push -u <backup-remote> HEAD
 ```
 
-它调用 `flutter-build.yml` 的 `kemi-distribution` profile，只运行：
+结果：
+
+- 新代码已经保存在 GitHub；
+- 交付分支没有移动；
+- 旧候选 run 继续运行；
+- 后续开发可以继续提交到同一 `wip/*` 分支。
+
+### 3.2 已经误提交在本地交付分支，但还没有推送
+
+不要把它推到远端交付分支。直接把当前 HEAD 推成远端 WIP 分支：
+
+```bash
+git push <backup-remote> HEAD:refs/heads/wip/20260730-feature-name
+```
+
+这样无需改写提交，也不会移动远端交付分支。当前 run 完成后再整理本地分支关系。
+
+### 3.3 当前 run 完成后进入下一轮
+
+先确认上一轮状态和产物已经记录，再把 WIP 整理进交付分支：
+
+```bash
+git fetch <backup-remote>
+git switch <delivery-branch>
+git rebase <backup-remote>/<delivery-branch>
+git merge --ff-only wip/20260730-feature-name
+```
+
+完成版本、依赖和测试检查后，只推送一次：
+
+```bash
+git push <backup-remote> <delivery-branch>
+```
+
+如果不能 `--ff-only`，说明两条历史已经分叉。应先检查差异并显式 rebase 或解决冲突，
+不能强推、不能用 reset 丢弃一边。
+
+## 4. 推送决策表
+
+| 当前情况 | 正确动作 | 对正在运行的候选构建 |
+|---|---|---|
+| 只是文档更新，workflow 已确认忽略文档路径 | 提交并推送交付分支 | 不创建新 run，不取消旧 run |
+| 功能未完成，但必须异地备份 | 推送 `wip/*` | 不影响 |
+| 功能完成，准备生成下一版客户端 | 等旧 run 记录完成后推交付分支 | 启动新 run |
+| 旧 run 已确定失败，新提交正是修复 | 推交付分支，并记录主动替换原因 | 允许取消旧 run |
+| 只想重试网络或 runner 临时故障 | 对同一 commit 重跑失败 job | 不产生新源码身份 |
+| workflow 本身需要修改 | 先在 WIP/PR 验证；确认是否值得替换旧 run | 默认不立即推交付分支 |
+| 版本号、锁文件或生成代码变化 | 作为新的完整候选提交 | 必须重新构建相关平台 |
+
+“纯文档不影响构建”成立的前提是触发器确实配置了 `paths-ignore`，并且此次提交没有混入
+源码、锁文件、构建脚本、资源或 workflow。不能只凭提交信息写了 `docs:` 就认为安全。
+
+## 5. CI 并发和触发器设计
+
+通用候选构建可采用：
+
+```yaml
+on:
+  push:
+    branches:
+      - <delivery-branch>
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: client-candidate-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+设计含义：
+
+1. 只有交付分支启动常规客户端构建；
+2. WIP 分支只负责 GitHub 备份；
+3. 纯文档提交不会创建 run，因此不会触发并发取消；
+4. 交付分支出现新的代码候选时，旧 run 才被有意识地替换；
+5. 手动构建仍绑定所选择的 ref，必须记录 ref 和 commit。
+
+如果项目要求每个候选都必须完整保留，应把 `cancel-in-progress` 改为 `false`；代价是旧候选
+继续占用 runner。不要在没有明确产品策略时频繁切换该值。
+
+WIP分支是否安全不能只看一个workflow。接入其他项目时必须审计`.github/workflows/`下所有文件：
+
+- `on: push`没有`branches`过滤时，WIP推送也会触发该workflow；
+- 不同workflow如果复用同一个concurrency group，可能互相取消；
+- 文档路径可能被一个workflow忽略，却仍触发另一个workflow；
+- WIP可以触发快速lint，但不应触发昂贵的全平台打包；
+- 并发组应包含稳定的产品/工作流前缀和`${{ github.ref }}`，避免跨分支误取消。
+
+因此，“推WIP不会影响候选构建”必须由真实触发器和并发配置证明，不能只靠分支命名推断。
+
+## 6. 一个候选版本的唯一身份
+
+每次构建至少记录：
+
+```text
+repository
+delivery branch
+full commit SHA
+product version/build number
+workflow name
+run ID / run attempt
+toolchain and lockfile state
+target platform/architecture
+artifact filename/size/SHA-256/signature
+target-system launch and function result
+```
+
+界面版本号相同但 commit 不同，仍是两个不同候选。文件名相同但 SHA-256 不同，也不能互换。
+构建报告禁止只写“最新版”“刚推的版本”或“应该成功”。
+
+## 7. 本地和云端如何并行
+
+通用分工：
+
+| 责任线 | 工作 | 完成标准 |
+|---|---|---|
+| 本地预检 | 格式、静态检查、单元测试、版本和锁文件检查 | 候选提交可推送 |
+| 本地构建 | 本机能可靠构建的平台 | 包、签名、目标设备验收 |
+| 云端构建 | 本机缺少工具链或目标系统的平台 | 对应 commit 的平台制品 |
+| 持续监控 | 查询 run/job/失败步骤，不盲等 | 状态和首个有效错误 |
+| 制品集成 | 下载、哈希、签名、格式、版本、功能检查 | 可进入最终分发包 |
+
+推荐顺序：
+
+```text
+本地 preflight
+  → 形成唯一候选 commit
+  → 推送交付分支并记录 run ID
+  → 云端构建与本地平台构建并行
+  → 任一平台失败立即分析首个有效错误
+  → 所有目标平台成功后汇总 manifest/hash
+  → 在真实目标系统验收
+  → 才能标记交付完成
+```
+
+## 8. 失败、重试和替换规则
+
+| 类型 | 处理 |
+|---|---|
+| 下载超时、服务 5xx、runner 临时故障 | 同一 commit 最多重跑失败 job 一次 |
+| cache 恢复/保存失败，但编译仍继续 | 记录性能影响，不立即当成源码失败 |
+| 编译器明确报错 | 修源码或构建配置，形成新候选；禁止盲目重跑 |
+| 公共生成步骤失败 | 先修公共步骤，不浪费下游平台 runner |
+| 单一平台失败 | 其他平台继续；只处理失败平台 |
+| 汇总/发布失败 | 保留已成功的平台 artifacts，只修汇总，不重编客户端 |
+
+只有两种情况可以主动替换未完成 run：
+
+1. 已确认旧 run 不可能产生有效制品；
+2. 用户明确决定放弃旧候选，转向新候选。
+
+主动替换时必须记录旧 run ID、停止原因和新 commit，不能让旧 run 无声消失。
+
+## 9. 完成状态
+
+建议统一使用以下状态：
+
+| 状态 | 含义 |
+|---|---|
+| `Backed Up` | 源码已存在远端分支，但尚未作为候选构建 |
+| `Candidate Submitted` | 候选 commit 已推交付分支并创建 run |
+| `Cloud Ready` | 所需云端平台制品、manifest 和哈希已生成 |
+| `Imported` | 制品已核验并导入最终分发工程 |
+| `Delivery Done` | 最终包已在真实目标系统安装、启动和功能验收 |
+
+这五个状态不能互相替代。尤其是 `Backed Up` 不能写成“已发布”，`Cloud Ready` 不能写成
+“用户端已经更新”。
+
+## 10. 容易遗漏的特殊情况
+
+### 10.1 默认分支与实际开发分支不一致
+
+GitHub 网页和普通 `git clone` 默认使用仓库的 default branch。如果实际开发分支不同，会出现：
+
+- 网页看不到刚备份的文档；
+- 新同事 clone 到旧源码；
+- README、workflow 和源码版本互相错位。
+
+优先把 GitHub default branch 改为真实交付分支。暂时不能修改时，所有文档和克隆命令必须
+显式写 `--branch <delivery-branch>`。
+
+### 10.2 子模块和 Git LFS
+
+源码备份成功不代表子模块和 LFS 对象完整。候选构建前必须核验：
+
+```bash
+git submodule status --recursive
+git lfs status
+```
+
+使用子模块的仓库应 clone：
+
+```bash
+git clone --recursive --branch <delivery-branch> <repository>
+```
+
+### 10.3 大型安装包和本地 BIN
+
+普通 Git 源码仓不适合反复提交 APK、EXE、AppImage、App bundle 和完整依赖目录。应使用：
+
+- Actions artifact：短期构建中间件和候选包；
+- prerelease/release：可追溯交付包；
+- 专用制品仓或对象存储：长期内部包；
+- Git LFS：只有团队已经明确采用时使用。
+
+“本地 BIN 中存在”不等于“已经备份到 GitHub”。必须另外记录它由哪个 commit/run 生成、
+保存在哪里、保留多久以及 SHA-256。
+
+### 10.4 workflow 或生成器变更
+
+workflow、版本脚本、依赖锁文件、bridge/codegen 输出都会改变制品，不能当成纯文档提交。
+如果当前 run 仍有价值，应先推 WIP 分支；如果变更就是修复当前失败，才作为新候选推交付分支。
+
+### 10.5 紧急修复
+
+紧急并不意味着跳过身份记录。最少仍要：
+
+- 保存旧候选 commit/run；
+- 说明为什么允许取消；
+- 新修复独立提交；
+- 重新生成所有受影响平台；
+- 禁止把旧平台包和新平台包拼成同一版本发布。
+
+### 10.6 多项目或 monorepo
+
+路径过滤必须与实际项目边界一致。一个子项目的文档忽略规则不能误伤另一个子项目的构建脚本。
+建议并发组包含“产品名 + ref”，制品名包含“产品名 + 平台 + 架构 + commit”。
+
+### 10.7 密钥、隐私数据和本机配置
+
+WIP也是远端Git历史，不能因为叫“临时备份”就提交`.env`、签名私钥、API token、账号配置、
+用户数据或生产日志。推送前必须检查暂存差异；敏感数据应进入密钥管理或经批准的加密备份，
+不能进入普通源码分支。
+
+### 10.8 受保护分支和PR合并
+
+如果交付分支只能通过PR进入，真正的候选身份是“合并后交付分支上的commit”，不是PR分支
+最后一个commit。CI可先验证PR，但用于发布的安装包必须绑定合并后的完整SHA。merge commit、
+squash和rebase merge会产生不同SHA，制品不得混用。
+
+### 10.9 制品过期和取消残留
+
+Actions artifact通常有保留期限。重要候选必须在过期前转入prerelease或制品仓，并保存哈希。
+已取消run留下的部分文件、公共bridge或辅助DLL只能用于诊断，不能与其他run的文件拼装发布。
+
+---
+
+# 第二部分：KEMI-远程桌面特例
+
+## 11. 仓库与分支
+
+| 项目 | 当前值 |
+|---|---|
+| 本地客户端仓 | `/Users/newlink/kemi/RustDesk/client` |
+| KEMI 远端 | `git@github.com:caucy2026/rust-desk.git`，remote 名 `backup` |
+| 当前交付分支 | `master` |
+| 上游 RustDesk | remote `origin`，禁止推送 KEMI 代码 |
+| 常规云端入口 | `.github/workflows/kemi-distribution.yml` |
+| workflow 名 | `KEMI Focused Client Artifacts` |
+
+当前 GitHub default branch 仍是旧的 `main`，而真实客户端开发与 `kemi-docs` 在 `master`。
+在仓库设置改为 `master` 之前，新同事必须使用：
+
+```bash
+git clone --recursive --branch master https://github.com/caucy2026/rust-desk.git
+```
+
+不能使用不带 `--branch master` 的普通 clone，否则会进入旧 monorepo `main`。
+
+## 12. KEMI 平台分工
+
+| 目标 | 默认位置 | 约束 |
+|---|---|---|
+| PAD / Android debug | 本地 Mac | Flutter/Kotlin 包装与 ADB 验收；Rust 核心变化必须重编 Android JNI |
+| PAD / Android release | 本地优先 | Apple Silicon release AOT、Rosetta、NDK必须完整 |
+| macOS arm64 | 本地 Mac | 固定证书/私钥可用并通过深度签名后才能交付 |
+| Windows x64 | Windows 本机优先，否则 GitHub | 需要 MSVC、Windows SDK、固定 Flutter/Rust/vcpkg |
+| Linux x86_64 AppImage | Linux 本机优先，否则 GitHub | Mac 的服务端交叉编译不能代替 Flutter Linux GUI |
+
+本地能可靠完成的目标不等待 GitHub。本地没有对应操作系统/工具链时，才交给云端。
+
+## 13. KEMI focused workflow
+
+触发规则：
+
+```text
+master 的非纯文档 push
+或手动 workflow_dispatch
+```
+
+自动忽略：
+
+```text
+docs/**
+README.md
+kemi-docs/**
+```
+
+已审计当前`.github/workflows/`触发器：focused和基础`CI`的push都只监听`master`，完整Flutter
+CI只在PR或手动触发，nightly/tag也不监听普通WIP push。因此当前KEMI推送`wip/*`不会启动
+或取消正在运行的`master`候选构建。以后新增workflow时必须重新审计，不能永久假设安全。
+
+只运行：
 
 ```text
 default bridge（Flutter 3.22.3）
@@ -43,61 +364,39 @@ default bridge（Flutter 3.22.3）
         │                              ├── Windows x64 EXE ─┐
         └── Linux x86_64 → DEB → AppImage ─────────────────┤
                                                            ↓
-                                     manifest + SHA256SUMS + 单一候选 Release
+                                     manifest + SHA256SUMS + 单一候选 prerelease
 ```
 
-明确跳过：Flutter 3.44 ARM bridge、Windows ARM64/x86、macOS、iOS、Android、Linux ARM、Sciter、Flatpak 和其他非当前交付目标。`concurrency.cancel-in-progress=true` 会在同一分支出现新提交时取消旧 run。
+明确跳过 Windows ARM64/x86、Linux ARM、macOS、Android、iOS、Flatpak 和其他非当前交付目标。
+同一 `master` 出现新的非文档候选时，`cancel-in-progress: true` 会取消旧 run。
 
-最终同时保留 14 天 Actions artifacts，并由单一汇总 job 创建唯一预发布版本 `kemi-<完整commit>`，包含：
+成功时保留14天的Actions artifact命名为：
 
 ```text
-KEMI-remote-desktop-windows-x64.exe
-KEMI-remote-desktop-linux-x86_64.AppImage
-manifest.json
-SHA256SUMS.txt
+kemi-windows-x86_64-<完整commit>
+kemi-linux-x86_64-<完整commit>
+kemi-client-manifest-<完整commit>
 ```
 
-Windows/Linux job 不再分别并发写同一个 nightly Release，避免覆盖、部分发布和来源混淆。
+Windows本地工具链、bridge生成和便携EXE打包细节单独维护在
+`kemi-docs/windows-vscode-build-prompt.md`，不在协调文档重复维护版本命令。
 
-### 3.2 其他工作流的定位
+因此 KEMI 的构建期间备份规则是：
 
-| 工作流 | 用途 | 是否作为常规交付入口 |
-|---|---|---|
-| `kemi-distribution.yml` | KEMI Windows x64 + Linux x64 候选制品 | 是 |
-| `flutter-ci.yml` | PR 或手动完整跨平台验证，不发布制品 | 否 |
-| `ci.yml` | Rust 单元测试和基础质量检查 | 否 |
-| `flutter-nightly.yml` | 上游式全平台 nightly，成本高 | 否 |
-| `flutter-tag.yml` | 明确 tag 的全平台发布 | 只有正式规划全平台发布时使用 |
-| `playground.yml` | 实验工作流，版本和组合可能过期 | 禁止用于交付 |
+```bash
+# 未完成代码只备份，不触发新客户端构建
+git switch -c wip/20260730-topic
+git add <明确文件列表>
+git commit -m "wip: back up topic"
+git push -u backup HEAD
 
-普通 push 不再自动启动完整 Flutter 大矩阵，避免一次提交同时浪费约二十多个 runner job；精简 KEMI 流水线负责实际所需的云端制品。
-
-## 4. 具体分工与并行时间线
-
-同一个开发任务固定分为四条责任线；一个人或一个 AI 可以兼任，但状态必须分别报告，不能因为正在本地构建而忘记云端。
-
-| 责任线 | 立即开始的工作 | 完成输出 |
-|---|---|---|
-| 本地构建 | 版本检查、Dart/Kotlin/Rust 预检；构建 PAD 和 Mac；准备 ADB/Mac 验收 | 本地包、版本、签名/安装结果 |
-| 云端构建 | 推送同一候选 commit；确认 focused run 已创建；定位 Windows/Linux job | commit、run ID、job 状态 |
-| 持续监控 | 每 2–3 分钟查询一次；失败立即获取失败 step/annotation；有进展及时报告 | 状态时间线、失败根因 |
-| 制品集成 | 下载候选 Release；核验 manifest/hash/格式/版本；导入 PAD assets；重建 PAD | 固定文件名、hash、最终 APK |
-
-推荐时间线：
-
-```text
-T+0     本地 preflight
-T+5     形成候选 commit 并 push；立即记录 run ID
-T+5~10  云端 bridge；本地并行构建/验收 PAD 与 Mac
-T+10+   Windows x64 与 Linux x64 并行
-任一失败 立即分析首个失败 step，不等待另一个平台结束
-两端成功 汇总 job 生成 manifest、校验和与唯一候选 Release
-最后     导入 PAD、重构 APK、卸载安装、四端下载验收
+# 纯 kemi-docs 修改可以推 master，不会创建 focused run
+git push backup master
 ```
 
-## 5. 推送前 preflight
+绝不能把功能代码和文档混在同一个“docs”提交里绕过构建。
 
-至少执行：
+## 14. KEMI 推送前检查
 
 ```bash
 cd /Users/newlink/kemi/RustDesk/client
@@ -105,6 +404,7 @@ cd /Users/newlink/kemi/RustDesk/client
 git diff --check
 git status --short
 git rev-parse HEAD
+git submodule status --recursive
 
 rg -n '^version:' flutter/pubspec.yaml
 rg -n '^version = ' Cargo.toml
@@ -113,18 +413,17 @@ rg -n 'VERSION:' .github/workflows/flutter-build.yml
 ruby -e "require 'yaml'; Dir['.github/workflows/*.yml'].each { |f| YAML.load(File.read(f)); puts f }"
 ```
 
-根据改动范围追加：
+按改动追加：
 
-- Dart/Kotlin 页面改动：`flutter analyze` 或最小目标构建。
-- Rust 公共逻辑：本地 `cargo check/build --locked`；Android Rust 核心变化还要重编 JNI。
-- Mac 交付：检查 `security find-identity -v -p codesigning`，随后固定签名和 `codesign --verify --deep --strict`。
-- 构建脚本：确认 focused profile 只展开 default bridge、Windows x64、Linux x64 和 AppImage x64。
+- Dart/Kotlin：针对性 `flutter analyze` 和最小构建；
+- Rust 公共逻辑：`cargo check/build --locked`；
+- Android Rust 核心：重编对应 ABI 的 `librustdesk.so`；
+- macOS：检查固定 identity 并执行固定签名、深度验证；
+- workflow：检查 focused profile 只展开目标矩阵。
 
-preflight 没通过时不要推送碰运气。提交前记录版本号和计划交付的平台。
+## 15. KEMI 云端查询
 
-## 6. 云端查询和持续监控
-
-当前机器没有预装 `gh`，公开仓库状态可以直接通过 GitHub API + `jq` 查询。推送后第一件事是取得**与本次 commit 完全相同**的 run：
+当前机器未安装 `gh`，可通过 GitHub API 查询。只认与候选完整 SHA 一致的 run：
 
 ```bash
 repo='caucy2026/rust-desk'
@@ -139,15 +438,23 @@ curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
       | @tsv'
 ```
 
-只认名称 `KEMI Focused Client Artifacts`、`head_sha` 完全一致的 run。记录 `<run-id>` 后查询 job：
+查询 job：
 
 ```bash
 curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/actions/runs/<run-id>/jobs?per_page=100" \
-  | jq -r '.jobs[] | [.id,.name,.status,(.conclusion // "-"),.started_at,.completed_at,.html_url] | @tsv'
+  | jq -r '.jobs[] | [.id,.name,.status,(.conclusion // "-"),.html_url] | @tsv'
 ```
 
-查询失败步骤：
+查询本次run真实上传的artifacts：
+
+```bash
+curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
+  "https://api.github.com/repos/$repo/actions/runs/<run-id>/artifacts?per_page=100" \
+  | jq -r '.artifacts[] | [.id,.name,.size_in_bytes,.expired,.archive_download_url] | @tsv'
+```
+
+查询失败步骤和注释：
 
 ```bash
 curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
@@ -157,61 +464,37 @@ curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
       | select(.conclusion == "failure")
       | "JOB\t\(.id)\t\(.name)",
         (.steps[] | select(.conclusion == "failure") | "STEP\t\(.number)\t\(.name)")'
-```
 
-查询失败 check 注释：
-
-```bash
 curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
   "https://api.github.com/repos/$repo/check-runs/<job-id>/annotations?per_page=100" \
   | jq -r '.[] | [.annotation_level,.path,.start_line,.message] | @tsv'
 ```
 
-查询 Actions artifacts：
+公开 API 下载完整日志可能返回 `403`。此时打开 job URL，或在授权环境执行：
 
 ```bash
-curl --http1.1 --connect-timeout 10 --max-time 30 -fsSL \
-  "https://api.github.com/repos/$repo/actions/runs/<run-id>/artifacts?per_page=100" \
-  | jq -r '.artifacts[] | [.id,.name,.size_in_bytes,.expired,.archive_download_url] | @tsv'
+gh run view <run-id> --log-failed
 ```
 
-持续监控纪律：
+不能把“exit code 1”当作根因，必须取得首个有效编译错误。
 
-- run 创建后每 2–3 分钟查询一次，不超过 5 分钟无人查看。
-- `queued` 超过 10 分钟标记为 runner 异常并报告。
-- 任何 job 失败立即查看失败 step；另一个平台仍可继续，不互相阻塞分析。
-- 若公开 API 不允许下载完整日志（常见 `403`），立即打开 job URL 查看，或在已授权环境使用 `gh run view <run-id> --log-failed`；不能因为 API 限制而把“exit code 1”当作根因。
-- 新 commit 推送后确认旧 focused run 已被 concurrency 取消。
+监控频率以项目成本和run时长配置。KEMI候选run创建后每2–3分钟查询一次；`queued`超过
+10分钟报告runner等待，任一平台失败立即分析，不等待另一个平台结束。新候选推送后还要
+核对旧run是否按预期取消，并记录替换原因。
 
-## 7. 失败分类和处理时限
-
-| 失败类型 | 判断方法 | 处理 |
-|---|---|---|
-| 网络、GitHub cache、runner 临时故障 | 下载超时、5xx、cache 400/服务不可用，源码编译尚未报错 | 同一 commit 最多重跑失败 job 1 次 |
-| 确定性编译错误 | Rust/Dart/C++ 编译器明确指出文件和错误 | 立即本地定位或按平台修复，形成新 commit；禁止盲目重跑 |
-| bridge 失败 | `Install flutter rust bridge deps` 或 `Run flutter rust bridge` 失败 | 先修 bridge；Windows/Linux 都依赖它 |
-| Windows 专属失败 | default bridge 和 TopMost 成功，Windows `Build rustdesk` 失败 | 只处理 Windows x64/MSVC、自定义 engine、vcpkg 或打包逻辑 |
-| Linux 专属失败 | default bridge 成功，Linux `Build rustdesk` 或 AppImage 失败 | 区分 GUI/DEB 编译与 AppImage recipe，不能用 server 交叉编译替代 |
-| 汇总失败 | Windows/Linux 都成功，manifest/Release 失败 | 保留两个最终 artifact，只修汇总；不要重编两端 |
-
-同一 commit、同一步骤连续失败两次必须升级为代码/配置问题并留下根因记录。每次失败至少记录：run ID、job ID、失败 step、首条有效错误、处理决定和新 commit。
-
-## 8. 三阶段完成判定
+## 16. KEMI 三阶段交付
 
 ### Cloud Ready
 
-必须同时满足：
-
-- focused run 的 commit、版本和预期 commit 一致；
 - Windows x64 EXE job 成功；
 - Linux x86_64 AppImage job 成功；
-- manifest 汇总 job 成功；
-- 候选 Release 中四个文件都存在；
-- `SHA256SUMS.txt` 与实际文件一致。
+- manifest 汇总 job成功；
+- 候选 prerelease 包含 Windows、Linux、`manifest.json`、`SHA256SUMS.txt`；
+- commit、版本、文件哈希一致。
 
 ### Imported
 
-从 `kemi-<commit>` 候选 Release 下载到临时 staging 目录，核验后再放入：
+核验后导入：
 
 ```text
 flutter/android/app/src/main/assets/client-dist/
@@ -219,63 +502,63 @@ flutter/android/app/src/main/assets/client-dist/
 └── KEMI-remote-desktop-linux-x86_64.AppImage
 ```
 
-核验：
-
-```bash
-shasum -a 256 KEMI-remote-desktop-windows-x64.exe
-shasum -a 256 KEMI-remote-desktop-linux-x86_64.AppImage
-file KEMI-remote-desktop-windows-x64.exe
-file KEMI-remote-desktop-linux-x86_64.AppImage
-```
-
-保留原始 `manifest.json` 和 `SHA256SUMS.txt` 的版本、commit、run ID、大小与哈希记录。文件名正确不代表品牌和功能正确，仍要在目标系统启动验证。
+不得把 bridge、TopMostWindow 或 DEB 中间 artifact 冒充最终客户端。
 
 ### Delivery Done
 
-必须完成：
+1. Windows/Linux 与本地 Mac ZIP一起编入最终 PAD APK；
+2. 卸载 PAD 旧包后安装最终包；
+3. 从 PAD“客户端”页下载四个平台文件；
+4. 下载文件与导入文件 SHA-256一致；
+5. Windows、Linux、macOS分别启动并验收远控与文件传输；
+6. 记录版本、commit、run ID、哈希、签名和目标系统结果。
 
-1. 将已核验 Windows/Linux 包与本地已核验 Mac ZIP一起编入最终 PAD APK。
-2. 卸载测试 PAD 的旧包，安装最终包，检查 `versionName/versionCode/sourceDir`。
-3. 从 PAD“客户端”页面分别下载 Android、Mac、Windows、Linux 文件。
-4. 下载文件 hash 与 PAD 安装源/导入前静态包完全一致。
-5. Windows x64、Linux x86_64、macOS arm64 分别完成启动；Android 完成安装。
-6. 把版本、commit、run ID、hash、签名和验收结果写入 `CHANGELOG-KEMI.md`。
+## 17. 当前 KEMI 云端状态
 
-## 9. 当前云端基线审计
-
-2026-07-30 查询到远端最新提交仍为：
+候选源码提交：
 
 ```text
-262bbedef0d6dc9df39b85c12b315458dcef4117
+98d3a9735b46cfebe5954ecac55b2f6e222fee48
 ```
 
-对应云端 run：
+focused run：
 
 ```text
-Full Flutter CI  #30518880603  completed / failure
-CI               #30518880357  completed / failure
+30541481850
 ```
 
-Full Flutter CI 中两个 bridge 成功，但 Windows x64、Windows ARM64、Linux x64、Android ABI 和 macOS build 均失败；只留下 bridge 中间 artifacts，没有 Windows EXE 或 Linux AppImage。该 run 不是“仍在编译”，也不是可交付结果。当前 `1.4.44+102` 本地工作树尚未推送时，GitHub 不可能构建到这些新改动。
+结果：
 
-后续以 focused workflow 的新 run 为准，不继续等待或反复重跑上述旧全矩阵 run。
+- default bridge：成功；
+- TopMostWindow x64：成功；
+- Windows x64：`Build rustdesk` 失败；
+- Linux x86_64：`Build rustdesk` 失败；
+- 只有 bridge 和 TopMostWindow 中间 artifacts；
+- 没有 Windows/Linux最终客户端，没有进入 manifest/prerelease 汇总。
 
-## 10. 每次汇报模板
+后续纯 `kemi-docs/**` 提交没有触发新的 focused run，也没有影响该 run。下一轮功能候选进入
+`master` 前，必须先取得两个失败 job 的首个有效错误并完成对应修复。
+
+## 18. KEMI 汇报模板
 
 ```text
+源码备份：
+- 分支：
+- commit：
+- Backed Up：
+
 本地：
 - PAD：构建/安装/版本/签名状态
 - Mac：构建/固定签名/安装状态
 
 云端：
-- commit：
+- 候选 commit：
 - focused run ID / URL：
 - default bridge：
 - Windows x64：
 - Linux x64：
-- manifest / candidate Release：
-- 当前失败 step 与根因：
-- 下次查询时间：
+- manifest / candidate prerelease：
+- 当前失败 step 与首个有效错误：
 
 交付：
 - Windows SHA-256 / 启动结果：
@@ -285,4 +568,4 @@ Full Flutter CI 中两个 bridge 成功，但 Windows x64、Windows ARM64、Linu
 - 四端从 PAD 下载验收：
 ```
 
-任何一栏未知就明确写“未完成/待验证”，不能用“正在构建”“应该可以”代替真实状态。
+任何未知项明确写“未完成/待验证”，不能用“正在构建”“应该可以”代替真实状态。

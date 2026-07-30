@@ -5,7 +5,7 @@
 > 当前基线日期：2026-07-30
 > 当前源码、PAD 当前安装与 Mac 当前安装包：`1.4.44+102`，使用固定本地代码签名身份
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
-> GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
+> GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
 当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN` 已包含：
 
@@ -72,7 +72,9 @@
 - 当前设备为 192.168.1.10:5555，安装后必须用 dumpsys package 核对 versionName/versionCode/lastUpdateTime。
 - 不要因为 release AOT 的 x64 gen_snapshot 在 Apple Silicon 上需要 Rosetta，就误判整个项目不能编译；本项目已验证 flutter build apk --debug 可直接成功。
 - 提交前更新 kemi-docs/CHANGELOG-KEMI.md。
-- GitHub 备份直接在本仓使用 backup 远端：git push backup master。origin 是 rustdesk 官方上游，不要推送 origin。
+- GitHub备份使用本仓`backup`远端。准备生成下一轮客户端的候选提交才推`master`；上一次
+  云端候选未完成、只需要备份代码时推`wip/*`，避免取消旧run。纯`kemi-docs/**`提交不触发
+  focused workflow。详细决策见`kemi-docs/ci-build.md`。`origin`是官方上游，禁止推送。
 - 如果 backup/master 比本地领先，先 fetch，再将已提交改动 rebase 到 backup/master；不要强推，不要丢远端历史。
 
 完成任何任务时必须给出：改动文件、根因、验证命令、构建结果、设备结果（若部署）、提交哈希和远端核验哈希。
@@ -736,9 +738,19 @@ GIT_EDITOR=true git rebase --continue
 
 ### 13.4 推送到 GitHub
 
+准备启动下一轮候选构建时：
+
 ```bash
 git push backup master
 ```
+
+如果上一次候选仍在云端构建、当前代码只需要备份：
+
+```bash
+git push backup HEAD:refs/heads/wip/20260730-feature-name
+```
+
+WIP推送不会移动`master`，因此不会取消旧run。完整决策表见`kemi-docs/ci-build.md`。
 
 不要执行：
 
@@ -752,13 +764,14 @@ git push origin master
 
 ```bash
 git ls-remote backup refs/heads/master
+git ls-remote backup refs/heads/wip/20260730-feature-name
 git rev-parse HEAD
 git status --short
 ```
 
 要求：
 
-- 远端哈希与本地 HEAD 完全一致。
+- 本次实际推送的远端分支哈希与本地 HEAD 完全一致。
 - `git status --short` 无输出。
 
 ### 13.6 从 GitHub 恢复
