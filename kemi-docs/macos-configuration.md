@@ -1,6 +1,6 @@
 # macOS 客户端配置、权限与签名
 
-> 适用版本：`1.4.35+93`。本文件是 macOS 远程查看/控制、固定测试签名和交付核验的唯一操作说明；历史试验过程见 `CHANGELOG-KEMI.md`。
+> 适用版本：`1.4.44+102`。本文件是 macOS 远程查看/控制、固定测试签名和交付核验的唯一操作说明；历史试验过程见 `CHANGELOG-KEMI.md`。
 
 ## 1. 当前已核验配置
 
@@ -10,13 +10,15 @@
 |---|---|---|
 | Bundle ID | `com.carriez.rustdesk` | TCC 隐私授权与应用身份 |
 | 显示名 / 可执行名 | `KEMI-远程桌面` | 系统设置与 Finder 中的名称 |
-| 版本 | `1.4.35+93` | `CFBundleShortVersionString=1.4.35`、`CFBundleVersion=93` |
+| 版本 | `1.4.44+102` | `CFBundleShortVersionString=1.4.44`、`CFBundleVersion=102` |
 | 架构 | `arm64` | 当前 Apple Silicon 测试包 |
 | 运行形态 | `LSUIElement=1` | 代理型 App，不常驻 Dock；系统设置抢焦点后须主动恢复窗口 |
 | 签名叶证书 | `KEMI Local App Signing 2026`，SHA-1 `41330AE46A6AF5B400B44E771FF1CD7BAA6D1163` | 固定测试身份，包含 Digital Signature / Code Signing 用途 |
 | 签名根证书 | `KEMI Local Development Code Signing 2026` | 仅本机构建链使用；不用于对外发布 |
 
 2026-07-30 审计已执行 `codesign --verify --deep --strict`，整个 bundle（主程序、`service`、Flutter Framework 和全部嵌入 Framework）通过。不得以 `codesign --sign -`、二次签名或解包再封装替代固定签名，否则 TCC 会把它视为不同主体。
+
+每次重新交付前仍必须执行 `security find-identity -v -p codesigning`。若当前登录钥匙串显示 `0 valid identities`，或找不到 `KEMI Local App Signing 2026`，说明固定证书/私钥当前不可用于签名：此时可以继续编译，但不能把新包称为已签名交付包，也不能用 ad-hoc 签名绕过。应先恢复或解锁原固定身份，再执行本文件第 4 节。
 
 ## 2. 远程控制实际需要的权限
 
@@ -75,4 +77,6 @@ tccutil reset All com.carriez.rustdesk
 
 ## 6. 开机自启动
 
-桌面端“通用设置”保留“开机自启动”选项。启用时仅为当前用户创建 `~/Library/LaunchAgents/com.carriez.kemi-remote-desktop.plist`，关闭时删除该项；不使用管理员权限、不安装系统级 daemon，也不影响 RustDesk 信令服务端。
+桌面端“通用设置”保留“开机自启动”选项，其含义是当前用户登录 Mac 后自动启动 KEMI。macOS 13 及以上通过 `SMAppService.mainApp` 注册或取消系统登录项，与 Dock 右键 KEMI 后“选项 → 登录时打开”显示的是同一个系统状态；该系统菜单文字由 macOS 提供，App 不能改名。低于 macOS 13 时才回退使用当前用户的 LaunchAgent。
+
+正式交付包应位于 `/Applications/KEMI-远程桌面.app`。应用启动时会检查已启用登录项的 URL；若旧记录仍指向 Flutter 临时构建目录，则用当前 `/Applications` App 重新注册。该功能不使用管理员权限、不安装系统级 daemon，也不影响 RustDesk 信令服务端。

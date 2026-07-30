@@ -38,7 +38,6 @@ const borderColor = Color(0xFF2F65BA);
 class _DesktopHomePageState extends State<DesktopHomePage>
     with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final _leftPaneScrollController = ScrollController();
-  static const _kMacPermissionFlowVersion = 'v1.0.11';
   static const _kMacPermissionGuideDialogTag = 'mac-permission-guide';
 
   @override
@@ -502,8 +501,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         await _showMacPermissionGuideDialog(foreground: true);
       },
           help: '查看说明',
-          link: translate("doc_mac_permission"),
-          footerText: '授权流程 $_kMacPermissionFlowVersion');
+          link: translate("doc_mac_permission"));
       //// Disable microphone configuration for macOS. We will request the permission when needed.
       // else if ((await osxCanRecordAudio() !=
       //     PermissionAuthorizeType.authorized)) {

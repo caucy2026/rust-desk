@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码、Mac 安装版与 PAD 测试机均为 **1.4.35+93**。Mac 已使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码、PAD 分发版与 Mac 已安装版均为 **1.4.44+102**，使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -13,6 +13,7 @@
 | **远端目录记忆** | 再次打开文件传输时，优先恢复对方上次可用目录；无效时按初始目录与根目录回退 |
 | **远控操作栏** | 44px 高、48px 宽的中文图文按钮；“输入”打开手势说明，整格按钮统一水波纹与高亮反馈 |
 | **共享屏幕授权** | 点击启动后直接进入 Android 原生录屏确认；通知、文件访问和悬浮窗权限按功能独立申请 |
+| **局域网客户端下载** | PAD 的“客户端”页临时提供当前 APK 和已核验的离线包；下载设备必须与 PAD 处于同一 Wi-Fi |
 | **品牌定制** | KEMI 启动画面、应用命名、权限引导流程 |
 | **信令服务** | 自建 rendezvous 服务器，Mac ARM 交叉编译 Linux x86_64 |
 
@@ -20,6 +21,15 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.44+102` | macOS 登录项统一使用系统 `SMAppService.mainApp`，Dock「选项 → 登录时打开」与 KEMI 开关一致；正式包自动修复登录项 URL 至 `/Applications`；主页默认显示“主页 / 设置”，关于页显示 KEMI 产品版本 |
+| `1.4.43+101` | 首次让 Mac 主页默认创建“主页 / 设置”标签，并将关于页版本数据源改为 App 包版本；该临时构建仅用于验证，登录项最终路径修复由 1.4.44 交付 |
+| `1.4.42+100` | 移除 macOS 授权卡片错误暴露的内部标记“授权流程 v1.0.11”；Mac 与 PAD 内置 Mac 下载包同步升级 |
+| `1.4.41+99` | PAD 分发资源更新为固定签名的 macOS `1.4.40+98` 安装包，确保从“客户端”页下载的 Mac App 含“开机自启”中文选项 |
+| `1.4.40+98` | Wi-Fi 名称读取不到时可直接打开系统定位设置，返回页面自动刷新；macOS 下载项使用 Apple 标志 |
+| `1.4.39+97` | 客户端页可单独授权读取真实 Wi-Fi 名称；下载列表采用 Android、Apple、Windows、Linux 对应平台图标 |
+| `1.4.38+96` | 无法真实读取 SSID 时不再显示伪 Wi-Fi 名称；明确浏览器输网址或扫码是二选一；PAD 停止启动无效悬浮入口；macOS 的登录项中文改为“开机自启” |
+| `1.4.37+95` | 客户端页改为左侧半宽网址、右侧二维码；固定展示 PAD、macOS、Windows、Linux，Mac 离线 ZIP 已纳入，Windows/Linux 待导入时明确显示状态 |
+| `1.4.36+94` | PAD 首页新增“客户端”入口；进入页面启动、离开关闭局域网 HTTP 下载服务；先提供当前 APK，已核验的 Windows/macOS/Linux 离线包存在时才显示 |
 | `1.4.35+93` | 单屏设备点击键盘时由当前 Activity 在本屏启动键盘代理；双屏时仍严格弹到对面屏 |
 | `1.4.34+92` | 共享屏幕启动直接进入 Android 原生录屏确认，移除应用内警告及悬浮窗/通知/文件权限插队；新增中文操作简介 |
 | `1.4.33+91` | 双指滚轮只在两根手指共同、同向纵向移动时触发；一指按住、另一指滑动不会再误触发远端滚轮 |
@@ -58,6 +68,7 @@ kemi-docs/
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
 ├── ci-build.md                   ← GitHub 跨平台构建、bridge 依赖与验收
+├── client-distribution.md         ← PAD 局域网客户端下载与离线包规范
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
@@ -118,7 +129,11 @@ macOS 客户端的唯一操作说明：两项远控必需权限、PAD 输入的�
 
 ### ci-build.md
 
-GitHub Actions 的唯一构建说明：两个 bridge artifact 与下游平台的依赖关系、Flutter 3.22/3.24/3.44 的临时依赖策略、工具缓存/重试和云端验收命令。涉及 Windows、Linux 或 CI 时必须先读本文件。
+本地/云端构建分工和 GitHub Actions 的唯一说明：PAD、Mac 本地推进，Windows x64 与 Linux x86_64 由 focused workflow 并行构建；规定 run 持续监控、失败升级、候选 Release、manifest、SHA-256、导入和最终交付门禁。涉及 Windows、Linux 或 CI 时必须先读本文件。
+
+### client-distribution.md
+
+PAD 首页“客户端”入口的唯一说明：同 Wi-Fi 下载原则、HTTP 服务的页面生命周期和安全边界、Android APK 运行时从已安装 `sourceDir` 自分发的机制，以及 macOS/Windows/Linux 离线包导入、四端打包顺序、哈希/签名/安装验收。涉及客户端分发或四端安装包时必须先读本文件。
 
 ### server-operations.md
 

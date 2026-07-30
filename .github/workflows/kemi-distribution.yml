@@ -1,0 +1,29 @@
+name: KEMI Focused Client Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - "kemi-docs/**"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: kemi-distribution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/flutter-build.yml
+    secrets: inherit
+    with:
+      upload-artifact: true
+      upload-tag: kemi-${{ github.sha }}
+      build-profile: kemi-distribution
+      publish-release: false

@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-30
-> 当前源码、Mac 安装版本与 PAD 当前安装：`1.4.35+93`；Mac 测试包使用固定本地代码签名身份
+> 当前源码、PAD 当前安装与 Mac 当前安装包：`1.4.44+102`，使用固定本地代码签名身份
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -28,7 +28,7 @@
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前源码、Mac 安装版本与 PAD 当前安装均为 1.4.35+93；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前源码、PAD 当前安装与 Mac 当前安装包均为 1.4.44+102，使用固定本地签名身份。文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -46,11 +46,14 @@
 - macOS 授权引导不再使用“已显示”本地标记。启动缺权限时显示；每次 PAD 新建连接仍缺权限时，把 KEMI 主窗口与引导重新置前（5 秒限频），但不自动关闭引导或连续弹三个系统窗口。
 - macOS 首页左下“权限设置”卡片必须永久显示，不能再以“当前两项必需权限都已授权”为条件隐藏；该入口用于查看状态、重新申请单项权限和处理 TCC 缓存异常。
 - macOS 测试包禁止使用 `codesign --sign -`（ad-hoc 签名）。必须运行 `res/sign-kemi-local-macos.sh`，使用固定 `KEMI Local App Signing 2026` 身份；切换到固定签名后，每台测试 Mac 仅需重新确认一次屏幕录制和辅助功能。后续由同一证书签出的升级包不得重新生成证书、二次签名或解包修改，否则权限身份会再次改变。
+- macOS 登录项以 Dock「选项 → 登录时打开」为唯一系统语义，系统菜单标题不能由 App 重命名。macOS 13+ 必须使用 `SMAppService.mainApp`，不得再新增 `~/Library/LaunchAgents/com.carriez.kemi-remote-desktop.plist`。App 设置里的“开机自启”只读取/设置该同一系统项；正式 `/Applications` 包启动时会修复错误指向临时构建目录的已启用项。
+- macOS 主窗口启动即必须显示“主页”“设置”两个顶层标签，并默认选中主页；不得再把密码编辑图标当作唯一设置入口。关于页“版本”必须读取 App `PackageInfo` 并显示 `KEMI-远程桌面 v<version> (<build>)`，不可读取 Rust 内核版本作为产品交付版本。
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
-- 当前版本源必须一致：Cargo.toml=1.4.35、Cargo.lock rustdesk=1.4.35、flutter/pubspec.yaml=1.4.35+93；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.35+93。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.35`。
+- Android 首页“客户端”是临时局域网安装包分发页：进入页启动、离开页或销毁 App 关闭 HTTP 服务；只允许白名单下载路由。PAD 与下载设备必须同一 Wi-Fi；当前 APK 可直接分发，其他平台包只有经过核验并在构建 APK 前放入 `assets/client-dist` 时才显示。详见 `client-distribution.md`。
+- 当前版本源必须一致：Cargo.toml=1.4.44、Cargo.lock rustdesk=1.4.44、flutter/pubspec.yaml=1.4.44+102；PAD `192.168.1.10:5555` 已实机安装并核验 1.4.44+102。Mac 已安装包为 1.4.44+102；该固定签名 App 已作为 ZIP 纳入 PAD 离线分发。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.44`。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -440,15 +443,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.35"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.35"` |
-| `flutter/pubspec.yaml` | `version: 1.4.35+93` |
+| `Cargo.toml` | `version = "1.4.44"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.44"` |
+| `flutter/pubspec.yaml` | `version: 1.4.44+102` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.35
-versionCode=93
+versionName=1.4.44
+versionCode=102
 ```
 
 ### 9.2 首页版本号
@@ -573,7 +576,7 @@ flutter build apk --debug
 
 不要看到 release 的 Rosetta 提示就声称整个项目无法编译，也不要未经用户确认安装系统依赖。
 
-### 11.3.1 macOS Apple Silicon 完整包（已验证，1.4.25+83）
+### 11.3.1 macOS Apple Silicon 完整包（构建基线 1.4.44+102）
 
 2026-07-30 已在 Apple Silicon 完整构建成功。首次准备本机构建环境时，`vcpkg/` 仅作为本地工具目录（已被根 `.gitignore` 忽略），需要其中的 `libyuv`、`libvpx`；CocoaPods 使用当前用户安装的 1.15.2。系统 Ruby 2.6 下运行 pod 时需要预加载 `logger`。
 
@@ -593,8 +596,9 @@ cp ../target/release/service \
 ```
 
 - 缺失 `macos/Runner/bridge_generated.h` 时，按 `flutter/run.sh` 生成：`PATH=/Users/newlink/flutter/bin:$PATH RUST_LOG=info ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output ./lib/generated_bridge.dart --c-output ./macos/Runner/bridge_generated.h`。
-- 产物路径：`flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app`；已核验版本 `1.4.25+83`、主程序和 `service` 均为 arm64。
-- 固定测试签名身份只保留在构建 Mac 的登录钥匙串；测试机无需信任根证书，但必须安装未经二次签名或改包的原始 `.app`。首次从 ad-hoc 包迁移后，在每台测试 Mac 重新确认“屏幕录制、辅助功能、输入监控”一次；同一签名身份的后续升级应保留授权身份。
+- 产物路径：`flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app`；当前版本源为 `1.4.44+102`，主程序和 `service` 均应为 arm64。
+- 固定测试签名身份只保留在构建 Mac 的登录钥匙串；每次交付前先运行 `security find-identity -v -p codesigning`。若显示 `0 valid identities`，只能继续编译，不能声称完成固定签名交付，也不能改用 ad-hoc 签名。
+- 测试机无需导入私钥，但必须安装未经二次签名或改包的原始 `.app`。首次从不同签名包迁移后，只重新确认远控必需的“屏幕录制、辅助功能”两项；输入监控不是 PAD 控制 Mac 的准入权限。
 - 对外发布不能使用此自签名身份，必须使用 Apple `Developer ID Application` 签名和公证流程。
 
 ### 11.4 安装
@@ -615,8 +619,8 @@ adb -s 192.168.1.10:5555 shell dumpsys package com.carriez.flutter_hbb \
 期望：
 
 ```text
-versionCode=79
-versionName=1.4.21
+versionCode=102
+versionName=1.4.44
 ```
 
 设备验证时必须核对 `lastUpdateTime`。以前出现过“本地 APK 已构建，但安装命令被取消，设备仍运行旧 APK”的问题；不能只凭源代码或 APK 文件时间判断设备已更新。
@@ -639,7 +643,7 @@ adb -s 192.168.1.10:5555 logcat \
 
 实机至少验证：
 
-1. 首页显示 `KEMI远程桌面PAD版 v1.4.21`。
+1. 首页显示 `KEMI远程桌面PAD版 v1.4.44`。
 2. 从主屏发起远控，副屏 RemoteActivity 显示远程视频。
 3. 点击远控页三点菜单，确认存在“传输文件”。
 4. 点击后出现居中、圆角、60% 宽 × 60% 高浮窗。

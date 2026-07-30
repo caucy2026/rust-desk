@@ -6,16 +6,13 @@ on:
     paths-ignore:
     - "docs/**"
     - "README.md"
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - ".github/**"
-      - "docs/**"
-      - "README.md"
-      - "res/**"
-      - "appimage/**"
-      - "flatpak/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-flutter-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   run-ci:

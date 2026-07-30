@@ -2,6 +2,77 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 四十八、2026-07-30 本地/云端分工与精简制品流水线（1.4.44+102）
+
+- 云端审计确认远端最新提交仍为 `262bbedef0d6dc9df39b85c12b315458dcef4117`；`Full Flutter CI #30518880603` 与 `CI #30518880357` 均已失败，并非仍在排队。默认 bridge 成功，但 Windows x64、Linux x64、Android 与 macOS 均在 Build 步骤失败，只留下 bridge 中间 artifact，没有最终 Windows EXE 或 Linux AppImage。
+- 根因之一是普通 `flutter-ci.yml` 固定 `upload-artifact: false`，即使成功也不会交付最终安装包；而 nightly/tag 会启动约二十多个无关平台/架构 job，Windows x64 和 Linux x64还分别受到 ARM 矩阵失败连带阻断。
+- 新增 `.github/workflows/kemi-distribution.yml`，master 非纯文档 push 或手动触发时，仅运行默认 bridge、Windows x64 与 Linux x86_64 → AppImage。新提交会取消同分支旧 run；Windows/Linux 最终包保留 14 天 artifact，并由单一汇总 job生成 `manifest.json`、`SHA256SUMS.txt` 和唯一 `kemi-<commit>` 候选 prerelease。
+- `flutter-ci.yml` 改为 PR/手动完整验证，不再在每次 master push 启动全平台大矩阵。`ci-build.md` 已重写为本地/云端职责、2–3 分钟持续监控、失败分类、`Cloud Ready → Imported → Delivery Done` 三阶段门禁和最终 PAD 集成的唯一说明。
+- 本次只调整研发/构建流程与文档，产品版本保持 `1.4.44+102`。在新 commit 推送并取得 focused run 成功产物前，Windows/Linux 仍保持“待导入”。
+
+## 四十七、2026-07-30 PAD 自分发与四端安装包流程归档（1.4.44+102）
+
+- 将局域网“客户端”入口的实现、需求和交付顺序收敛到 `kemi-docs/client-distribution.md`。明确 Android APK 并非构建时再嵌入 assets，而是运行中从已安装 App 的 `applicationInfo.sourceDir` 以固定下载路由流式提供；因此下载包与当前 PAD 已安装包的内容、版本和签名一致，也不会使 APK 因复制自身而翻倍。
+- macOS ZIP、Windows x64 EXE、Linux x86_64 AppImage 则属于构建前置入 `assets/client-dist/` 的静态包，会随最终 PAD APK 一起编入。文档已固定三者的文件名、架构、导入时机和“存在才可下载”的白名单规则，避免将旧包或未验证 CI artifact 误交付。
+- 新增四端共同的版本、来源 commit、哈希、签名/安装核验要求，以及“候选制品 → 记录核验 → 导入 assets → 构建最终 PAD → 同网下载安装”的顺序。Windows/Linux 当前仍待导入，不因本文档变更伪造可下载版本。
+- 本节只整理交付流程与文档，产品版本保持 `1.4.44+102`，不产生新的安装包。
+
+## 四十六、2026-07-30 macOS 登录项、主页标签与产品版本统一（1.4.44+102）
+
+- 已澄清并修复目标：Dock 右键 App 的「选项 → 登录时打开」是 macOS 系统菜单，应用不能改写其文案；之前修改的是 KEMI 自己设置页，因此没有影响该菜单。macOS 13+ 现改用官方 `SMAppService.mainApp` 读取、注册和取消注册，KEMI 的“开机自启”开关与该系统项共用同一状态；旧 `~/Library/LaunchAgents/com.carriez.kemi-remote-desktop.plist` 已迁移删除。
+- 实机验收显示系统后台项为 `enabled, allowed, notified`，Bundle Identifier 为 `com.carriez.rustdesk`，URL 已修复为 `/Applications/KEMI-远程桌面.app`；不会再指向临时构建目录。低于 macOS 13 的兼容分支仍保留旧 LaunchAgent 实现。
+- 根因：`DesktopTabPage` 启动时只添加主页；密码编辑图标调用 `DesktopSettingPage.switch2page(SettingsTabKey.safety)` 才临时添加设置页。Mac 现在启动即创建“主页 / 设置”标签并默认停留在主页，实机截图已核验。
+- 关于页的“版本”已从 Rust `mainGetVersion()` 改为 Flutter `PackageInfo`，显示 `KEMI-远程桌面 v<version> (<build>)`，避免内核版本与交付 App 版本混淆。
+- Mac `1.4.44+102` 已固定签名并部署到 `/Applications` 与 `BIN`；PAD `192.168.1.10:5555` 已实机安装 `1.4.44+102`。PAD 内置 Mac ZIP 为 25,919,077 字节，SHA-256 `61b1db19981123698a3b3f83b24732f3911adb6318030add7ae53bc25222d29d`。
+
+## 四十五、2026-07-30 授权卡片内部版本号移除（1.4.42+100）
+
+- 实机复现确认：BIN 的旧交付包虽已显示中文授权卡片，却把开发期内部标记“授权流程 v1.0.11”直接显示在用户界面，容易被误认为应用仍是旧版本；该标记不是 App 版本，也不参与任何授权判断。
+- 已删除该硬编码标记及 `footerText` 传递，未改动屏幕录制、辅助功能的申请流程、状态判断或“权限配置”入口。新 App 授权卡片仅保留用户可理解的说明与按钮。
+- 曾有一次 Flutter 命令在仓库根目录执行，报 `No pubspec.yaml file found`，因此没有生成新 App；现已改在 `client/flutter` 正确目录重新构建。`/Applications/KEMI-远程桌面.app`、`BIN/KEMI-远程桌面.app` 均为 `1.4.42+100`，固定签名深度校验通过；PAD `192.168.1.10:5555` 已安装 `1.4.42+100`。新版 Mac ZIP 为 25,917,797 字节，SHA-256 `5d9359609dbbbbd42018ff90c898fa35e11604510a011247fb91954b2b89bcf4`，已内置到 PAD 分发包。
+
+## 四十四、2026-07-30 Mac “开机自启”交付包同步（Mac 1.4.40+98；PAD 1.4.41+99）
+
+- 根因已确认：源码自 `1.4.38+96` 已将 macOS 登录项主标题翻译为“开机自启”，但 `/Applications`、`BIN/` 与 PAD assets 仍是旧的 `1.4.35+93` App，实际运行的旧二进制当然不会显示新文案。
+- 已用当前源码重建 macOS Apple Silicon release App，复制 `service`，以固定 `KEMI Local App Signing 2026` 身份重签。`/Applications/KEMI-远程桌面.app` 与 `BIN/KEMI-远程桌面.app` 现均为 `1.4.40+98`，`codesign --verify --deep --strict` 均通过；选项含义仍是“登录当前 Mac 后自动启动 KEMI”，不是系统启动前运行。
+- 已将该 App 重新封装为 PAD assets 的 macOS ZIP；ZIP 为 25,918,660 字节，SHA-256 `19d01ea988d09efec7e55ed7315068de9aee4ad537fa81d4004a277da9253ba7`，解压后版本核验为 `1.4.40`。因 PAD 内置分发资源变更，PAD 交付版本提升为 `1.4.41+99`。
+
+## 四十三、2026-07-30 Wi-Fi 定位设置回跳与 Apple 图标（1.4.40+98）
+
+- Wi-Fi 名称权限已授予但系统定位服务关闭时，客户端页可直接进入系统定位设置；用户打开后返回 KEMI，页面自动重新读取并显示真实 SSID。
+- macOS 下载项改为系统 Apple 标志，避免原认证素材的圆形底色掩盖标志轮廓。
+
+## 四十二、2026-07-30 真实 Wi-Fi 名称与下载平台图标（1.4.39+97）
+
+- Android 读取已连接 Wi-Fi 的 SSID 受系统位置权限保护。客户端页现在明确提供“授权显示当前 Wi-Fi 名称”按钮；用户同意后才显示真实 SSID。权限仅用于本机读取名称，不上传位置；若系统定位服务关闭，会提示用户打开后重进页面。
+- 可下载客户端按平台使用对应标志：Android 机器人、Apple、Windows 窗格和 Linux 企鹅；无安装包的平台仍保持灰色“待导入”状态。
+
+## 四十一、2026-07-30 客户端页引导、PAD 悬浮入口与 Mac 开机自启文案（1.4.38+96）
+
+- 客户端页不再把 Android 无法读取 SSID 的状态伪装为“当前 Wi-Fi”。现在始终明确要求 PAD 与下载设备位于同一 Wi-Fi，只有拿到真实 SSID 时才额外显示名称。
+- 页面明确说明：在下载设备浏览器输入网址，或扫描右侧二维码，二选一即可；二维码下方同步显示同样提示。
+- PAD `MainActivity` 停止后不再启动 `FloatingWindowService`，并主动停止已有服务。该悬浮入口没有有效操作且会遮挡客户端下载页，现已从用户流程移除。
+- macOS 设置中的选项仍是“登录当前 Mac 后启动 KEMI”（每个用户的登录项），中文主标题统一为“开机自启”，说明文字保留真实触发时机，避免误解为系统未登录前启动。
+
+## 四十、2026-07-30 客户端下载布局与多平台状态（1.4.37+95）
+
+- 客户端页在横向 PAD 上改为左右布局：Wi-Fi 和短网址固定在左半屏，二维码移到右侧；窄屏仍自动上下排列，避免挤压地址。
+- 下载列表和 HTTP 网页固定展示 PAD / Android、macOS（Apple 芯片）、Windows（x64）、Linux（x86_64）。只有实际存在且核验过的包可点下载；Windows、Linux 当前清楚标为“待导入”，不会返回空文件或假链接。
+- 已将 `BIN/KEMI-远程桌面.app`（`1.4.35+93`、固定签名）用 `ditto` 打为 macOS 离线 ZIP 并放入 Android assets；解压后的 `codesign --verify --deep --strict` 已通过。PAD `192.168.1.10:5555` 已安装 `1.4.37+95`，网页确认四个平台均显示；Mac ZIP（25,917,281 字节）的 PAD 下载副本与 assets SHA-256 一致：`fe34c2e36c803bcaa2ccf8de12f23b1fa9c158df23805d76b60900ae761ecce7`。未导入的 Windows/Linux 下载路由均返回 404。
+
+## 三十九、2026-07-30 PAD 局域网客户端下载（1.4.36+94）
+
+- 首页底部新增与现有导航一致的“客户端”图标（`devices_outlined`）。进入页面立即启动轻量 HTTP 服务，显示同一 Wi-Fi 提示、简短的 `http://IP:8686` 地址、复制按钮与二维码；离开页面或销毁 App 时立即关闭服务，不后台常驻。
+- HTTP 服务只允许 `GET /`、`GET /health` 和固定的下载路由；不提供目录浏览、任意文件读取或上传。当前 PAD APK 从应用自身已安装包提供，保证版本相同；Windows、macOS、Linux 包仅在构建 APK 前已放入固定 assets 路径且存在时显示，不能伪造下载项。
+- 新增 `kemi-docs/client-distribution.md` 作为唯一说明，明确同一 Wi-Fi 要求、安装包命名、构建前导入和下载验收规则。`client-download-preview.html` 保留为网页视觉原型。
+- 已用本机 Flutter 3.29 构建 PAD debug APK 并覆盖安装到 `192.168.1.10:5555`；系统确认 `versionName=1.4.36`、`versionCode=94`。同网 Mac 访问 `/health` 返回 `ok`，网页和 APK 下载均为 `200`，最终下载文件（156,990,133 字节）与 PAD 已安装 `base.apk` 的 SHA-256 一致：`d69da2ba93a0f46401a093bdbe90173ec6b9aadc8c291eb7d3680d5322d8794b`；切换到“设置”后端口立即拒绝连接。构建后已恢复仓库固定 Flutter 3.24.5 锁文件基线。
+
+## 三十八、2026-07-30 构建策略收敛（1.4.35+93）
+
+- 固定执行原则为“本地优先、云端兜底”：PAD/Android 与 macOS 必须先在本机完成构建、安装或签名核验；Linux 若当前 Mac 可可靠交叉编译也先本构建。只有受宿主、CPU、GUI/自定义 engine 或工具链限制而本地不能可靠产出的目标（当前主要为 Windows）才使用 GitHub Actions。
+- GitHub 推送仅是代码备份，不把自动触发的 Actions 视为交付动作；任务 `queued` 或 `in_progress` 均不算成品，必须对应平台 job 成功且 artifact 可取得才可报告云端客户端已产出。
+- 规则已收敛到 `kemi-docs/ci-build.md`，文档入口同步更新；本节不改变产品代码或安装包，版本继续为 `1.4.35+93`。
+
 ## 三十七、2026-07-30 单屏设备软键盘兼容（1.4.35+93）
 
 - 目标规则保持为“双屏时弹到对面屏；仅一块可用屏幕时弹回当前屏”。本次将单屏回退从“把 `launchDisplayId=0` 交给 ROM 处理”改为由当前 Activity 直接启动键盘代理，避免部分 ROM 对默认 Display 路由不稳定而不显示键盘。

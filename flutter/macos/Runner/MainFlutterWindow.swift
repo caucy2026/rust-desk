@@ -1,6 +1,7 @@
 import Cocoa
 import AVFoundation
 import FlutterMacOS
+import ServiceManagement
 import desktop_multi_window
 // import bitsdojo_window_macos
 
@@ -37,6 +38,11 @@ class RelativeMouseState {
 
 class MainFlutterWindow: NSWindow {
     private let launchAtLoginLabel = "com.carriez.kemi-remote-desktop"
+    private let launchAtLoginBundlePathDefaultsKey = "KEMILaunchAtLoginBundlePath"
+
+    private var isApplicationsInstall: Bool {
+        Bundle.main.bundleURL.path.hasPrefix("/Applications/")
+    }
 
     private var launchAtLoginPlistURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -44,7 +50,7 @@ class MainFlutterWindow: NSWindow {
             .appendingPathComponent("\(launchAtLoginLabel).plist")
     }
 
-    private func isLaunchAtLoginEnabled() -> Bool {
+    private func isLegacyLaunchAtLoginEnabled() -> Bool {
         guard let plist = NSDictionary(contentsOf: launchAtLoginPlistURL) else {
             return false
         }
@@ -52,7 +58,7 @@ class MainFlutterWindow: NSWindow {
             (plist["RunAtLoad"] as? Bool ?? false)
     }
 
-    private func setLaunchAtLogin(enabled: Bool) throws {
+    private func setLegacyLaunchAtLogin(enabled: Bool) throws {
         let fileManager = FileManager.default
         let plistURL = launchAtLoginPlistURL
 
@@ -87,7 +93,70 @@ class MainFlutterWindow: NSWindow {
         try data.write(to: plistURL, options: .atomic)
     }
 
+    private func removeLegacyLaunchAtLogin() throws {
+        let plistURL = launchAtLoginPlistURL
+        if FileManager.default.fileExists(atPath: plistURL.path) {
+            try FileManager.default.removeItem(at: plistURL)
+        }
+    }
+
+    private func migrateLegacyLaunchAtLoginIfNeeded() {
+        guard #available(macOS 13.0, *) else { return }
+
+        let service = SMAppService.mainApp
+        do {
+            if isLegacyLaunchAtLoginEnabled() {
+                if service.status != .enabled {
+                    try service.register()
+                }
+                if service.status == .enabled {
+                    try removeLegacyLaunchAtLogin()
+                }
+            }
+
+            // SMAppService retains the bundle URL used for registration. A
+            // temporary build must never remain the login target after the
+            // signed app has been copied to /Applications.
+            guard service.status == .enabled, isApplicationsInstall else { return }
+            let currentBundlePath = Bundle.main.bundleURL.path
+            guard UserDefaults.standard.string(forKey: launchAtLoginBundlePathDefaultsKey) != currentBundlePath else { return }
+            try service.unregister()
+            try service.register()
+            UserDefaults.standard.set(currentBundlePath, forKey: launchAtLoginBundlePathDefaultsKey)
+        } catch {
+            NSLog("[KEMI] Failed to migrate legacy launch-at-login setting: \(error)")
+        }
+    }
+
+    private func isLaunchAtLoginEnabled() -> Bool {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return isLegacyLaunchAtLoginEnabled()
+    }
+
+    private func setLaunchAtLogin(enabled: Bool) throws {
+        if #available(macOS 13.0, *) {
+            let service = SMAppService.mainApp
+            if enabled {
+                if service.status != .enabled {
+                    try service.register()
+                }
+                UserDefaults.standard.set(
+                    Bundle.main.bundleURL.path,
+                    forKey: launchAtLoginBundlePathDefaultsKey)
+            } else if service.status != .notRegistered {
+                try service.unregister()
+                UserDefaults.standard.removeObject(forKey: launchAtLoginBundlePathDefaultsKey)
+            }
+            try removeLegacyLaunchAtLogin()
+            return
+        }
+        try setLegacyLaunchAtLogin(enabled: enabled)
+    }
+
     override func awakeFromNib() {
+        migrateLegacyLaunchAtLoginIfNeeded()
         rustdesk_core_main();
         let flutterViewController = FlutterViewController.init()
         let windowFrame = self.frame

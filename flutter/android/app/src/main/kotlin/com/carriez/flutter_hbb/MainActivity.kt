@@ -15,15 +15,18 @@ package com.carriez.flutter_hbb
 
 import ffi.FFI
 
+import android.Manifest
 import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.ServiceConnection
 import android.content.ClipboardManager
 import android.os.Bundle
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.WindowManager
@@ -53,7 +56,10 @@ class MainActivity : FlutterActivity() {
 
     private val channelTag = "mChannel"
     private val logTag = "mMainActivity"
+    private val wifiNamePermissionRequestCode = 5_381
     private var mainService: MainService? = null
+    private var wifiNamePermissionResult: MethodChannel.Result? = null
+    private val clientDistributionServer by lazy { ClientDistributionServer(applicationContext) }
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
@@ -104,6 +110,41 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != wifiNamePermissionRequestCode) return
+        val result = wifiNamePermissionResult ?: return
+        wifiNamePermissionResult = null
+        result.success(hasWifiNamePermission())
+    }
+
+    private fun hasWifiNamePermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestWifiNamePermission(result: MethodChannel.Result) {
+        if (hasWifiNamePermission()) {
+            result.success(true)
+            return
+        }
+        if (wifiNamePermissionResult != null) {
+            result.error("permission_request_in_progress", "Wi-Fi 名称授权请求正在进行。", null)
+            return
+        }
+        wifiNamePermissionResult = result
+        requestPermissions(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            ),
+            wifiNamePermissionRequestCode,
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -125,6 +166,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
         KeyboardProxyManager.release("activity_destroyed")
+        clientDistributionServer.stop()
         mainService?.let {
             unbindService(serviceConnection)
         }
@@ -247,6 +289,20 @@ class MainActivity : FlutterActivity() {
                 }
                 "try_sync_clipboard" -> {
                     rdClipboardManager?.syncClipboard(true)
+                    result.success(true)
+                }
+                "client_distribution_start" -> {
+                    result.success(clientDistributionServer.start())
+                }
+                "client_distribution_stop" -> {
+                    clientDistributionServer.stop()
+                    result.success(true)
+                }
+                "client_distribution_request_wifi_name_permission" -> {
+                    requestWifiNamePermission(result)
+                }
+                "client_distribution_open_location_settings" -> {
+                    startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     result.success(true)
                 }
                 GET_START_ON_BOOT_OPT -> {
@@ -482,10 +538,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onStop() {
         super.onStop()
-        val disableFloatingWindow = FFI.getLocalOption("disable-floating-window") == "Y"
-        if (!disableFloatingWindow && MainService.isReady) {
-            startService(Intent(this, FloatingWindowService::class.java))
-        }
+        // PAD 端不再提供悬浮入口：它没有可用操作，且会遮挡当前页面。
+        stopService(Intent(this, FloatingWindowService::class.java))
     }
 
     override fun onStart() {
