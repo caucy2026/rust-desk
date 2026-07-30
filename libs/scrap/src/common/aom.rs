@@ -47,6 +47,8 @@ impl EncoderApi for AomEncoder {
     fn yuvfmt(&self) -> EncodeYuvFormat {
         EncodeYuvFormat { pixfmt: Pixfmt::I420, w: 0, h: 0, stride: vec![], u: 0, v: 0 }
     }
+    #[cfg(feature = "vram")]
+    fn input_texture(&self) -> bool { false }
     fn set_quality(&mut self, _ratio: f32) -> ResultType<()> { Ok(()) }
     fn bitrate(&self) -> u32 { 0 }
     fn support_changing_quality(&self) -> bool { false }

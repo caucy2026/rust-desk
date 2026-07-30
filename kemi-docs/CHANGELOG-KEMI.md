@@ -7,7 +7,9 @@
 - 读取 focused run `30541481850` 的 Windows、Linux 完整日志后确认，两端并非分别出现平台问题，而是共同在 `mozjpeg-sys 2.2.3` 构建脚本失败：该版本调用较新 Rust 才提供的 `Option::is_none_or`，工作流固定的 Rust `1.75` 因此报 `E0599`。
 - vcpkg 缓存 `400`、Linux 容器缓存未命中以及 Windows 构建目录不存在均是伴随警告或编译失败后的连带现象，不是第一根因；继续盲目重跑同一 commit 不可能成功。
 - 按当前 RustDesk 上游锁文件的兼容选择，将上层 `mozjpeg` 精确回退并锁定为 `0.10.11`、`mozjpeg-sys` 精确回退并锁定为 `2.2.2`，保留 Flutter 桌面/Sciter 的 Rust `1.75` 基线，避免为修一个传递依赖而扩大工具链升级范围。
-- `cargo +1.75 metadata --locked --no-deps` 已通过；Windows x64 EXE 与 Linux x86_64 AppImage 将由新的 focused run 并行构建。只有两个目标成功、制品版本/哈希核验并导入 PAD 后，才把状态改为已交付。
+- 新 run `30585850076` 验证 Linux 主构建成功并越过旧依赖错误；Windows 随后暴露第二个独立问题：7月25日为 Mac 本地调试引入的 AOM stub 没有实现 `vram` 特性要求的 `input_texture()`。该 stub 只接受内存 YUV 输入，按 VPX/HW-RAM 的同类语义补充返回 `false`。
+- Linux AppImageBuilder 已成功生成镜像，但 recipe 仍硬编码 `1.4.35`，上传 glob 只匹配当前 `1.4.46`，导致上传步骤警告“未找到文件”却把 job 标为成功。现改为构建前注入当前 `VERSION`，构建后必须找到 AppImage 并统一重命名；缺文件会立即失败，不再允许假成功。
+- `cargo +1.75 metadata --locked --no-deps` 已通过；Windows x64 EXE 与 Linux x86_64 AppImage 将由下一轮 focused run 并行构建。只有两个目标成功、制品版本/哈希核验并导入 PAD 后，才把状态改为已交付。
 
 ## 五十二、2026-07-30 Mac与PAD内置下载包同步交付（1.4.46+104）
 
