@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码与 Mac 安装版本为 **1.4.30+88**；PAD 当前安装 **1.4.25+83**。Mac 已使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码与 Mac 安装版本为 **1.4.31+89**；PAD 当前安装 **1.4.25+83**。Mac 已使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -19,6 +19,7 @@
 
 | APK 版本 | 对应功能 |
 |---|---|
+| `1.4.31+89` | macOS 远控必需授权收敛为屏幕录制和辅助功能；输入监控改为不阻塞远控的可选本地键盘功能，移除会打开空白条目的第三项授权 |
 | `1.4.30+88` | macOS 输入监控改用官方 `CGRequestListenEventAccess` 申请、`CGPreflightListenEventAccess` 查询，修复隐私页空白项目 |
 | `1.4.29+87` | macOS 单项授权真正成功后自动恢复仍在运行的 KEMI 主窗口到前台，避免窗口失焦被误认为退出 |
 | `1.4.28+86` | macOS 输入监控仅允许由前台 KEMI 主 App 发起申请，避免隐私设置生成无名称条目 |

@@ -48,7 +48,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   var svcStopped = false.obs;
   var watchIsCanScreenRecording = false;
   var watchIsProcessTrust = false;
-  var watchIsInputMonitoring = false;
   var watchIsCanRecordAudio = false;
   var _macPermissionAutoPrompted = false;
   var _macPermissionGuideShownInSession = false;
@@ -488,12 +487,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           isOutgoingOnly || bind.mainIsCanScreenRecording(prompt: false);
       final hasAccessibilityPermission =
           isOutgoingOnly || bind.mainIsProcessTrusted(prompt: false);
-      final hasInputMonitoringPermission =
-          bind.mainIsCanInputMonitoring(prompt: false);
-
-      final allPermissionsGranted = hasScreenPermission &&
-          hasAccessibilityPermission &&
-          hasInputMonitoringPermission;
+      final allPermissionsGranted =
+          hasScreenPermission && hasAccessibilityPermission;
 
       // Keep the permission entry permanently available. macOS can cache a
       // TCC answer until restart, so hiding the only configuration entry based
@@ -501,8 +496,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       return buildInstallCard(
           "权限设置",
           allPermissionsGranted
-              ? "三项权限当前显示已授权。可随时进入检查或重新配置屏幕录制、辅助功能和输入监控。"
-              : "要允许远程查看和控制本机，请在 macOS 中授权 KEMI-远程桌面使用屏幕录制、辅助功能和输入监控。",
+              ? "远程查看和控制所需权限当前显示已授权。可随时进入检查或重新配置屏幕录制和辅助功能。"
+              : "要允许远程查看和控制本机，请在 macOS 中授权 KEMI-远程桌面使用屏幕录制和辅助功能。",
           allPermissionsGranted ? "权限配置" : "去授权", () async {
         await _showMacPermissionGuideDialog(foreground: true);
       },
@@ -756,7 +751,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     var canScreenRecording = bind.mainIsCanScreenRecording(prompt: false);
     var canTrusted = bind.mainIsProcessTrusted(prompt: false);
-    var canInputMonitoring = bind.mainIsCanInputMonitoring(prompt: false);
     var statusMessage =
         connectionHint ?? '每一项权限可单独申请。完成系统设置后，返回 KEMI 点击“刷新状态”。';
 
@@ -764,13 +758,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       void refresh() {
         final screenRecording = bind.mainIsCanScreenRecording(prompt: false);
         final trusted = bind.mainIsProcessTrusted(prompt: false);
-        final inputMonitoring = bind.mainIsCanInputMonitoring(prompt: false);
         setState(() {
           canScreenRecording = screenRecording;
           canTrusted = trusted;
-          canInputMonitoring = inputMonitoring;
-          statusMessage = screenRecording && trusted && inputMonitoring
-              ? '三项权限均已授权。关闭此窗口后即可继续远程查看和控制。'
+          statusMessage = screenRecording && trusted
+              ? '远程查看和控制所需权限均已授权。关闭此窗口后即可继续使用。'
               : '仍有未完成的权限。请在系统设置中打开后，再点击“刷新状态”。';
         });
       }
@@ -827,18 +819,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                   watchIsProcessTrust = true;
                 })),
               ),
-              _buildMacPermissionStatusRow(
-                '输入监控',
-                canInputMonitoring,
-                onRequest: () => unawaited(requestPermission('输入监控', () async {
-                  // Request from the foreground Runner process so macOS TCC
-                  // registers the permission against KEMI's app bundle/name,
-                  // not an unnamed Rust FFI worker context.
-                  await kMacOSPermChannel
-                      .invokeMethod<bool>('requestInputMonitoring');
-                  watchIsInputMonitoring = true;
-                })),
-              ),
               const SizedBox(height: 6),
               Text(
                 statusMessage,
@@ -887,8 +867,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     final hasMissingPermission =
         !bind.mainIsCanScreenRecording(prompt: false) ||
-            !bind.mainIsProcessTrusted(prompt: false) ||
-            !bind.mainIsCanInputMonitoring(prompt: false);
+            !bind.mainIsProcessTrusted(prompt: false);
 
     if (!hasMissingPermission) {
       return;
@@ -914,8 +893,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     if (!hasNewConnection ||
         (bind.mainIsCanScreenRecording(prompt: false) &&
-            bind.mainIsProcessTrusted(prompt: false) &&
-            bind.mainIsCanInputMonitoring(prompt: false))) {
+            bind.mainIsProcessTrusted(prompt: false))) {
       return;
     }
 
@@ -957,17 +935,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       if (watchIsProcessTrust) {
         if (bind.mainIsProcessTrusted(prompt: false)) {
           watchIsProcessTrust = false;
-          setState(() {});
-          await _restoreMacPermissionGuideToForeground();
-        }
-      }
-      if (watchIsInputMonitoring) {
-        if (bind.mainIsCanInputMonitoring(prompt: false)) {
-          watchIsInputMonitoring = false;
-          // Do not notify for now.
-          // Monitoring may not take effect until the process is restarted.
-          // rustDeskWinManager.call(
-          //     WindowType.RemoteDesktop, kWindowDisableGrabKeyboard, '');
           setState(() {});
           await _restoreMacPermissionGuideToForeground();
         }

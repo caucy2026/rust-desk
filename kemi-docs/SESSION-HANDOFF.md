@@ -3,7 +3,7 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-07-30
-> 当前源码与 Mac 安装版本：`1.4.30+88`；PAD 当前安装 `1.4.25+83`；Mac 测试包使用固定本地代码签名身份
+> 当前源码与 Mac 安装版本：`1.4.31+89`；PAD 当前安装 `1.4.25+83`；Mac 测试包使用固定本地代码签名身份
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`，分支 `master`
 
@@ -27,7 +27,7 @@
 6. 涉及键盘时阅读 kemi-docs/cross-display-keyboard.md，并以该文档最新章节和当前代码为准
 7. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前源码与 Mac 安装版本均为 1.4.30+88，PAD 当前安装 1.4.25+83；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
+当前源码与 Mac 安装版本均为 1.4.31+89，PAD 当前安装 1.4.25+83；Mac 测试包使用固定本地签名身份，文件传输并行浮窗的功能代码基线为 8f4c18c57。文档提交和后续开发会使 HEAD 继续前进，必须用 git rev-parse HEAD 和 git ls-remote backup refs/heads/master 核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -39,14 +39,14 @@
 - Android 文件传输删除功能保持禁用。
 - 远控页底栏固定为 44px 高、每项 48px 宽的中文图文按钮；“输入”是唯一手势说明入口，不再增加重复“说明”按钮。所有可用项必须保持整格水波纹与高亮点击反馈。
 - 当前触摸约定：单指轻触为左键、单指长按为右键、单指移动为拖动；双指纵向滑动为远端滚轮、双指捏合缩放本地画布、三指滑动平移本地画布。
-- macOS 权限仅由 KEMI 主窗口的前台引导申请，不能从首个远程鼠标/键盘事件抢弹系统授权；“屏幕录制、辅助功能、输入监控”各有独立“申请授权”按钮，点哪一项只申请该项，说明窗口保持显示、可刷新状态。输入监控必须由 Flutter macOS Runner 主线程调用 `CGRequestListenEventAccess`；Rust FFI 只用 `CGPreflightListenEventAccess` 查询，严禁使用 IOHID 原始设备接口申请，避免隐私设置生成无名称条目。没有原生确认框时必须打开对应系统设置页。
+- macOS 远程查看和控制本机只需要两项：屏幕录制和辅助功能。它们只能由 KEMI 主窗口的前台引导申请，不能从首个远程鼠标/键盘事件抢弹系统授权；每项各有独立“申请授权”按钮，说明窗口保持显示、可刷新状态。输入监控仅用于可选的 Mac 本机键盘输入源抓取，绝不能阻止 PAD 控制本机、加入必需权限状态或自动打开 `Privacy_ListenEvent` 页面。
 - macOS 授权引导不再使用“已显示”本地标记。启动缺权限时显示；每次 PAD 新建连接仍缺权限时，把 KEMI 主窗口与引导重新置前（5 秒限频），但不自动关闭引导或连续弹三个系统窗口。
-- macOS 首页左下“权限设置”卡片必须永久显示，不能再以“当前三项权限都已授权”为条件隐藏；该入口用于查看状态、重新申请单项权限和处理 TCC 缓存异常。
-- macOS 测试包禁止使用 `codesign --sign -`（ad-hoc 签名）。必须运行 `res/sign-kemi-local-macos.sh`，使用固定 `KEMI Local App Signing 2026` 身份；切换到固定签名后，每台测试 Mac 仅需重新确认一次三项 TCC 权限。后续由同一证书签出的升级包不得重新生成证书、二次签名或解包修改，否则权限身份会再次改变。
+- macOS 首页左下“权限设置”卡片必须永久显示，不能再以“当前两项必需权限都已授权”为条件隐藏；该入口用于查看状态、重新申请单项权限和处理 TCC 缓存异常。
+- macOS 测试包禁止使用 `codesign --sign -`（ad-hoc 签名）。必须运行 `res/sign-kemi-local-macos.sh`，使用固定 `KEMI Local App Signing 2026` 身份；切换到固定签名后，每台测试 Mac 仅需重新确认一次屏幕录制和辅助功能。后续由同一证书签出的升级包不得重新生成证书、二次签名或解包修改，否则权限身份会再次改变。
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
-- 当前版本源必须一致：Cargo.toml=1.4.30、Cargo.lock rustdesk=1.4.30、flutter/pubspec.yaml=1.4.30+88。Android 未重新构建部署前，设备仍显示最后验证的 1.4.25+83。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.30`。
+- 当前版本源必须一致：Cargo.toml=1.4.31、Cargo.lock rustdesk=1.4.31、flutter/pubspec.yaml=1.4.31+89。Android 未重新构建部署前，设备仍显示最后验证的 1.4.25+83。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.31`。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。

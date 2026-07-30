@@ -253,8 +253,7 @@ class FfiModel with ChangeNotifier {
       final helpText = '已连接，但 Mac 端未授予远程控制输入权限。\n\n'
           '请在 Mac 上检查：\n'
           '1. 系统设置 → 隐私与安全性 → 辅助功能，允许 KEMI-远程桌面。\n'
-          '2. 系统设置 → 隐私与安全性 → 输入监控，允许 KEMI-远程桌面。\n'
-          '3. 返回 KEMI 的授权窗口刷新状态，然后重新连接。';
+          '2. 返回 KEMI 的授权窗口刷新状态，然后重新连接。';
       showMsgBox(sessionId, 'error', '需要 Mac 输入权限', helpText, '', true,
           parent.target!.dialogManager);
     } else if (hasKeyboardPerm) {

@@ -1,7 +1,6 @@
 import Cocoa
 import AVFoundation
 import FlutterMacOS
-import CoreGraphics
 import desktop_multi_window
 // import bitsdojo_window_macos
 
@@ -230,36 +229,6 @@ class MainFlutterWindow: NSWindow {
         }
     }
 
-    /// Request Input Monitoring from the foreground KEMI app process.
-    ///
-    /// TCC associates this permission with the calling process. Keeping the
-    /// request in Runner (rather than in the Rust FFI worker) makes the entry
-    /// in System Settings resolve to this app's bundle display name.
-    private func requestInputMonitoringAccess() -> Bool {
-        assert(Thread.isMainThread, "requestInputMonitoringAccess must be called on the main thread")
-
-        if #available(macOS 10.15, *) {
-            // Input Monitoring governs global CGEvent listeners.  Request it
-            // through CoreGraphics so TCC registers the foreground app bundle
-            // in Privacy > Input Monitoring, rather than a raw HID client.
-            if CGPreflightListenEventAccess() {
-                return true
-            }
-
-            if CGRequestListenEventAccess() {
-                return true
-            }
-        }
-
-        // The system does not always display a sheet for this API (for
-        // example after a previous denial). Open the exact page as fallback.
-        if let settingsURL = URL(
-            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(settingsURL)
-        }
-        return false
-    }
-
     /// Restore the agent-style KEMI window after macOS has completed a TCC
     /// decision. `LSUIElement` apps can remain alive but lose normal app
     /// activation when System Settings takes focus, which otherwise looks as
@@ -309,8 +278,6 @@ class MainFlutterWindow: NSWindow {
                             message: error.localizedDescription,
                             details: nil))
                     }
-                case "requestInputMonitoring":
-                    result(self.requestInputMonitoringAccess())
                 case "activateMainAppWindow":
                     self.activateMainAppWindow()
                     result(true)
