@@ -127,6 +127,33 @@ jobs:
           flutter-version: ${{ matrix.job.arch == 'aarch64' && env.FLUTTER_WINDOWS_ARM_VERSION || env.FLUTTER_VERSION }}
           architecture: x64
 
+      - name: Recover Flutter SDK after an interrupted download
+        if: ${{ matrix.job.arch == 'x86_64' }}
+        shell: pwsh
+        run: |
+          $flutterRoot = "${{ steps.flutter.outputs['CACHE-PATH'] }}"
+          $flutterExe = Join-Path $flutterRoot "bin\flutter.bat"
+          if (-not (Test-Path $flutterExe)) {
+            Write-Warning "Flutter SDK cache is incomplete; downloading it again with retries."
+            $archive = Join-Path $env:RUNNER_TEMP "flutter_windows_${{ env.FLUTTER_VERSION }}-stable.zip"
+            $extractDir = Join-Path $env:RUNNER_TEMP "flutter-sdk-recovery"
+            Remove-Item $archive -Force -ErrorAction SilentlyContinue
+            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+            & curl.exe --fail --location --retry 5 --retry-all-errors `
+              --output $archive `
+              "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_${{ env.FLUTTER_VERSION }}-stable.zip"
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+            Expand-Archive -Path $archive -DestinationPath $extractDir
+            if (Test-Path $flutterRoot) {
+              Remove-Item $flutterRoot -Recurse -Force
+            }
+            New-Item -ItemType Directory -Force -Path (Split-Path $flutterRoot) | Out-Null
+            Move-Item (Join-Path $extractDir "flutter") $flutterRoot
+          }
+          & $flutterExe --version
+
       - name: Force arm64 Dart SDK + engine
         # The x64 SDK subosito installs bundles an x64 Dart with a matching engine-dart-sdk.stamp,
         # so update_dart_sdk.ps1 short-circuits (stamp matches -> return) and keeps x64 Dart;
@@ -1970,8 +1997,18 @@ jobs:
             ./AppImageBuilder-${{ matrix.job.arch }}.yml
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
           appimage_file="$(find . -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
-          test -n "$appimage_file"
-          mv "$appimage_file" "rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.AppImage"
+          output_file="rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.AppImage"
+          if [[ -n "$appimage_file" ]]; then
+            mv "$appimage_file" "$output_file"
+          else
+            test -s AppDir.squashfs
+            curl --fail --location --retry 5 --retry-all-errors \
+              --output appimage-runtime \
+              "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${{ matrix.job.arch }}"
+            cat appimage-runtime AppDir.squashfs > "$output_file"
+          fi
+          chmod +x "$output_file"
+          test -s "$output_file"
 
       - name: Upload final Linux AppImage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
