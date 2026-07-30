@@ -1,6 +1,6 @@
 # Windows + VSCode 本地构建 KEMI 客户端提示词
 
-> 适用版本：`1.4.44+102`，目标：Windows 10/11 x64。本文给从 GitHub 下载源码的同事使用。最省事的方式是把第 2 节整段复制给 VSCode 中的 Codex/Copilot/其他编程助手，让它先检查环境，再逐步执行并报告。
+> 适用版本：`1.4.46+104`，目标：Windows 10/11 x64。本文给从 GitHub 下载源码的同事使用。最省事的方式是把第 2 节整段复制给 VSCode 中的 Codex/Copilot/其他编程助手，让它先检查环境，再逐步执行并报告。
 
 ## 1. 使用前说明
 
@@ -102,8 +102,8 @@ Windows 本地生成的是 Flutter GUI 客户端，必须使用 Windows x64 主�
    不得把临时依赖降级提交进 Git。
 
 7. 构建前核对版本一致：
-   - flutter/pubspec.yaml：例如 1.4.44+102
-   - Cargo.toml/Cargo.lock：例如 1.4.44
+   - flutter/pubspec.yaml：例如 1.4.46+104
+   - Cargo.toml/Cargo.lock：例如 1.4.46
    - .github/workflows/flutter-build.yml 的 VERSION
    发现不一致先停止并报告，不要自行选一个版本。
 

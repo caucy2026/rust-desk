@@ -25,6 +25,32 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+def kemiAndroidKeystore = System.getenv("KEMI_ANDROID_KEYSTORE")
+def kemiAndroidStorePassword = System.getenv("KEMI_ANDROID_STORE_PASSWORD")
+def kemiAndroidKeyAlias = System.getenv("KEMI_ANDROID_KEY_ALIAS")
+def kemiAndroidKeyPassword = System.getenv("KEMI_ANDROID_KEY_PASSWORD")
+def kemiReleaseSigningReady = [
+    kemiAndroidKeystore,
+    kemiAndroidStorePassword,
+    kemiAndroidKeyAlias,
+    kemiAndroidKeyPassword,
+].every { value -> value != null && !value.trim().isEmpty() }
+def kemiReleaseRequested = gradle.startParameter.taskNames.any {
+    taskName -> taskName.toLowerCase().contains("release")
+}
+
+if (kemiReleaseRequested && !kemiReleaseSigningReady) {
+    throw new GradleException(
+        "KEMI release signing is not configured. Set KEMI_ANDROID_KEYSTORE, " +
+        "KEMI_ANDROID_STORE_PASSWORD, KEMI_ANDROID_KEY_ALIAS and " +
+        "KEMI_ANDROID_KEY_PASSWORD."
+    )
+}
+
+if (kemiReleaseSigningReady && !file(kemiAndroidKeystore).isFile()) {
+    throw new GradleException("KEMI Android keystore does not exist: ${kemiAndroidKeystore}")
+}
+
 repositories {
     maven { url 'https://maven.aliyun.com/repository/public' }
     google()
@@ -62,8 +88,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "com.carriez.flutter_hbb"
+        applicationId "com.newlinksz.kemi.remote"
         minSdkVersion 22
         targetSdkVersion 33
         versionCode flutterVersionCode.toInteger()
@@ -71,22 +96,25 @@ android {
     }
 
     signingConfigs {
-      release {
-        // Using default debug keystore for now
-        storeFile file(System.getProperty("user.home") + "/.android/debug.keystore")
-        storePassword "android"
-        keyAlias "androiddebugkey"
-        keyPassword "android"
-      }
+        release {
+            if (kemiReleaseSigningReady) {
+                storeFile file(kemiAndroidKeystore)
+                storePassword kemiAndroidStorePassword
+                keyAlias kemiAndroidKeyAlias
+                keyPassword kemiAndroidKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules'
         }
         debug {
-            // Debug uses default debug signing - no config needed
+            // Debug remains locally signed and can never be used as a release candidate.
         }
     }
 }

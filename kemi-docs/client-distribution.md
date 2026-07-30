@@ -1,6 +1,6 @@
 # PAD 局域网客户端下载与四端打包
 
-> 适用源码版本：`1.4.44+102`。本文件是首页“客户端”入口、临时 HTTP 服务、APK 自分发和四端离线安装包的**唯一维护说明**。涉及此功能时，先读本文件，再修改代码或制作安装包。
+> 适用源码版本：`1.4.46+104`。本文件是首页“客户端”入口、临时 HTTP 服务、APK 自分发和四端离线安装包的**唯一维护说明**。涉及此功能时，先读本文件，再修改代码或制作安装包。
 
 ## 1. 目标和用户可见流程
 
@@ -31,7 +31,7 @@ PAD 已安装的 KEMI APK
 - `packageEntries()` 为 Android 条目设置 `assetPath = null`；
 - `isAvailable()` 因而检查 `File(context.applicationInfo.sourceDir)`；
 - `route()` 收到该条目的固定下载地址时，调用 `writeFile()` 流式读取 `sourceDir`；
-- 文件名由 `PackageManager` 读取当前 `versionName()` 生成，例如 `KEMI-remote-desktop-1.4.44.apk`。
+- 文件名由 `PackageManager` 读取当前 `versionName()` 生成，例如 `KEMI-remote-desktop-1.4.46.apk`。
 
 因此有四个重要结果：
 
@@ -78,10 +78,10 @@ flutter/android/app/src/main/assets/client-dist/
 
 最终 PAD APK 的体积会近似增加三个静态包各自压缩后的大小，并需要额外安装空间；Android 自身 APK 不贡献第二份体积。替换静态包时除了校验文件，还要确认 PAD 的存储空间、APK 安装耗时和同网下载耗时仍可接受。若四端包继续增大，应把非 Android 包迁移到 PAD 本地可更新的独立文件目录或受控发布服务器，而不是无限扩大 APK assets。
 
-当前已内置 macOS Apple Silicon 包：`KEMI-remote-desktop-macos-arm64.zip`，对应 `1.4.44+102`，大小 `25,919,077` 字节，SHA-256 为：
+当前已内置 macOS Apple Silicon 包：`KEMI-remote-desktop-macos-arm64.zip`，对应 `1.4.46+104`，大小 `25,918,515` 字节，SHA-256 为：
 
 ```text
-61b1db19981123698a3b3f83b24732f3911adb6318030add7ae53bc25222d29d
+b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4
 ```
 
 Windows 与 Linux 的交付物尚未通过核验，因此当前不能把它们标为可下载，也不能拿旧目录、未完成 GitHub Actions artifact 或不明网络文件替代。
@@ -205,9 +205,9 @@ file KEMI-remote-desktop-linux-x86_64.AppImage
 cd /Users/newlink/kemi/RustDesk/client/flutter
 env PATH=/Users/newlink/flutter/bin:$PATH flutter build apk --debug --no-pub
 
-adb -s 192.168.1.10:5555 uninstall com.carriez.flutter_hbb
+adb -s 192.168.1.10:5555 uninstall com.newlinksz.kemi.remote
 adb -s 192.168.1.10:5555 install build/app/outputs/flutter-apk/app-debug.apk
-adb -s 192.168.1.10:5555 shell dumpsys package com.carriez.flutter_hbb \
+adb -s 192.168.1.10:5555 shell dumpsys package com.newlinksz.kemi.remote \
   | rg 'versionName|versionCode|sourceDir'
 ```
 

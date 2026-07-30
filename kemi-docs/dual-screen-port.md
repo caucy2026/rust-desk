@@ -307,10 +307,10 @@ adb connect 192.168.3.54:5555
 adb -s 192.168.3.54:5555 install -r app-debug.apk
 
 # 授权悬浮窗权限
-adb shell appops set com.carriez.flutter_hbb SYSTEM_ALERT_WINDOW allow
+adb shell appops set com.newlinksz.kemi.remote SYSTEM_ALERT_WINDOW allow
 
 # 在 Display 0 启动
-adb shell am start -n com.carriez.flutter_hbb/.MainActivity --display 0
+adb shell am start -n com.newlinksz.kemi.remote/com.carriez.flutter_hbb.MainActivity --display 0
 ```
 
 ---
@@ -397,9 +397,9 @@ RustDesk/rustdesk/
 ### 设备闭环验证 (192.168.1.6:5555)
 
 - 安装：`adb install -r .../app-debug.apk` -> `Success`
-- 启动：`adb shell am start -n com.carriez.flutter_hbb/.MainActivity`
-- 包名存在：`com.carriez.flutter_hbb`
-- 前台 Activity：`com.carriez.flutter_hbb/.MainActivity`
+- 启动：`adb shell am start -n com.newlinksz.kemi.remote/com.carriez.flutter_hbb.MainActivity`
+- applicationId存在：`com.newlinksz.kemi.remote`
+- 前台Activity：`com.newlinksz.kemi.remote/com.carriez.flutter_hbb.MainActivity`
 - 进程 PID：`11995`
 - 版本信息：`versionName=1.4.9`，`versionCode=67`
 - 更新时间：`2026-07-25 21:56:09`

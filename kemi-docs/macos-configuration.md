@@ -1,16 +1,16 @@
 # macOS 客户端配置、权限与签名
 
-> 适用版本：`1.4.44+102`。本文件是 macOS 远程查看/控制、固定测试签名和交付核验的唯一操作说明；历史试验过程见 `CHANGELOG-KEMI.md`。
+> 适用版本：`1.4.46+104`。本文件是 macOS 远程查看/控制、固定测试签名和交付核验的唯一操作说明；历史试验过程见 `CHANGELOG-KEMI.md`。
 
 ## 1. 当前已核验配置
 
-已安装交付包：`/Applications/KEMI-远程桌面.app`；归档副本：`/Users/newlink/kemi/RustDesk/BIN/KEMI-远程桌面.app`。
+最新归档副本：`/Users/newlink/kemi/RustDesk/BIN/KEMI-远程桌面.app`。本轮只更新PAD内置下载包，`/Applications/KEMI-远程桌面.app`仍为`1.4.44+102`，需要本机回归时再单独替换。
 
 | 项目 | 已核验值 | 作用 |
 |---|---|---|
 | Bundle ID | `com.carriez.rustdesk` | TCC 隐私授权与应用身份 |
 | 显示名 / 可执行名 | `KEMI-远程桌面` | 系统设置与 Finder 中的名称 |
-| 版本 | `1.4.44+102` | `CFBundleShortVersionString=1.4.44`、`CFBundleVersion=102` |
+| 版本 | `1.4.46+104` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=104` |
 | 架构 | `arm64` | 当前 Apple Silicon 测试包 |
 | 运行形态 | `LSUIElement=1` | 代理型 App，不常驻 Dock；系统设置抢焦点后须主动恢复窗口 |
 | 签名叶证书 | `KEMI Local App Signing 2026`，SHA-1 `41330AE46A6AF5B400B44E771FF1CD7BAA6D1163` | 固定测试身份，包含 Digital Signature / Code Signing 用途 |

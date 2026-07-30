@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码、PAD 分发版与 Mac 已安装版均为 **1.4.44+102**，使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码、Android release、PAD安装版与PAD内置Mac交付包均为 **1.4.46+104**；Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -21,6 +21,8 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+104` | macOS Apple Silicon客户端与PAD同步发布：最新Mac App固定签名后内置到PAD，最终release完成实际HTTP下载、版本、签名和哈希端到端核验 |
+| `1.4.45+103` | Android正式身份迁移：applicationId改为`com.newlinksz.kemi.remote`，release构建强制使用Newlink固定签名并禁止debug证书；业务功能和权限保持不变 |
 | `1.4.44+102` | macOS 登录项统一使用系统 `SMAppService.mainApp`，Dock「选项 → 登录时打开」与 KEMI 开关一致；正式包自动修复登录项 URL 至 `/Applications`；主页默认显示“主页 / 设置”，关于页显示 KEMI 产品版本 |
 | `1.4.43+101` | 首次让 Mac 主页默认创建“主页 / 设置”标签，并将关于页版本数据源改为 App 包版本；该临时构建仅用于验证，登录项最终路径修复由 1.4.44 交付 |
 | `1.4.42+100` | 移除 macOS 授权卡片错误暴露的内部标记“授权流程 v1.0.11”；Mac 与 PAD 内置 Mac 下载包同步升级 |
@@ -67,6 +69,7 @@ kemi-docs/
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
+├── android-release-signing.md    ← Android正式包名、固定签名、构建与迁移
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
 ├── client-distribution.md         ← PAD 局域网客户端下载与离线包规范
@@ -127,6 +130,11 @@ kemi-docs/
 ### macos-configuration.md
 
 macOS 客户端的唯一操作说明：两项远控必需权限、PAD 输入的真实准入条件、`LSUIElement` 授权窗口恢复、固定测试签名、交付核验、TCC 重置和开机自启动。涉及 Mac 构建、签名或权限时必须先读本文件。
+
+### android-release-signing.md
+
+Android正式身份、固定release密钥、环境变量、构建命令、证书指纹、旧包迁移和华为设备验收。
+涉及Android release、包名或签名时必须先读本文件，禁止重新生成密钥或退回debug签名。
 
 ### ci-build.md
 

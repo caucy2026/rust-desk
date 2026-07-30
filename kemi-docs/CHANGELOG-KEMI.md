@@ -2,6 +2,37 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 五十三、2026-07-31 Windows/Linux 云端构建根因修复（1.4.46）
+
+- 读取 focused run `30541481850` 的 Windows、Linux 完整日志后确认，两端并非分别出现平台问题，而是共同在 `mozjpeg-sys 2.2.3` 构建脚本失败：该版本调用较新 Rust 才提供的 `Option::is_none_or`，工作流固定的 Rust `1.75` 因此报 `E0599`。
+- vcpkg 缓存 `400`、Linux 容器缓存未命中以及 Windows 构建目录不存在均是伴随警告或编译失败后的连带现象，不是第一根因；继续盲目重跑同一 commit 不可能成功。
+- 按当前 RustDesk 上游锁文件的兼容选择，将上层 `mozjpeg` 精确回退并锁定为 `0.10.11`、`mozjpeg-sys` 精确回退并锁定为 `2.2.2`，保留 Flutter 桌面/Sciter 的 Rust `1.75` 基线，避免为修一个传递依赖而扩大工具链升级范围。
+- `cargo +1.75 metadata --locked --no-deps` 已通过；Windows x64 EXE 与 Linux x86_64 AppImage 将由新的 focused run 并行构建。只有两个目标成功、制品版本/哈希核验并导入 PAD 后，才把状态改为已交付。
+
+## 五十二、2026-07-30 Mac与PAD内置下载包同步交付（1.4.46+104）
+
+- 本轮将最新macOS Apple Silicon客户端重新构建并内置到最终PAD release。因为原`1.4.45+103`已经存在正式Android制品，而替换内置Mac ZIP会改变APK内容，为避免“同版本、不同字节”的不可追踪状态，源码、Mac和PAD统一提升到`1.4.46+104`；Windows/Linux构建元数据同步为`1.4.46`。
+- macOS先完成Rust release和Flutter release构建，再复制同版本`service`；主程序、`service`和`liblibrustdesk.dylib`均核验为arm64。整个App使用固定测试身份`KEMI Local App Signing 2026`签名，原包和ZIP解压副本均通过`codesign --verify --deep --strict`。
+- 最终Mac ZIP为`BIN/KEMI-远程桌面-macOS-arm64-1.4.46+104.zip`，大小`25,918,515`字节，SHA-256为`b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4`；同一字节副本已写入`assets/client-dist/KEMI-remote-desktop-macos-arm64.zip`。
+- 最终PAD为`BIN/KEMI-远程桌面-PAD-1.4.46+104-release.apk`，大小`52,000,697`字节，SHA-256为`3ef9b5b33042d73f4571a8f97727765010f221cc4ee3c29b4adc89a4e081944d`。包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=104`，只包含arm64 ABI；v1/v2签名均通过，签名证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 测试PAD`192.168.1.10:5555`已卸载中间版本并全新安装最终release；系统和首页分别确认`1.4.46(104)`及`KEMI远程桌面PAD版 v1.4.46`。进入“客户端”页后日志确认HTTP服务在`8686`启动，`/health`返回`ok`。
+- 从PAD真实HTTP地址下载Mac ZIP后，哈希与BIN/asset完全一致，解压显示`1.4.46+104`且深度签名校验通过；从同一页面下载Android APK后，与BIN正式包及设备已安装`base.apk`三者SHA-256完全一致。该结果证明PAD实际分发的不是构建目录旧缓存。
+- 本轮只更新`BIN`与PAD内置Mac包，未替换`/Applications/KEMI-远程桌面.app`，本机已安装副本仍为`1.4.44+102`。Mac交付包仍是本地自签名测试包，没有Apple Developer ID和公证票据；浏览器下载到其他Mac后仍可能被Gatekeeper阻止，正式外发必须完成Developer ID签名与notarization。
+- 为避免误用，构建过程中的`1.4.45`中间Mac ZIP和被覆盖的同名PAD中间包已移出`BIN`到临时目录；`BIN`只将`1.4.46+104`作为本轮最新双端交付。
+
+## 五十一、2026-07-30 Android正式包名、固定签名与Release交付（1.4.45+103）
+
+- 公司域名`www.newlink-sz.com`对应的Android正式applicationId固定为`com.newlinksz.kemi.remote`；Kotlin namespace暂保留`com.carriez.flutter_hbb`，避免全量移动原生代码引入功能回归。旧测试包和新包属于两个独立应用，首次迁移必须卸载旧包并重新授权。
+- 删除release使用`~/.android/debug.keystore`和明文默认密码的配置。Gradle改为只从`KEMI_ANDROID_KEYSTORE`、`KEMI_ANDROID_STORE_PASSWORD`、`KEMI_ANDROID_KEY_ALIAS`、`KEMI_ANDROID_KEY_PASSWORD`读取正式签名，缺任一项时release任务直接失败，不能回退debug证书。
+- 在源码仓外创建固定PKCS12密钥`/Users/newlink/kemi/RustDesk/signing/android/kemi-release-2026.p12`，RSA 3072、SHA256withRSA、有效期10000天；随机密码仅存当前用户钥匙串服务`KEMI Android Release Keystore 2026`。证书SHA-256为`85:46:D0:3E:51:D0:9D:FA:17:DB:CF:43:2F:84:BC:CF:74:BD:2D:9F:DE:1C:FF:98:1F:F2:02:F8:87:18:71:A2`。
+- release首次AOT失败根因是Flutter 3.24.5缓存的`gen_snapshot`为x64而本机缺Rosetta；安装Apple Rosetta 2后AOT通过。随后dex失败根因是`src/main`中的Flutter 3.29兼容空桩与当前3.24.5 release engine真实`PluginRegistry`重复；将兼容桩限制到`src/debug`，release使用engine真实类。根因修复后恢复R8/minify与资源裁剪，压缩版构建、安装和基础回归通过。
+- Cargo、Flutter、Windows/Linux workflow、RPM和Arch版本统一升级为`1.4.45`，Android build number为`103`。arm64 release APK构建成功，包名`com.newlinksz.kemi.remote`、`versionName=1.4.45`、`versionCode=103`、v1/v2签名有效、证书指纹一致、非debuggable，只包含arm64 ABI。
+- 最终R8优化APK大小`52,002,623`字节，SHA-256为`bd4527adad9653e28d28430a483c7f342b2545e66111dbeaad71842f05662244`；已复制到`BIN/KEMI-远程桌面-PAD-1.4.45+103-release.apk`。
+- 测试PAD`192.168.1.10:5555`已卸载旧`com.carriez.flutter_hbb`并安装新release；系统确认`1.4.45(103)`、冷启动成功、`run-as`拒绝调试。首页截图确认显示`KEMI远程桌面PAD版 v1.4.45`。
+- “客户端”页HTTP服务回归通过：进入页面端口8686启动，离开页面停止，再进入重新启动；从PAD下载的`KEMI-remote-desktop-1.4.45.apk`与本地release SHA-256完全一致。macOS ZIP和原有敏感权限均保留，功能未通过删减换取告警变化。
+- 当前ADB设备厂商为`HL2.0`、型号`huanglong`，不是华为手机；华为“诈骗应用”告警是否消除仍须在原华为设备上安装同一SHA-256 APK并记录完整提示、HarmonyOS版本和安装来源。
+- 新增`android-release-signing.md`作为Android正式身份、密钥、构建和迁移的唯一操作文档；Mac源码版本已同步，但本次未重建Mac，BIN与Mac已安装包仍为`1.4.44+102`。
+
 ## 五十、2026-07-30 通用备份与云构建协调文档（1.4.44+102）
 
 - 将`ci-build.md`重构为“通用方法 + KEMI特例”两部分。通用部分明确区分开发备份、候选构建、Actions artifact和候选发布，新增交付分支、`wip/*`、文档路径与tag的职责模型。
