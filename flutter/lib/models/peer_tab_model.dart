@@ -30,6 +30,16 @@ class PeerTabModel with ChangeNotifier {
     'Address book',
     'Accessible devices',
   ];
+  // KEMI's home screen is localized for the target Chinese PAD/Mac workflow.
+  // Keep these product explanations in the shared UI model rather than adding
+  // new upstream RustDesk translation keys outside template.rs.
+  static const List<String> tabRemarks = [
+    '这里显示最近成功连接的设备，点击可快速再次连接。',
+    '将常用设备加入收藏，方便快速访问。',
+    '查看当前局域网内可被发现的设备。',
+    '管理并同步地址簿中的联系人和设备。',
+    '查看已共享给当前账号或当前账号可访问的设备。',
+  ];
   static const List<IconData> icons = [
     Icons.access_time_filled,
     Icons.star,
@@ -129,6 +139,13 @@ class PeerTabModel with ChangeNotifier {
       return translate(tabNames[index]);
     }
     return index.toString();
+  }
+
+  String tabRemark(int index) {
+    if (index >= 0 && index < tabRemarks.length) {
+      return tabRemarks[index];
+    }
+    return '';
   }
 
   IconData tabIcon(int index) {

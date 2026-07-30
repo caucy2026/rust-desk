@@ -1,6 +1,6 @@
 # GitHub 跨平台构建与桥接生成
 
-> 适用版本：`1.4.31+89`。本文件描述 KEMI 客户端的 GitHub Actions 构建依赖、失败定位和验证规则；版本号统一规则仍以 `SESSION-HANDOFF.md` 为准。
+> 适用版本：`1.4.32+90`。本文件描述 KEMI 客户端的 GitHub Actions 构建依赖、失败定位和验证规则；版本号统一规则仍以 `SESSION-HANDOFF.md` 为准。
 
 ## 1. 流水线关系
 

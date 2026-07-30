@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 三十四、2026-07-30 首页快捷功能选中说明（1.4.32+90）
+
+- 主页中间的“最近访问、收藏、已发现、地址簿、可访问设备”实际由 `flutter/lib/common/widgets/peer_tab_page.dart` 共享渲染，PAD 主页与 macOS 桌面主页均使用这一组件；因此只在共用组件实现，不复制两套行为。
+- 图标栏下新增常驻的当前选中说明行，显示“功能名称：用途备注”，点击任一图标时以短动画立即切换。说明分别解释最近重连、常用收藏、局域网发现、地址簿同步和账号可访问设备，窄屏时单行省略，不挤压图标操作区。
+- KEMI 的目标测试界面为中文，说明集中在 `PeerTabModel` 的共用 UI 数据中；不新增上游 RustDesk 翻译键，避免破坏 `src/lang/template.rs` 的键清单。多选操作期间保持原有多选工具栏，不显示说明行，避免干扰批量操作。
+- 版本统一升级为 `1.4.32+90`：Cargo、Flutter、Windows/Linux CI、AppImage、rpm、Arch 均同步。已用 Flutter `3.24.5` 构建 PAD debug APK，APK 内部核验为 `com.carriez.flutter_hbb`、`versionName=1.4.32`、`versionCode=90`、v1/v2 签名有效，并已覆盖安装到 `192.168.1.10:5555`；系统 `dumpsys` 确认实际版本为 `1.4.32+90`。
+- macOS release App 已构建并用固定 `KEMI Local App Signing 2026` 深度签名，`CFBundleIdentifier=com.carriez.rustdesk`、`CFBundleShortVersionString=1.4.32`、`CFBundleVersion=90`，两份交付包（`/Applications`、`BIN/`）均通过 `codesign --verify --deep --strict`。旧 `1.4.31+89` 两份 App 已移入废纸篓，可恢复；新进程已从 `/Applications/KEMI-远程桌面.app` 启动。
+- 当前 Apple Silicon 系统未提供 Rosetta，Flutter `3.24.5` 的 Intel macOS AOT 工具无法本机执行；因此 macOS 包使用本机原生 Flutter `3.29` 构建。仅在本机 Pub 缓存为 `extended_text 14.0.0` 补齐两个新版 Flutter 选择接口，仓库 `pubspec.yaml`、锁文件和 CI 基线仍保持 Flutter `3.24.5` / `extended_text 14.0.0`，没有将该缓存修补提交进仓库。
+
 ## 三十三、2026-07-30 macOS 配置审计与 GitHub bridge 基线修复（1.4.31+89）
 
 - 新增 `kemi-docs/macos-configuration.md`，集中维护当前 App bundle、固定证书链、两项远控权限、授权窗口恢复、TCC 重置边界、交付核验和开机自启动；不再把操作规则散落在历史记录中。审计确认 `/Applications/KEMI-远程桌面.app` 为 arm64、`com.carriez.rustdesk`、`1.4.31+89`、`LSUIElement=1`，签名链为固定叶证书 `KEMI Local App Signing 2026` → 本地测试根证书；`codesign --verify --deep --strict` 已通过。

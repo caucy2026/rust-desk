@@ -109,28 +109,67 @@ class _PeerTabPageState extends State<PeerTabPage>
       textBaseline: TextBaseline.ideographic,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Obx(() => SizedBox(
-              height: 32,
-              child: Container(
-                padding: stateGlobal.isPortrait.isTrue
-                    ? EdgeInsets.symmetric(horizontal: 2)
-                    : null,
-                child: selectionWrap(Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                        child: visibleContextMenuListener(
-                            _createSwitchBar(context))),
-                    if (stateGlobal.isPortrait.isTrue)
-                      ..._portraitRightActions(context)
-                    else
-                      ..._landscapeRightActions(context)
-                  ],
-                )),
-              ),
-            ).paddingOnly(right: stateGlobal.isPortrait.isTrue ? 0 : 12)),
+        Obx(() => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 32,
+                  child: Container(
+                    padding: stateGlobal.isPortrait.isTrue
+                        ? EdgeInsets.symmetric(horizontal: 2)
+                        : null,
+                    child: selectionWrap(Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                            child: visibleContextMenuListener(
+                                _createSwitchBar(context))),
+                        if (stateGlobal.isPortrait.isTrue)
+                          ..._portraitRightActions(context)
+                        else
+                          ..._landscapeRightActions(context)
+                      ],
+                    )),
+                  ),
+                ).paddingOnly(right: stateGlobal.isPortrait.isTrue ? 0 : 12),
+                if (!model.multiSelectionMode)
+                  _buildSelectedTabRemark(context, model),
+              ],
+            )),
         _createPeersView(),
       ],
+    );
+  }
+
+  /// The icon-only tab bar is shared by the PAD and desktop home pages.
+  /// Keep the selected tab's purpose visible below it so first-time users do
+  /// not need to infer a feature from its icon or wait for a hover tooltip.
+  Widget _buildSelectedTabRemark(BuildContext context, PeerTabModel model) {
+    final tabIndex = model.currentTab;
+    final title = model.tabTooltip(tabIndex);
+    final remark = model.tabRemark(tabIndex);
+    final color =
+        Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7);
+    return SizedBox(
+      height: 22,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 160),
+        child: Row(
+          key: ValueKey(tabIndex),
+          children: [
+            Icon(model.tabIcon(tabIndex), size: 13, color: color),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                '$title：$remark',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
+          ],
+        ).paddingOnly(left: 8, right: 4),
+      ),
     );
   }
 
