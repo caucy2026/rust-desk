@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前Flutter源码、Android release与PAD安装版为 **1.4.46+105**；内置Mac包为 **1.4.46+104**，Windows/Linux客户端为 **1.4.46**。Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前Flutter源码、Android release与PAD安装版为 **1.4.46+106**；内置Mac包为 **1.4.46+104**，Windows/Linux客户端为 **1.4.46**。Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -21,6 +21,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+106` | 按华为合规分发规范重发PAD：正式包名和固定release证书保持不变，递增versionCode并完整记录源码、APK与签名指纹；新增Mac同事从GitHub fresh clone到Release App的独立构建文档 |
 | `1.4.46+105` | Windows x64与Linux x86_64云端候选生成并导入PAD；最终release内置Windows EXE、Mac ZIP、Linux AppImage，实机完成三端HTTP下载和哈希核验 |
 | `1.4.46+104` | macOS Apple Silicon客户端与PAD同步发布：最新Mac App固定签名后内置到PAD，最终release完成实际HTTP下载、版本、签名和哈希端到端核验 |
 | `1.4.45+103` | Android正式身份迁移：applicationId改为`com.newlinksz.kemi.remote`，release构建强制使用Newlink固定签名并禁止debug证书；业务功能和权限保持不变 |
@@ -70,6 +71,7 @@ kemi-docs/
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
+├── macos-local-build.md          ← Mac 同事从 GitHub 本地编译 Release App
 ├── android-release-signing.md    ← Android正式包名、固定签名、构建与迁移
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
