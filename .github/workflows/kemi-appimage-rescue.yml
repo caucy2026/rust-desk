@@ -1,0 +1,70 @@
+name: KEMI AppImage Rescue 1.4.46
+
+on:
+  push:
+    branches:
+      - ci/appimage-rescue-1.4.46
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  VERSION: "1.4.46"
+  SOURCE_RUN_ID: "30590581209"
+  SOURCE_COMMIT: "4e30063b9a0b293eca18a355264fbbe6852be84e"
+
+jobs:
+  package-appimage:
+    name: Repackage verified Linux DEB as AppImage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout matching source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+
+      - name: Download Linux DEB from the completed source run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rustdesk-${{ env.VERSION }}-x86_64.deb
+          path: .
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Build AppImage without recompiling the client
+        shell: bash
+        run: |
+          mv "rustdesk-${{ env.VERSION }}-x86_64.deb" appimage/rustdesk.deb
+          sudo apt-get update -y
+          sudo apt-get install -y libarchive-tools libfuse2
+          sudo pip3 install "setuptools_scm<10"
+          sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
+          pushd appimage
+          sed -i "s/^    version: .*/    version: ${{ env.VERSION }}/" \
+            ./AppImageBuilder-x86_64.yml
+          sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-x86_64.yml
+          appimage_file="$(find . -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          output_file="rustdesk-${{ env.VERSION }}-x86_64.AppImage"
+          if [[ -n "$appimage_file" ]]; then
+            if [[ "$(basename "$appimage_file")" != "$output_file" ]]; then
+              mv "$appimage_file" "$output_file"
+            fi
+          else
+            test -s AppDir.squashfs
+            curl --fail --location --retry 5 --retry-all-errors \
+              --output appimage-runtime \
+              "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
+            cat appimage-runtime AppDir.squashfs > "$output_file"
+          fi
+          chmod +x "$output_file"
+          test -s "$output_file"
+
+      - name: Upload final Linux AppImage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kemi-linux-x86_64-${{ env.SOURCE_COMMIT }}
+          path: ./appimage/rustdesk-${{ env.VERSION }}-x86_64.AppImage
+          retention-days: 14
