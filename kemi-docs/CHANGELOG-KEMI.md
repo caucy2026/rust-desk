@@ -2,7 +2,7 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
-## 五十六、2026-07-31 四端制品仓与PAD空闲同步（PAD 1.4.46+107 → +109）
+## 五十六、2026-07-31 四端制品仓与PAD空闲同步（PAD 1.4.46+107 → +110）
 
 - 四端制品交付基准统一为项目根目录`BIN/`；每批必须包含PAD APK、macOS arm64 ZIP、Windows x64 EXE、Linux x86_64 AppImage、版本清单和SHA256SUMS。远端统一使用`caucy2026/common-data`：普通Git只保存稳定清单和说明，大文件使用不可变GitHub Release，先传完并回读校验四端资产，最后更新`stable/manifest.json`。
 - PAD不再把macOS/Windows/Linux约125MiB静态包编入APK。新增`ClientPackageSync.kt`，从固定GitHub清单读取四端真实版本、大小和SHA-256；仅接受白名单平台、文件名和HTTPS GitHub下载域名。下载写`.part`并支持Range续传，长度和SHA-256全部通过后才原子替换正式缓存；失败不覆盖最后成功文件。
@@ -11,6 +11,8 @@
 - Android远端版本与当前安装`versionName+versionCode`一致且字节校验通过时继续直接服务`applicationInfo.sourceDir`，不额外缓存自身；远端PAD更新时才缓存新版APK供局域网下载，因此没有APK递归嵌套。
 - `1.4.46+107`首次真机强制任务成功读取raw稳定清单，但四端均未生成`.part`；PAD和本机进一步验证`raw.githubusercontent.com`、`api.github.com`可达，而`github.com/releases/...`HTTPS首跳20秒超时。Release资产本身大小正确，根因是下载入口不适合当前网络，不是文件或JobScheduler错误。修正版`+108`将清单URL改为GitHub官方Release Assets API，客户端显式发送二进制Accept/API版本头并允许`api.github.com`；API再跳转到可达的`release-assets.githubusercontent.com`。同时`ensurePackage`失败现在记录平台、版本和完整异常，避免后台只显示error却没有log。
 - `+108`真机证明Assets API可达，但其Accept同时列出`application/octet-stream,application/json`，GitHub返回约1.6KiB资产元数据JSON，长度门禁正确拒绝三个文件。`+109`对`api.github.com`只发送精确二进制Accept，遇到JSON Content-Type立即拒绝，并在续传前识别和清理旧版误存的JSON `.part`，避免错误临时内容参与Range续传。
+- 按`/Users/newlink/kemi/kemi-rd/md/github-cloud-resource-guide.md`补齐双源策略：小型stable manifest先读raw GitHub（4秒连接超时），失败自动读`jsDelivr @main`并使用分钟级cache-bust（8秒连接超时），两者失败继续使用磁盘最后成功清单。四端二进制中Linux约79MiB，超过指南建议的jsDelivr 50MiB范围，因此大文件仍使用GitHub Release Assets API，不错误套用小数据CDN方案。
+- PAD列表下载状态由右侧“下载中”文字改为42px圆形进度环，环内显示当前整数百分比，SHA校验阶段显示“校验”；移除重复的行内横向进度条。局域网HTTP网页不再使用临时简版CSS，按`client-download-preview.html`还原960px双面板、渐变hero、绿色服务徽标、深色地址栏、Windows推荐横跨卡片、双列下载卡片、平台符号图标、黄色排障提示和移动端单列布局，动态填入真实Wi-Fi、地址、版本和可用状态。
 - `client-distribution.md`已重写为上述流程的唯一维护文档，详细定义版本号、BIN文件名、common-data Release/tag/manifest、云构建未完成时的隔离规则、安全边界、失败回退和逐项验收。
 - 本节先记录代码与设计基线。最终APK大小/哈希、固定签名、BIN四端哈希、common-data Release tag、PAD实机同步和HTTP回读结果必须在构建部署后补录，不得提前标记为交付完成。
 

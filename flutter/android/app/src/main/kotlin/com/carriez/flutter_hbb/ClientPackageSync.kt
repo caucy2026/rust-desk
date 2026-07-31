@@ -46,10 +46,15 @@ data class ResolvedClientPackage(
 class ClientPackageSync private constructor(private val context: Context) {
     companion object {
         private const val TAG = "ClientPackageSync"
-        private const val MANIFEST_URL =
+        private const val RAW_MANIFEST_URL =
             "https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stable/manifest.json"
+        private const val CDN_MANIFEST_URL =
+            "https://cdn.jsdelivr.net/gh/caucy2026/common-data@main/kemi-rustdesk/stable/manifest.json"
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
+        private const val RAW_MANIFEST_CONNECT_TIMEOUT_MS = 4_000
+        private const val CDN_MANIFEST_CONNECT_TIMEOUT_MS = 8_000
+        private const val MANIFEST_READ_TIMEOUT_MS = 13_000
         private const val MAX_MANIFEST_BYTES = 1024 * 1024
         private val SAFE_FILE_NAME = Regex("[A-Za-z0-9._+\\-]+")
         private val SAFE_SHA256 = Regex("[a-f0-9]{64}")
@@ -221,8 +226,30 @@ class ClientPackageSync private constructor(private val context: Context) {
             ?: "KEMI-remote-desktop-PAD-${installedPadVersion()}.apk"
 
     private fun refreshManifest(): List<RemoteClientPackage> {
+        val cacheBust = System.currentTimeMillis() / 60_000
+        val sources = listOf(
+            RAW_MANIFEST_URL to RAW_MANIFEST_CONNECT_TIMEOUT_MS,
+            "$CDN_MANIFEST_URL?_t=$cacheBust" to CDN_MANIFEST_CONNECT_TIMEOUT_MS,
+        )
+        var lastError: Exception? = null
+        sources.forEach { (url, connectTimeout) ->
+            try {
+                return downloadManifest(url, connectTimeout)
+            } catch (error: Exception) {
+                lastError = error
+                Log.w(TAG, "Cannot load manifest from ${URL(url).host}", error)
+            }
+        }
+        throw lastError ?: IllegalStateException("无法读取客户端版本清单")
+    }
+
+    private fun downloadManifest(url: String, connectTimeout: Int): List<RemoteClientPackage> {
         val part = File(cacheDir, "manifest.json.part")
-        val connection = openConnection(MANIFEST_URL)
+        val connection = openConnection(
+            url,
+            connectTimeoutMs = connectTimeout,
+            readTimeoutMs = MANIFEST_READ_TIMEOUT_MS,
+        )
         try {
             if (connection.responseCode !in 200..299) {
                 throw IllegalStateException("版本清单请求失败：HTTP ${connection.responseCode}")
@@ -418,11 +445,16 @@ class ClientPackageSync private constructor(private val context: Context) {
         }
     }
 
-    private fun openConnection(url: String, rangeStart: Long = 0): HttpURLConnection {
+    private fun openConnection(
+        url: String,
+        rangeStart: Long = 0,
+        connectTimeoutMs: Int = CONNECT_TIMEOUT_MS,
+        readTimeoutMs: Int = READ_TIMEOUT_MS,
+    ): HttpURLConnection {
         val targetUrl = URL(url)
         return (targetUrl.openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
+            connectTimeout = connectTimeoutMs
+            readTimeout = readTimeoutMs
             instanceFollowRedirects = true
             useCaches = false
             requestMethod = "GET"
@@ -433,6 +465,8 @@ class ClientPackageSync private constructor(private val context: Context) {
             )
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             setRequestProperty("User-Agent", "KEMI-PAD/${installedPadVersion()}")
+            setRequestProperty("Cache-Control", "no-cache")
+            setRequestProperty("Pragma", "no-cache")
             if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
         }
     }

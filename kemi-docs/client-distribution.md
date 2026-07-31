@@ -1,6 +1,6 @@
 # KEMI 四端客户端发布、PAD 自动同步与局域网分发
 
-> 适用版本：`1.4.46+109` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
+> 适用版本：`1.4.46+110` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
 
 ## 1. 需求结论
 
@@ -30,18 +30,18 @@ PAD 局域网 HTTP 服务
 
 ## 2. 四端版本和文件名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+109`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+109`。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+110`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+110`。
 
 `BIN/` 当前发布批次必须包含：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.46+109-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.46+109.zip
+├── KEMI-远程桌面-PAD-1.4.46+110-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.46+110.zip
 ├── KEMI-远程桌面-Windows-x64-1.4.46.exe
 ├── KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage
-├── KEMI-client-manifest-1.4.46+109.json
-└── KEMI-client-SHA256SUMS-1.4.46+109.txt
+├── KEMI-client-manifest-1.4.46+110.json
+└── KEMI-client-SHA256SUMS-1.4.46+110.txt
 ```
 
 文件名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -50,8 +50,8 @@ BIN/
 
 | 平台 | 版本来源 | 本批次要求 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=109`，清单写 `1.4.46+109` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=109` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=110`，清单写 `1.4.46+110` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=110` |
 | Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 | Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 
@@ -71,10 +71,10 @@ kemi-rustdesk/
 每批二进制使用不可变 Release，例如：
 
 ```text
-tag: kemi-rustdesk-v1.4.46-build109
+tag: kemi-rustdesk-v1.4.46-build110
 assets:
-  KEMI-remote-desktop-PAD-1.4.46+109.apk
-  KEMI-remote-desktop-macos-arm64-1.4.46+109.zip
+  KEMI-remote-desktop-PAD-1.4.46+110.apk
+  KEMI-remote-desktop-macos-arm64-1.4.46+110.zip
   KEMI-remote-desktop-windows-x64-1.4.46.exe
   KEMI-remote-desktop-linux-x86_64-1.4.46.AppImage
   manifest.json
@@ -85,11 +85,17 @@ Release 资产一旦进入稳定清单就视为不可变；需要修复时增加
 
 ## 4. 稳定清单格式
 
-PAD 固定读取：
+PAD读取的是同一份小型stable manifest，按`github-cloud-resource-guide.md`采用双源：
 
 ```text
-https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stable/manifest.json
+1. raw GitHub（连接超时4秒，实时）
+   https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stable/manifest.json
+2. jsDelivr @main（连接超时8秒，附分钟级 _t 参数）
+   https://cdn.jsdelivr.net/gh/caucy2026/common-data@main/kemi-rustdesk/stable/manifest.json
+3. 两者失败：继续使用磁盘中的最后成功清单和已验证客户端
 ```
+
+指南中的commit-hash CDN最适合由App版本绑定的静态小数据；本功能要求common-data更新后已安装PAD也能发现新版，因此清单使用`@main + 分钟cache-bust`并接受短暂CDN延迟。四端二进制不走jsDelivr：Linux AppImage约79MiB，超过指南建议的50MiB范围；大文件统一走GitHub Release Assets API，仍由大小和SHA-256门禁保护。
 
 清单格式版本为 1，必须一次包含四个平台：
 
@@ -97,15 +103,15 @@ https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stabl
 {
   "schema_version": 1,
   "channel": "stable",
-  "release_version": "1.4.46+109",
+  "release_version": "1.4.46+110",
   "source_commit": "完整的 rust-desk 源码 commit",
   "generated_at": "2026-07-31T12:00:00+08:00",
   "targets": [
     {
       "id": "android",
-      "version": "1.4.46+109",
+      "version": "1.4.46+110",
       "architecture": "arm64-v8a",
-      "file": "KEMI-remote-desktop-PAD-1.4.46+109.apk",
+      "file": "KEMI-remote-desktop-PAD-1.4.46+110.apk",
       "size": 12345678,
       "sha256": "64位小写SHA-256",
       "url": "https://api.github.com/repos/caucy2026/common-data/releases/assets/<PAD_ASSET_ID>"
@@ -178,7 +184,7 @@ missing → downloading(.part，可续传) → verifying → ready
 
 下载流程：
 
-1. 请求远端清单，限制最大 1 MiB，并校验格式、四个平台、文件名和 URL 白名单。
+1. 先以4秒连接超时请求raw清单，失败后以8秒连接超时请求jsDelivr清单；限制最大1MiB，并校验格式、四个平台、文件名和URL白名单。双源均失败时不删除磁盘最后成功清单。
 2. 远端版本、文件大小或 SHA-256 与本地验证标记不一致时才下载。
 3. 写入 `<文件名>.part`；服务器支持 Range 时从已有长度继续，不支持时安全地从零重下。
 4. 下载完成后先核对长度，再计算 SHA-256。
@@ -197,7 +203,7 @@ Android/PAD 项有一个优化：远端清单版本和当前已安装 App 的 `v
 3. 四个平台每行显示平台图标、真实版本和状态。
 4. 已校验的项目显示绿色完成标记。
 5. 缺失项目显示“点击下载”。用户点击后弹出不可误解的进度窗口：圆形动画、百分比、校验阶段、错误原因和重试按钮。
-6. 用户可选择“后台下载”关闭弹窗，原生下载继续；页面行内仍显示进度条。
+6. 用户可选择“后台下载”关闭弹窗，原生下载继续；列表右侧圆形进度环内持续显示整数百分比，校验阶段显示“校验”。
 7. 离开页面只关闭局域网 HTTP 服务，不删除缓存，也不中断后台客户端同步。
 
 浏览器网页只能下载 `ready` 文件，不能触发任意 URL、浏览目录、上传文件或执行命令。包尚未准备好时显示“PAD 正在准备，请稍后刷新”，不会提供旧路径或未校验临时文件。
@@ -205,7 +211,7 @@ Android/PAD 项有一个优化：远端清单版本和当前已安装 App 的 `v
 ## 8. 局域网 HTTP 边界
 
 ```text
-GET /                              简化下载网页
+GET /                              与设计DEMO一致的客户端下载网页
 GET /health                        返回 ok
 GET /download/<清单中的固定文件名>  发送已验证文件
 ```
@@ -226,7 +232,7 @@ GET /download/<清单中的固定文件名>  发送已验证文件
 | 用户刚进入页面但包未完成 | HTTP 不暴露临时包 | PAD 端点击项目查看动画；浏览器稍后刷新 |
 | 卸载 PAD App | Android 清除专属缓存 | 重装后重新同步 |
 
-GitHub 在部分网络环境下可能不可达或速度不稳定。本版按用户指定以 `common-data` 为源；如果要面对普通国内客户，后续应在相同清单中增加公司域名下的国内对象存储/CDN 主地址并保留 GitHub 作为备用，下载校验规则不变。
+GitHub在部分网络环境下可能不可达或速度不稳定。小型清单已有raw/jsDelivr双源；Release大文件不能错误套用jsDelivr小资源方案。如果面向普通国内客户仍不稳定，应在相同清单中增加公司域名下的国内对象存储/CDN大文件地址并保留GitHub备用，下载校验规则不变。
 
 ## 10. 每次发布验收清单
 

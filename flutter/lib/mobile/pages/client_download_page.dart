@@ -383,19 +383,19 @@ class _PackageRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text([detail, if (version.isNotEmpty) '版本 $version'].join(' · ')),
-          if (downloading) ...[
-            const SizedBox(height: 5),
-            LinearProgressIndicator(
-              value: state == 'verifying' ? null : progress,
-            ),
-          ],
         ],
       ),
       trailing:
           available
               ? const Icon(Icons.check_circle_outline, color: Colors.green)
               : downloading
-              ? const Text('下载中')
+              ? _CircularDownloadProgress(
+                value: state == 'verifying' ? null : progress,
+                label:
+                    state == 'verifying'
+                        ? '校验'
+                        : '${((progress ?? 0) * 100).floor()}%',
+              )
               : const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -432,6 +432,36 @@ class _PackageRow extends StatelessWidget {
     }
     return Icon(Icons.window_rounded, size: 28, color: color);
   }
+}
+
+class _CircularDownloadProgress extends StatelessWidget {
+  const _CircularDownloadProgress({required this.value, required this.label});
+
+  final double? value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 42,
+    height: 42,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        SizedBox(
+          width: 38,
+          height: 38,
+          child: CircularProgressIndicator(value: value, strokeWidth: 3),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            fontSize: label.length > 3 ? 9 : 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _DownloadProgressDialog extends StatefulWidget {
