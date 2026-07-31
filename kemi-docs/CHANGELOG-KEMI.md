@@ -2,6 +2,18 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 五十四、2026-07-31 Windows/Linux客户端与四端PAD分发交付（1.4.46；PAD 1.4.46+105）
+
+- GitHub额度恢复后，focused run `30590581209` 在源码commit `4e30063b9a0b293eca18a355264fbbe6852be84e` 上完整运行。Windows x64越过Flutter SDK瞬时断线恢复、`mozjpeg-sys`旧Rust兼容和AOM `input_texture()`旧失败点，job `91032135590`最终成功；下载artifact `8778930483`得到22,637,056字节PE32+ x86-64便携EXE，SHA-256为`9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`。
+- 同一run的Linux主job `91032135578`成功并上传可复用DEB。AppImage job首次失败不是镜像内容错误：构建器已生成目标同名文件，工作流仍执行`mv file file`而返回1；独立补包run `30593011026`随后确认第二个命令问题是`sudo appimage-builder`产物归root、普通`chmod`无权修改。工作流永久修复为“文件名已一致则不移动”和`sudo chmod +x`。
+- 为避免重编已成功的Windows/Linux主程序，使用隔离分支`ci/appimage-rescue-1.4.46`直接复用run `30590581209`的DEB；run `30593128802`、job `91039510783`成功上传artifact `8779097294`。最终AppImage为82,983,416字节，ELF x86-64、AppImage v2魔数正确、可执行位有效，SHA-256为`2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44`。
+- 发现旧自动release `kemi-4e300...`虽以源码SHA命名，实际tag错误指向旧默认分支`main`的`778d0e299`，原因是Arch中间包发布步骤未受`publish-release:false`约束，且最终release未显式设置`target_commitish`。不移动或覆盖该历史tag；新建正确tag `kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e`并核验指向`4e30063b9`，release内Windows/Linux、`manifest.json`、`SHA256SUMS.txt`的GitHub服务器digest与本地一致。工作流永久改为中间Arch包受发布开关约束，最终tag使用`kemi-client-<sha>`并显式指向`${{ github.sha }}`。
+- 两份客户端已写入`BIN/KEMI-远程桌面-Windows-x64-1.4.46.exe`、`BIN/KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage`，并以同一字节导入Android固定assets文件名；PAD内原Mac ZIP保持25,918,515字节、SHA-256 `b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4`。
+- 因新增两份内置客户端会改变APK字节，Android build number由104升为105，产品版本保持四端共同的`1.4.46`。本机共享Flutter已是3.32.4，直接构建会触发`DialogThemeData/TabBarThemeData`不兼容；3.24.5又缺`extended_text 14`使用的selection API。最终按项目Android文档基线使用隔离Flutter `3.29.3`（Dart `3.7.2`）构建，未改业务代码和共享SDK；磁盘不足时只清理本轮临时SDK/worktree/下载ZIP及可重建的Flutter输出。
+- 最终PAD为`BIN/KEMI-远程桌面-PAD-1.4.46+105-release.apk`，大小156,039,230字节，SHA-256为`5ddb58965700676599dedbe248b3da97d9e0c8fd2ecb907d773c339cd80e0124`。包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=105`、仅arm64；v1/v2签名均有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 测试PAD`192.168.1.10:5555`已卸载104并全新安装105，系统和首页确认`1.4.46(105)`及`KEMI远程桌面PAD版 v1.4.46`。客户端页启动8686服务，页面真实显示Android、Windows、macOS、Linux且无“待导入”；从PAD HTTP实际下载Windows/Linux/Mac的哈希分别与上述三份源文件一致，离开页面后服务立即关闭。
+- Windows EXE没有Authenticode签名，Linux AppImage也未签名；二者明确标记为团队测试候选，Windows/Linux目标系统上的GUI启动、远控和文件传输仍需分别实机验收，不能把云构建和PAD下载通过写成公开发布已通过。
+
 ## 五十三、2026-07-31 Windows/Linux 云端构建根因修复（1.4.46）
 
 - 读取 focused run `30541481850` 的 Windows、Linux 完整日志后确认，两端并非分别出现平台问题，而是共同在 `mozjpeg-sys 2.2.3` 构建脚本失败：该版本调用较新 Rust 才提供的 `Option::is_none_or`，工作流固定的 Rust `1.75` 因此报 `E0599`。
@@ -11,7 +23,7 @@
 - Linux AppImageBuilder 已成功生成镜像，但 recipe 仍硬编码 `1.4.35`，上传 glob 只匹配当前 `1.4.46`，导致上传步骤警告“未找到文件”却把 job 标为成功。现改为构建前注入当前 `VERSION`，构建后必须找到 AppImage 并统一重命名；缺文件会立即失败，不再允许假成功。
 - run `30588285080` 再次确认 Linux 主构建成功；加强后的检查同时揭示 AppImageBuilder fork 实际只留下 `AppDir.squashfs`，没有执行最后的 runtime 合成。工作流现优先接收构建器产物，若缺失则下载官方 type2 runtime 并与 squashfs 合成可执行 AppImage，最后以非空文件校验作为上传门禁。
 - 同一 run 的 Windows 在下载 Flutter SDK 时遇到 `Recv failure: Connection was reset`，属于 GitHub runner 的瞬时网络中断，不是源码编译错误。工作流在安装动作后增加 SDK 完整性检查；若缓存缺少 `flutter.bat`，自动用带重试的官方 SDK 下载恢复，再进入自定义 engine 和 Rust 构建。
-- `cargo +1.75 metadata --locked --no-deps` 已通过；Windows x64 EXE 与 Linux x86_64 AppImage 将由下一轮 focused run 并行构建。只有两个目标成功、制品版本/哈希核验并导入 PAD 后，才把状态改为已交付。
+- `cargo +1.75 metadata --locked --no-deps` 已通过；Windows x64 EXE、Linux x86_64 AppImage和最终PAD分发验收结果见第五十四节。
 
 ## 五十二、2026-07-30 Mac与PAD内置下载包同步交付（1.4.46+104）
 

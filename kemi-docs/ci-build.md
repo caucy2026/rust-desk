@@ -518,26 +518,30 @@ flutter/android/app/src/main/assets/client-dist/
 候选源码提交：
 
 ```text
-98d3a9735b46cfebe5954ecac55b2f6e222fee48
+4e30063b9a0b293eca18a355264fbbe6852be84e
 ```
 
 focused run：
 
 ```text
-30541481850
+30590581209
 ```
 
 结果：
 
 - default bridge：成功；
 - TopMostWindow x64：成功；
-- Windows x64：`Build rustdesk` 失败；
-- Linux x86_64：`Build rustdesk` 失败；
-- 只有 bridge 和 TopMostWindow 中间 artifacts；
-- 没有 Windows/Linux最终客户端，没有进入 manifest/prerelease 汇总。
+- Windows x64：成功，artifact `8778930483`；
+- Linux x86_64主构建：成功，DEB artifact `8778766717`；
+- Linux AppImage首次汇总因同名`mv`和root所有者权限问题未上传，非源码编译失败；
+- 独立复用DEB的补包run `30593128802`成功，AppImage artifact `8779097294`；
+- 正确候选prerelease为`kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e`，tag已核验指向源码`4e30063b9`，Windows/Linux和两份校验元数据的GitHub digest与本地一致；
+- Windows/Linux最终文件均已导入PAD `1.4.46+105`，从PAD真实HTTP下载的哈希与源文件一致；
+- Windows目标机与Linux目标机的GUI启动、远控和文件传输仍待对应系统实机验收。
 
-后续纯 `kemi-docs/**` 提交没有触发新的 focused run，也没有影响该 run。下一轮功能候选进入
-`master` 前，必须先取得两个失败 job 的首个有效错误并完成对应修复。
+本次为保留已成功的Windows job，没有在其运行中推送AppImage命令修复；先让旧run完成，再用
+独立补包分支复用DEB，避免重编两端。永久修复合入`master`后，若自动触发同版本冗余run，
+应在确认源码commit和现有制品均已完成后主动取消，并在记录中说明，不把取消run误报为交付失败。
 
 ## 18. KEMI 汇报模板
 

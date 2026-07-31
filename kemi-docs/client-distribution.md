@@ -1,6 +1,6 @@
 # PAD 局域网客户端下载与四端打包
 
-> 适用源码版本：`1.4.46+104`。本文件是首页“客户端”入口、临时 HTTP 服务、APK 自分发和四端离线安装包的**唯一维护说明**。涉及此功能时，先读本文件，再修改代码或制作安装包。
+> 适用源码版本：`1.4.46+105`。本文件是首页“客户端”入口、临时 HTTP 服务、APK 自分发和四端离线安装包的**唯一维护说明**。涉及此功能时，先读本文件，再修改代码或制作安装包。
 
 ## 1. 目标和用户可见流程
 
@@ -12,7 +12,7 @@ PAD 首页的“客户端”入口用于在私有局域网中，把 KEMI 客户�
 2. 在下载设备浏览器中**输入页面地址或扫描二维码，二选一**打开下载页。
 3. 选择对应平台的客户端，下载并按系统提示安装。
 
-页面只展示当前实际存在、且已核验的包。Windows 或 Linux 包尚未导入时显示“待导入”，没有虚假的下载链接。
+页面只展示当前实际存在、且已核验的包。某个平台包尚未导入时显示“待导入”，没有虚假的下载链接；`1.4.46+105`已导入Windows、macOS和Linux三端。
 
 ## 2. “APK 把自己打包进去”的真实实现
 
@@ -62,8 +62,8 @@ Android 与其余三端的来源不同：
 |---|---|---|---|---|
 | PAD / Android | APK | 已安装 App 的 `applicationInfo.sourceDir` | 否 | 已可下载 |
 | macOS | Apple Silicon / ZIP | `assets/client-dist` 中的已签名 App ZIP | 是 | 已可下载 |
-| Windows | x64 / EXE | `assets/client-dist` 中的已核验 EXE | 是 | 待导入 |
-| Linux | x86_64 / AppImage | `assets/client-dist` 中的已核验 AppImage | 是 | 待导入 |
+| Windows | x64 / EXE | `assets/client-dist` 中的已核验 EXE | 是 | 已可下载 |
+| Linux | x86_64 / AppImage | `assets/client-dist` 中的已核验 AppImage | 是 | 已可下载 |
 
 静态包的固定目录和文件名如下；文件名是 HTTP 白名单的一部分，**不可随意更名**：
 
@@ -84,7 +84,28 @@ flutter/android/app/src/main/assets/client-dist/
 b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4
 ```
 
-Windows 与 Linux 的交付物尚未通过核验，因此当前不能把它们标为可下载，也不能拿旧目录、未完成 GitHub Actions artifact 或不明网络文件替代。
+当前Windows x64 EXE对应源码commit `4e30063b9a0b293eca18a355264fbbe6852be84e`、focused run `30590581209`，大小22,637,056字节，SHA-256为：
+
+```text
+9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad
+```
+
+当前Linux x86_64 AppImage复用同一run的成功DEB，由补包run `30593128802`生成，大小82,983,416字节，SHA-256为：
+
+```text
+2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44
+```
+
+两份不会随Actions 14天保留期过期的候选文件、manifest和校验表位于GitHub prerelease：
+
+```text
+tag: kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e
+https://github.com/caucy2026/rust-desk/releases/tag/kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e
+```
+
+该tag已核验直接指向源码commit `4e30063b9`。Windows EXE没有Authenticode签名，Linux AppImage也未签名，均为团队测试候选，不是公开发布签名包。
+
+最终PAD `1.4.46+105`已在`192.168.1.10:5555`实机安装；从其HTTP服务实际下载Windows、macOS、Linux三端文件后的哈希均与导入前一致。Windows和Linux仍需在各自目标系统完成GUI启动、远控和文件传输验收，不能把“构建与PAD下载通过”写成“目标平台功能已全部通过”。
 
 ## 4. 实现结构和服务边界
 
@@ -195,7 +216,7 @@ file KEMI-remote-desktop-windows-x64.exe
 file KEMI-remote-desktop-linux-x86_64.AppImage
 ```
 
-核验后分别放入第 3 节的固定路径和文件名。Windows 必须在 Windows x64 上完成安装/启动；Linux 至少在目标发行版 x86_64 上执行 `chmod +x` 后启动一次。任何一端不通过，删除或不导入该候选包，PAD 页面保持“待导入”。
+核验后分别放入第 3 节的固定路径和文件名。Windows必须在Windows x64上补做安装/启动；Linux至少在目标发行版x86_64上执行`chmod +x`后补做启动。`1.4.46`当前已完成云构建、格式/架构/哈希和PAD真实HTTP下载核验，目标平台GUI、远控和文件传输结果继续单独登记。
 
 ### 6.4 构建和安装最终 PAD APK
 
@@ -203,15 +224,16 @@ file KEMI-remote-desktop-linux-x86_64.AppImage
 
 ```bash
 cd /Users/newlink/kemi/RustDesk/client/flutter
-env PATH=/Users/newlink/flutter/bin:$PATH flutter build apk --debug --no-pub
+env PATH=/private/tmp/kemi-flutter-3.29.3/bin:$PATH flutter build apk \
+  --release --target-platform android-arm64 --no-pub
 
 adb -s 192.168.1.10:5555 uninstall com.newlinksz.kemi.remote
-adb -s 192.168.1.10:5555 install build/app/outputs/flutter-apk/app-debug.apk
+adb -s 192.168.1.10:5555 install build/app/outputs/flutter-apk/app-release.apk
 adb -s 192.168.1.10:5555 shell dumpsys package com.newlinksz.kemi.remote \
   | rg 'versionName|versionCode|sourceDir'
 ```
 
-上例是当前测试机的 debug 验收流程。交付 release 时，应改为受控的 release 签名构建和对应包名；安装后再次读取 `versionName/versionCode`。因为 Android 下载项直接服务 `sourceDir`，这一步能同时证明“PAD 本机运行的版本”和“它会提供给别人下载的 APK”完全一致。
+上例省略了受控release签名环境变量；完整签名命令以`android-release-signing.md`为准。当前Android依赖实际使用Flutter 3.29.3；不要用共享SDK的任意最新版，也不要用缺少`extended_text 14`所需selection API的3.24.5直接构建。安装后再次读取`versionName/versionCode`。因为Android下载项直接服务`sourceDir`，这一步能同时证明“PAD本机运行的版本”和“它会提供给别人下载的APK”完全一致。
 
 ## 7. 最终验收与记录模板
 

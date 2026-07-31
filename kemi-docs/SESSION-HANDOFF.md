@@ -2,8 +2,8 @@
 
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
-> 当前基线日期：2026-07-30
-> 当前源码、Android release、PAD安装与PAD内置Mac安装包：`1.4.46+104`
+> 当前基线日期：2026-07-31
+> 当前Flutter源码、Android release与PAD安装：`1.4.46+105`；内置Mac包：`1.4.46+104`；Windows/Linux客户端：`1.4.46`
 > 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
@@ -12,6 +12,9 @@
 - `KEMI-远程桌面.app` 与 `KEMI-远程桌面-macOS-arm64-1.4.46+104.zip`；
 - `KEMI-远程桌面-PAD-1.4.44+102-debug.apk`；
 - `KEMI-远程桌面-PAD-1.4.46+104-release.apk`；
+- `KEMI-远程桌面-PAD-1.4.46+105-release.apk`；
+- `KEMI-远程桌面-Windows-x64-1.4.46.exe`；
+- `KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage`；
 - Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行
   `flutter build windows` 或自行升级工具链。
 
@@ -36,8 +39,8 @@
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前Android与Mac源码已进入`1.4.46+104`同步交付候选，Android applicationId为
-`com.newlinksz.kemi.remote`；PAD已安装该release，并内置同版本Mac Apple Silicon安装包。文件传输并行浮窗的
+当前Flutter源码与Android PAD已进入`1.4.46+105`交付候选，Android applicationId为
+`com.newlinksz.kemi.remote`；PAD内置Mac `1.4.46+104`、Windows/Linux `1.4.46`客户端。文件传输并行浮窗的
 功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用
 `git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交。
 
@@ -63,7 +66,7 @@
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
 - Android 首页“客户端”是临时局域网安装包分发页：进入页启动、离开页或销毁 App 关闭 HTTP 服务；只允许白名单下载路由。PAD 与下载设备必须同一 Wi-Fi；当前 APK 可直接分发，其他平台包只有经过核验并在构建 APK 前放入 `assets/client-dist` 时才显示。详见 `client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.46、Cargo.lock rustdesk=1.4.46、flutter/pubspec.yaml=1.4.46+104；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD已安装并核验1.4.46+104，PAD内置Mac安装包也为1.4.46+104。
+- 当前源码版本必须一致：Cargo.toml=1.4.46、Cargo.lock rustdesk=1.4.46、flutter/pubspec.yaml=1.4.46+105；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD已安装并核验1.4.46+105；PAD内置Mac为1.4.46+104，Windows/Linux为1.4.46。
 - Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.46`。
 
 工作方式：
@@ -458,13 +461,13 @@ _homeDir = '$storageDir/Download';
 |---|---|
 | `Cargo.toml` | `version = "1.4.46"` |
 | `Cargo.lock` 的 rustdesk package | `version = "1.4.46"` |
-| `flutter/pubspec.yaml` | `version: 1.4.46+104` |
+| `flutter/pubspec.yaml` | `version: 1.4.46+105` |
 
 Android 最终应显示：
 
 ```text
 versionName=1.4.46
-versionCode=104
+versionCode=105
 ```
 
 ### 9.2 首页版本号
@@ -590,7 +593,7 @@ flutter build apk --debug
 
 不要看到 release 的 Rosetta 提示就声称整个项目无法编译，也不要未经用户确认安装系统依赖。
 
-### 11.3.1 macOS Apple Silicon 完整包（当前源码基线 1.4.46+104）
+### 11.3.1 macOS Apple Silicon 完整包（当前已交付包 1.4.46+104）
 
 2026-07-30 已在 Apple Silicon 完整构建成功。首次准备本机构建环境时，`vcpkg/` 仅作为本地工具目录（已被根 `.gitignore` 忽略），需要其中的 `libyuv`、`libvpx`；CocoaPods 使用当前用户安装的 1.15.2。系统 Ruby 2.6 下运行 pod 时需要预加载 `logger`。
 
@@ -610,7 +613,7 @@ cp ../target/release/service \
 ```
 
 - 缺失 `macos/Runner/bridge_generated.h` 时，按 `flutter/run.sh` 生成：`PATH=/Users/newlink/flutter/bin:$PATH RUST_LOG=info ~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ../src/flutter_ffi.rs --dart-output ./lib/generated_bridge.dart --c-output ./macos/Runner/bridge_generated.h`。
-- 产物路径：`flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app`；当前版本源为 `1.4.46+104`，主程序和 `service` 均为arm64。BIN与PAD内置Mac ZIP已同步更新；`/Applications`中的本机安装副本仍为1.4.44+102，本轮未替换。
+- 产物路径：`flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app`；当前Flutter源码为`1.4.46+105`，BIN与PAD内置的已交付Mac ZIP仍为`1.4.46+104`，主程序和`service`均为arm64；`/Applications`中的本机安装副本仍为1.4.44+102，本轮未替换。
 - 固定测试签名身份只保留在构建 Mac 的登录钥匙串；每次交付前先运行 `security find-identity -v -p codesigning`。若显示 `0 valid identities`，只能继续编译，不能声称完成固定签名交付，也不能改用 ad-hoc 签名。
 - 测试机无需导入私钥，但必须安装未经二次签名或改包的原始 `.app`。首次从不同签名包迁移后，只重新确认远控必需的“屏幕录制、辅助功能”两项；输入监控不是 PAD 控制 Mac 的准入权限。
 - 对外发布不能使用此自签名身份，必须使用 Apple `Developer ID Application` 签名和公证流程。
@@ -633,7 +636,7 @@ adb -s 192.168.1.10:5555 shell dumpsys package com.newlinksz.kemi.remote \
 期望：
 
 ```text
-versionCode=104
+versionCode=105
 versionName=1.4.46
 ```
 

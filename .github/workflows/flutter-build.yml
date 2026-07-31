@@ -1719,7 +1719,7 @@ jobs:
             cd res && HBB=`pwd`/.. FLUTTER=1 makepkg -f
 
       - name: Publish archlinux package
-        if: matrix.job.arch == 'x86_64' && env.UPLOAD_ARTIFACT == 'true'
+        if: matrix.job.arch == 'x86_64' && env.UPLOAD_ARTIFACT == 'true' && inputs.publish-release
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           prerelease: true
@@ -1999,7 +1999,9 @@ jobs:
           appimage_file="$(find . -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           output_file="rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}.AppImage"
           if [[ -n "$appimage_file" ]]; then
-            mv "$appimage_file" "$output_file"
+            if [[ "$(basename "$appimage_file")" != "$output_file" ]]; then
+              mv "$appimage_file" "$output_file"
+            fi
           else
             test -s AppDir.squashfs
             curl --fail --location --retry 5 --retry-all-errors \
@@ -2007,7 +2009,7 @@ jobs:
               "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${{ matrix.job.arch }}"
             cat appimage-runtime AppDir.squashfs > "$output_file"
           fi
-          chmod +x "$output_file"
+          sudo chmod +x "$output_file"
           test -s "$output_file"
 
       - name: Upload final Linux AppImage
@@ -2076,7 +2078,8 @@ jobs:
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           prerelease: true
-          tag_name: kemi-${{ github.sha }}
+          tag_name: kemi-client-${{ github.sha }}
+          target_commitish: ${{ github.sha }}
           name: KEMI client candidates ${{ env.VERSION }} (${{ github.sha }})
           files: |
             ./kemi-artifacts/KEMI-remote-desktop-windows-x64.exe

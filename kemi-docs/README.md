@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与 macOS 双端协同场景。当前源码、Android release、PAD安装版与PAD内置Mac交付包均为 **1.4.46+104**；Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前Flutter源码、Android release与PAD安装版为 **1.4.46+105**；内置Mac包为 **1.4.46+104**，Windows/Linux客户端为 **1.4.46**。Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -21,6 +21,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+105` | Windows x64与Linux x86_64云端候选生成并导入PAD；最终release内置Windows EXE、Mac ZIP、Linux AppImage，实机完成三端HTTP下载和哈希核验 |
 | `1.4.46+104` | macOS Apple Silicon客户端与PAD同步发布：最新Mac App固定签名后内置到PAD，最终release完成实际HTTP下载、版本、签名和哈希端到端核验 |
 | `1.4.45+103` | Android正式身份迁移：applicationId改为`com.newlinksz.kemi.remote`，release构建强制使用Newlink固定签名并禁止debug证书；业务功能和权限保持不变 |
 | `1.4.44+102` | macOS 登录项统一使用系统 `SMAppService.mainApp`，Dock「选项 → 登录时打开」与 KEMI 开关一致；正式包自动修复登录项 URL 至 `/Applications`；主页默认显示“主页 / 设置”，关于页显示 KEMI 产品版本 |

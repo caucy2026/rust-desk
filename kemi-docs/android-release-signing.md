@@ -1,6 +1,6 @@
 # KEMI Android 正式包名、签名与 Release 构建
 
-> 当前基线：`1.4.46+104`。本文是Android正式身份和签名的唯一操作说明。
+> 当前基线：`1.4.46+105`。本文是Android正式身份和签名的唯一操作说明。
 
 ## 1. 固定身份
 
@@ -8,7 +8,7 @@
 公司域名：www.newlink-sz.com
 Android applicationId：com.newlinksz.kemi.remote
 Kotlin namespace：com.carriez.flutter_hbb
-版本：1.4.46+104
+版本：1.4.46+105
 ```
 
 域名中的连字符不能直接用于applicationId，因此固定使用`newlinksz`。applicationId是设备和
@@ -93,7 +93,7 @@ flutter/build/app/outputs/flutter-apk/app-release.apk
 ```text
 package=com.newlinksz.kemi.remote
 versionName=1.4.46
-versionCode=104
+versionCode=105
 debuggable不存在或为false
 APK v1/v2签名状态
 Signer SHA-256=85:46:D0:3E:51:D0:9D:FA:17:DB:CF:43:2F:84:BC:CF:
@@ -104,7 +104,7 @@ Signer SHA-256=85:46:D0:3E:51:D0:9D:FA:17:DB:CF:43:2F:84:BC:CF:
 
 ## 5. 功能与安全边界
 
-`1.4.46+104`沿用Android正式身份和固定签名，不删除现有功能。录屏、辅助功能、文件传输、
+`1.4.46+105`沿用Android正式身份和固定签名，不删除现有功能。录屏、辅助功能、文件传输、
 悬浮窗、开机广播、音频、Wi-Fi名称和局域网客户端分发保持原行为。
 
 因此，固定签名可以解决debug身份不稳定问题，但不能保证华为不再提示风险。远控敏感权限和

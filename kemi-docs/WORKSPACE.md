@@ -12,8 +12,9 @@
 
 客户端只在 `/Users/newlink/kemi/RustDesk/client` 开发、构建和提交；服务端只在 `/Users/newlink/kemi/RustDesk/server` 开发和构建。不要在一个仓库中复制另一个模块的源码、`target/`、Flutter `build/` 或 APK。
 
-`BIN/`用于保存本地交付包：Android固定签名release、macOS App和macOS arm64 ZIP当前均为
-`1.4.46+104`；旧PAD debug APK和历史版本只用于回溯。BIN不是Git源码备份；每份制品仍需
+`BIN/`用于保存本地交付包：Android固定签名release当前为`1.4.46+105`，macOS App和
+macOS arm64 ZIP为`1.4.46+104`，Windows x64和Linux x86_64客户端为`1.4.46`；
+旧PAD debug APK和历史版本只用于回溯。BIN不是Git源码备份；每份制品仍需
 记录来源commit、版本、哈希与签名状态。当前Mac包使用固定本地测试签名并已通过深度校验，
 但未使用Apple Developer ID且未公证，不能把“固定签名完成”写成“公开分发已通过
 Gatekeeper”。不要从`BIN/`反向修改或构建源码。
