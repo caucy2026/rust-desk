@@ -13,6 +13,7 @@
 - 最终PAD为`BIN/KEMI-远程桌面-PAD-1.4.46+105-release.apk`，大小156,039,230字节，SHA-256为`5ddb58965700676599dedbe248b3da97d9e0c8fd2ecb907d773c339cd80e0124`。包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=105`、仅arm64；v1/v2签名均有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
 - 测试PAD`192.168.1.10:5555`已卸载104并全新安装105，系统和首页确认`1.4.46(105)`及`KEMI远程桌面PAD版 v1.4.46`。客户端页启动8686服务，页面真实显示Android、Windows、macOS、Linux且无“待导入”；从PAD HTTP实际下载Windows/Linux/Mac的哈希分别与上述三份源文件一致，离开页面后服务立即关闭。
 - Windows EXE没有Authenticode签名，Linux AppImage也未签名；二者明确标记为团队测试候选，Windows/Linux目标系统上的GUI启动、远控和文件传输仍需分别实机验收，不能把云构建和PAD下载通过写成公开发布已通过。
+- 永久工作流修复、PAD build number 105和统一文档位于交付代码提交`fe058d6fc91ca0866b6d713141e99074473f7a9a`并已推送`backup/master`。该推送自动触发的focused run `30595250999`和普通CI `30595250723`只会重建已经完成的同版本候选，确认head SHA精确匹配后均主动取消；Windows/Linux大文件不提交普通Git历史，由正确的GitHub prerelease与本地`BIN`保存，Android assets按文档从release导入。
 
 ## 五十三、2026-07-31 Windows/Linux 云端构建根因修复（1.4.46）
 

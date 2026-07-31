@@ -521,6 +521,12 @@ flutter/android/app/src/main/assets/client-dist/
 4e30063b9a0b293eca18a355264fbbe6852be84e
 ```
 
+交付代码与文档提交：
+
+```text
+fe058d6fc91ca0866b6d713141e99074473f7a9a
+```
+
 focused run：
 
 ```text
@@ -542,6 +548,8 @@ focused run：
 本次为保留已成功的Windows job，没有在其运行中推送AppImage命令修复；先让旧run完成，再用
 独立补包分支复用DEB，避免重编两端。永久修复合入`master`后，若自动触发同版本冗余run，
 应在确认源码commit和现有制品均已完成后主动取消，并在记录中说明，不把取消run误报为交付失败。
+本轮最终备份推送触发的focused run `30595250999`和CI `30595250723`均按此规则取消，二者head
+SHA都是`fe058d6fc`；已成功的候选run和补包run未被取消或覆盖。
 
 ## 18. KEMI 汇报模板
 
