@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 五十五、2026-07-31 Mac同事本地构建说明与华为规范PAD重发（PAD 1.4.46+106）
+
+- 按`/Users/newlink/kemi/kemi-rd/md/huawei-apk-trust-rustdesk.md`复核发布边界：华为可信度不能靠频繁换包名或签名规避。PAD继续使用正式包名`com.newlinksz.kemi.remote`和固定Newlink release证书，只将Android build number从105递增到106；业务代码、权限、HTTP服务及内置Windows/Mac/Linux客户端字节均未改变。
+- 新增`kemi-docs/macos-local-build.md`，只覆盖同事从`https://github.com/caucy2026/rust-desk`的`master` fresh clone并生成macOS客户端：递归子模块、固定vcpkg baseline、Flutter 3.29.3、codegen 1.80.1、Rust release、Flutter release、service装包、本地ad-hoc重签和逐项验收。文档明确开发者账号不需要进入Git；本机编译包与`Developer ID Application + notarization`外发包不能混称。
+- 已在Apple Silicon本机按该链路实测：`flutter_rust_bridge_codegen 1.80.1`生成成功，`cargo build --locked --features flutter --release`成功，`flutter build macos --release --no-pub`成功生成60.3MB的`KEMI-远程桌面.app`。主程序、`service`和`liblibrustdesk.dylib`均为arm64，Info.plist为`com.carriez.rustdesk / 1.4.46 / 106`；复制service后按本地验收规则ad-hoc重签，`codesign --verify --deep --strict`通过。本机当前`0 valid identities`，该临时App未写入BIN、未冒充可外发Developer ID包。
+- 首次Rust重编在最终归档阶段因磁盘只剩197MiB失败；只执行`cargo clean --profile dev`删除本项目约10GB可重建debug缓存后，同一源码完整通过。该事件不是代码或依赖失败，不需要修改业务源码。
+- 使用Flutter 3.29.3 / Dart 3.7.2和既有固定keystore构建PAD release。最终文件为`BIN/KEMI-远程桌面-PAD-1.4.46+106-release.apk`，156,039,231字节，SHA-256 `d3ca5841ada8a7b354076dc85073b9c02b5647ad78ca33b5047410b6b6fc77ec`；包名、`versionName=1.4.46`、`versionCode=106`、仅arm64均正确，zipalign通过，v1/v2签名有效，Signer SHA-256继续为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- APK内三端候选的SHA-256保持：Windows `9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`、Mac `b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4`、Linux `2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44`。
+- 测试PAD`192.168.1.10:5555`已卸载105并全新安装106，启动事件注入成功；设备报告`versionCode=106`、`versionName=1.4.46`、`primaryCpuAbi=arm64-v8a`、`lastUpdateTime=2026-07-31 09:37:37`。设备实际`base.apk`与BIN交付包SHA-256完全一致。对应可复现源码基线提交为`fb61a9572`。
+
 ## 五十四、2026-07-31 Windows/Linux客户端与四端PAD分发交付（1.4.46；PAD 1.4.46+105）
 
 - GitHub额度恢复后，focused run `30590581209` 在源码commit `4e30063b9a0b293eca18a355264fbbe6852be84e` 上完整运行。Windows x64越过Flutter SDK瞬时断线恢复、`mozjpeg-sys`旧Rust兼容和AOM `input_texture()`旧失败点，job `91032135590`最终成功；下载artifact `8778930483`得到22,637,056字节PE32+ x86-64便携EXE，SHA-256为`9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`。
