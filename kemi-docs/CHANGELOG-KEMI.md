@@ -2,13 +2,14 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
-## 五十六、2026-07-31 四端制品仓与PAD空闲同步（PAD 1.4.46+107）
+## 五十六、2026-07-31 四端制品仓与PAD空闲同步（PAD 1.4.46+107 → +108）
 
 - 四端制品交付基准统一为项目根目录`BIN/`；每批必须包含PAD APK、macOS arm64 ZIP、Windows x64 EXE、Linux x86_64 AppImage、版本清单和SHA256SUMS。远端统一使用`caucy2026/common-data`：普通Git只保存稳定清单和说明，大文件使用不可变GitHub Release，先传完并回读校验四端资产，最后更新`stable/manifest.json`。
 - PAD不再把macOS/Windows/Linux约125MiB静态包编入APK。新增`ClientPackageSync.kt`，从固定GitHub清单读取四端真实版本、大小和SHA-256；仅接受白名单平台、文件名和HTTPS GitHub下载域名。下载写`.part`并支持Range续传，长度和SHA-256全部通过后才原子替换正式缓存；失败不覆盖最后成功文件。
 - 新增`ClientPackageSyncJobService.kt`：开机后和App启动时登记JobScheduler任务，仅在非计费网络及系统空闲时执行，周期为6小时；该任务与远控服务的“开机自启”选项相互独立。用户明确点击缺失客户端时立即下载，不等待空闲窗口。
 - 客户端页增加1秒状态刷新、行内下载进度和点击弹窗。缺包点击后显示圆形动画、百分比、SHA校验阶段、错误原因和重试按钮；用户可关闭弹窗让原生任务继续。HTTP服务只提供`ready`文件，永不暴露`.part`；离开页面仍只关闭LAN服务，不清缓存和后台同步。
 - Android远端版本与当前安装`versionName+versionCode`一致且字节校验通过时继续直接服务`applicationInfo.sourceDir`，不额外缓存自身；远端PAD更新时才缓存新版APK供局域网下载，因此没有APK递归嵌套。
+- `1.4.46+107`首次真机强制任务成功读取raw稳定清单，但四端均未生成`.part`；PAD和本机进一步验证`raw.githubusercontent.com`、`api.github.com`可达，而`github.com/releases/...`HTTPS首跳20秒超时。Release资产本身大小正确，根因是下载入口不适合当前网络，不是文件或JobScheduler错误。修正版`+108`将清单URL改为GitHub官方Release Assets API，客户端显式发送二进制Accept/API版本头并允许`api.github.com`；API再跳转到可达的`release-assets.githubusercontent.com`。同时`ensurePackage`失败现在记录平台、版本和完整异常，避免后台只显示error却没有log。
 - `client-distribution.md`已重写为上述流程的唯一维护文档，详细定义版本号、BIN文件名、common-data Release/tag/manifest、云构建未完成时的隔离规则、安全边界、失败回退和逐项验收。
 - 本节先记录代码与设计基线。最终APK大小/哈希、固定签名、BIN四端哈希、common-data Release tag、PAD实机同步和HTTP回读结果必须在构建部署后补录，不得提前标记为交付完成。
 

@@ -1,6 +1,6 @@
 # KEMI 四端客户端发布、PAD 自动同步与局域网分发
 
-> 适用版本：`1.4.46+107` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
+> 适用版本：`1.4.46+108` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
 
 ## 1. 需求结论
 
@@ -30,18 +30,18 @@ PAD 局域网 HTTP 服务
 
 ## 2. 四端版本和文件名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前下一版为 `+107`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+107`。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+108`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+108`。
 
 `BIN/` 当前发布批次必须包含：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.46+107-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.46+107.zip
+├── KEMI-远程桌面-PAD-1.4.46+108-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.46+108.zip
 ├── KEMI-远程桌面-Windows-x64-1.4.46.exe
 ├── KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage
-├── KEMI-client-manifest-1.4.46+107.json
-└── KEMI-client-SHA256SUMS-1.4.46+107.txt
+├── KEMI-client-manifest-1.4.46+108.json
+└── KEMI-client-SHA256SUMS-1.4.46+108.txt
 ```
 
 文件名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -50,8 +50,8 @@ BIN/
 
 | 平台 | 版本来源 | 本批次要求 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=107`，清单写 `1.4.46+107` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=107` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=108`，清单写 `1.4.46+108` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=108` |
 | Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 | Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 
@@ -71,10 +71,10 @@ kemi-rustdesk/
 每批二进制使用不可变 Release，例如：
 
 ```text
-tag: kemi-rustdesk-v1.4.46-build107
+tag: kemi-rustdesk-v1.4.46-build108
 assets:
-  KEMI-remote-desktop-PAD-1.4.46+107.apk
-  KEMI-remote-desktop-macos-arm64-1.4.46+107.zip
+  KEMI-remote-desktop-PAD-1.4.46+108.apk
+  KEMI-remote-desktop-macos-arm64-1.4.46+108.zip
   KEMI-remote-desktop-windows-x64-1.4.46.exe
   KEMI-remote-desktop-linux-x86_64-1.4.46.AppImage
   manifest.json
@@ -97,24 +97,24 @@ https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stabl
 {
   "schema_version": 1,
   "channel": "stable",
-  "release_version": "1.4.46+107",
+  "release_version": "1.4.46+108",
   "source_commit": "完整的 rust-desk 源码 commit",
   "generated_at": "2026-07-31T12:00:00+08:00",
   "targets": [
     {
       "id": "android",
-      "version": "1.4.46+107",
+      "version": "1.4.46+108",
       "architecture": "arm64-v8a",
-      "file": "KEMI-remote-desktop-PAD-1.4.46+107.apk",
+      "file": "KEMI-remote-desktop-PAD-1.4.46+108.apk",
       "size": 12345678,
       "sha256": "64位小写SHA-256",
-      "url": "https://github.com/caucy2026/common-data/releases/download/kemi-rustdesk-v1.4.46-build107/KEMI-remote-desktop-PAD-1.4.46%2B107.apk"
+      "url": "https://api.github.com/repos/caucy2026/common-data/releases/assets/<PAD_ASSET_ID>"
     }
   ]
 }
 ```
 
-其余三个目标的 `id` 必须依次使用 `windows`、`macos`、`linux`。文件名只允许 ASCII 字母、数字、点、下划线、加号和连字符；URL 必须是 HTTPS 且属于 GitHub 下载域名白名单。
+其余三个目标的 `id` 必须依次使用 `windows`、`macos`、`linux`。文件名只允许 ASCII 字母、数字、点、下划线、加号和连字符。当前PAD所在网络访问`github.com/releases`首跳会超时，因此稳定清单使用GitHub官方Release Assets API URL；客户端发送`Accept: application/octet-stream`后由`api.github.com`直接跳转到`release-assets.githubusercontent.com`。URL必须是HTTPS且属于代码白名单。
 
 清单中的 SHA-256 用于确认下载字节与发布字节一致。它能防止传输错误和错误文件混入，但不能替代平台代码签名：Android 仍检查固定 release 签名，macOS 正式外发仍需 Developer ID 签名与公证，Windows 正式外发仍应做 Authenticode 签名。
 
@@ -245,6 +245,6 @@ GitHub 在部分网络环境下可能不可达或速度不稳定。本版按用�
 
 ## 11. 当前批次特别说明
 
-`1.4.46+107` 是从“把 macOS/Windows/Linux 全部塞进 PAD APK”迁移到“GitHub 清单 + PAD 持久缓存”的首版。迁移完成后 PAD APK 不再内置约 125 MiB 的三端 assets，体积会显著下降。
+`1.4.46+107` 完成了从“把 macOS/Windows/Linux 全部塞进 PAD APK”到“GitHub 清单 + PAD 持久缓存”的代码迁移，但真机发现`github.com/releases`下载首跳超时，保留为失败候选。`1.4.46+108`改用Release Assets API并补齐失败日志，是进入稳定清单的修正版。迁移后PAD APK不再内置约125 MiB的三端assets。
 
 现有 macOS ZIP 使用本地测试签名，未经 Apple Developer ID 公证；通过浏览器下载后仍可能被 Gatekeeper 阻止。它可用于内部测试，但在正式面向客户前必须由公司的 Apple Developer 账号完成 Developer ID 签名、公证和 stapling。Windows 当前候选也未做 Authenticode 签名。清单和 HTTP 分发只保证文件一致性，不会绕过操作系统安全策略。

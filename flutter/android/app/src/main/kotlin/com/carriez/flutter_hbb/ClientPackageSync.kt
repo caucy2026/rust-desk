@@ -297,6 +297,7 @@ class ClientPackageSync private constructor(private val context: Context) {
             val uri = URL(url)
             if (uri.protocol != "https" ||
                 uri.host !in setOf(
+                    "api.github.com",
                     "github.com",
                     "objects.githubusercontent.com",
                     "release-assets.githubusercontent.com",
@@ -380,6 +381,7 @@ class ClientPackageSync private constructor(private val context: Context) {
             setProgress(target.definition.id, Progress("ready", target.size, target.size, "下载完成"))
             return true
         } catch (error: Exception) {
+            Log.w(TAG, "Cannot download ${target.definition.id} ${target.version}", error)
             setProgress(
                 target.definition.id,
                 Progress("error", part.takeIf(File::isFile)?.length() ?: 0L, target.size, error.message ?: "下载失败"),
@@ -415,6 +417,7 @@ class ClientPackageSync private constructor(private val context: Context) {
             useCaches = false
             requestMethod = "GET"
             setRequestProperty("Accept", "application/octet-stream,application/json")
+            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             setRequestProperty("User-Agent", "KEMI-PAD/${installedPadVersion()}")
             if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
         }
