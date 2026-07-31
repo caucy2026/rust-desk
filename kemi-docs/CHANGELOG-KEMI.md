@@ -14,7 +14,10 @@
 - 按`/Users/newlink/kemi/kemi-rd/md/github-cloud-resource-guide.md`补齐双源策略：小型stable manifest先读raw GitHub（4秒连接超时），失败自动读`jsDelivr @main`并使用分钟级cache-bust（8秒连接超时），两者失败继续使用磁盘最后成功清单。四端二进制中Linux约79MiB，超过指南建议的jsDelivr 50MiB范围，因此大文件仍使用GitHub Release Assets API，不错误套用小数据CDN方案。
 - PAD列表下载状态由右侧“下载中”文字改为42px圆形进度环，环内显示当前整数百分比，SHA校验阶段显示“校验”；移除重复的行内横向进度条。局域网HTTP网页不再使用临时简版CSS，按`client-download-preview.html`还原960px双面板、渐变hero、绿色服务徽标、深色地址栏、Windows推荐横跨卡片、双列下载卡片、平台符号图标、黄色排障提示和移动端单列布局，动态填入真实Wi-Fi、地址、版本和可用状态。
 - `client-distribution.md`已重写为上述流程的唯一维护文档，详细定义版本号、BIN文件名、common-data Release/tag/manifest、云构建未完成时的隔离规则、安全边界、失败回退和逐项验收。
-- 本节先记录代码与设计基线。最终APK大小/哈希、固定签名、BIN四端哈希、common-data Release tag、PAD实机同步和HTTP回读结果必须在构建部署后补录，不得提前标记为交付完成。
+- 交付源码为`1618ab449e5791b5280528623c6cddffcbec7fd4`。PAD Release为26,502,744字节，SHA-256 `561623f9cddf41a1fd82a8818c7c046b51a33e365a53bffec3e7342478aa0c53`；包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=110`、固定签名证书SHA-256 `8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`均正确，APK中没有`assets/client-dist`。
+- macOS arm64 App与ZIP已写入`BIN/`，Info.plist为`1.4.46+110`，复制同版本`service`后ad-hoc重签并通过`codesign --verify --deep --strict`；ZIP为25,874,761字节，SHA-256 `a69a61fefa8ddc8c1d5c9c3124ed50d393cca22da2e55bad2c50e3d2f167b03d`。本机仍为`0 valid identities`，因此该包明确只供内部测试，未冒充Developer ID签名或Apple公证包。Windows与Linux继续复用已验收的1.4.46候选，SHA-256分别为`9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`和`2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44`。
+- 四端已发布为`common-data`不可变Release tag `kemi-rustdesk-v1.4.46-build110`，Actions run `30639274659`一次成功；稳定清单提交为`7460ba5`，四个URL均使用实际Assets API ID。raw GitHub、jsDelivr与PAD磁盘清单三处回读均为`1.4.46+110 / 1618ab449`。
+- 真机`192.168.1.142:5555`已卸载109并全新安装110，系统回读版本正确。授予Wi-Fi名称权限后页面真实显示`caucyniu2025-5G`；Windows下载从0开始并在列表右侧实测显示圆形进度环和环内百分比（截取2%、无障碍层回读20%），证明动画随原生下载进度刷新。局域网`http://192.168.1.142:8686/`已用Chrome无界面截图回读，确认DEMO的双面板、推荐卡、四个平台符号图标、地址复制区与排障提示均生效；未完成文件保持不可下载状态，Android当前包可下载。
 
 ## 五十五、2026-07-31 Mac同事本地构建说明与华为规范PAD重发（PAD 1.4.46+106）
 

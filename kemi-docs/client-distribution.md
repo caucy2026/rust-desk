@@ -251,6 +251,8 @@ GitHub在部分网络环境下可能不可达或速度不稳定。小型清单�
 
 ## 11. 当前批次特别说明
 
-`1.4.46+107`完成代码迁移，但真机发现`github.com/releases`首跳超时。`+108`改用Release Assets API后进一步发现Accept同时声明JSON会得到资产元数据。`1.4.46+109`将API Accept严格限定为二进制，并自动清理旧JSON临时文件，是进入稳定清单的修正版。迁移后PAD APK不再内置约125 MiB的三端assets。
+`1.4.46+107`完成代码迁移，但真机发现`github.com/releases`首跳超时。`+108`改用Release Assets API后进一步发现Accept同时声明JSON会得到资产元数据。`+109`将API Accept严格限定为二进制，并自动清理旧JSON临时文件。当前稳定版`1.4.46+110`在此基础上补齐raw GitHub→jsDelivr双源清单、圆形百分比状态和与DEMO一致的HTTP网页。迁移后PAD APK不再内置约125 MiB的三端assets。
+
+当前不可变Release为[`kemi-rustdesk-v1.4.46-build110`](https://github.com/caucy2026/common-data/releases/tag/kemi-rustdesk-v1.4.46-build110)，对应源码commit `1618ab449e5791b5280528623c6cddffcbec7fd4`、stable清单commit `7460ba5`。PAD真机已验证读取该清单并开始Assets API断点下载；列表百分比和HTTP DEMO页面已验收。完整四端缓存仍按网络速度后台顺序完成，未完成项不会被HTTP服务暴露。
 
 现有 macOS ZIP 使用本地测试签名，未经 Apple Developer ID 公证；通过浏览器下载后仍可能被 Gatekeeper 阻止。它可用于内部测试，但在正式面向客户前必须由公司的 Apple Developer 账号完成 Developer ID 签名、公证和 stapling。Windows 当前候选也未做 Authenticode 签名。清单和 HTTP 分发只保证文件一致性，不会绕过操作系统安全策略。
