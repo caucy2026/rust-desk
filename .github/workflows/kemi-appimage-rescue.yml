@@ -59,7 +59,7 @@ jobs:
               "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
             cat appimage-runtime AppDir.squashfs > "$output_file"
           fi
-          chmod +x "$output_file"
+          sudo chmod +x "$output_file"
           test -s "$output_file"
 
       - name: Upload final Linux AppImage
