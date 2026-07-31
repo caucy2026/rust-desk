@@ -13,6 +13,8 @@ local.properties
 flutter/android/app/.cxx/
 flutter/android/.gradle/
 flutter/build/
+# 四端分发大文件由 BIN / GitHub Release 保存，构建前按文档导入。
+flutter/android/app/src/main/assets/client-dist/
 
 # Rust
 target/
