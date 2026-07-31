@@ -24,18 +24,20 @@ class ClientDistributionServer(private val context: Context) {
     companion object {
         private const val TAG = "ClientDistribution"
         private const val PREFERRED_PORT = 8686
-        private const val ASSET_ROOT = "client-dist"
         private const val SOCKET_TIMEOUT_MS = 7_000
     }
 
     private data class PackageEntry(
+        val id: String,
         val platform: String,
         val detail: String,
+        val version: String,
         val fileName: String,
-        val assetPath: String?,
         val contentType: String,
+        val file: File?,
     )
 
+    private val packageSync = ClientPackageSync.get(context)
     private val lock = Any()
     @Volatile private var running = false
     @Volatile private var serverSocket: ServerSocket? = null
@@ -95,61 +97,33 @@ class ClientDistributionServer(private val context: Context) {
             // 不伪造 Wi-Fi 名称，界面会只提示两台设备需在同一网络。
             "wifiName" to currentWifiName(),
             "wifiNamePermissionGranted" to hasWifiNamePermission(),
-            "packages" to packageEntries().map { entry ->
-                mapOf(
-                    "platform" to entry.platform,
-                    "detail" to entry.detail,
-                    "available" to isAvailable(entry),
-                )
-            },
+            "packages" to packageSync.packageStatus(),
         )
     }
 
-    private fun packageEntries() = listOf(
-        PackageEntry(
-            platform = "PAD / Android",
-            detail = "当前 PAD 的 KEMI 客户端",
-            fileName = "KEMI-remote-desktop-${versionName()}.apk",
-            assetPath = null,
-            contentType = "application/vnd.android.package-archive",
-        ),
-    ) + bundledPackages()
-
-    private fun availablePackages() = packageEntries().filter(::isAvailable)
-
-    private fun isAvailable(entry: PackageEntry): Boolean =
-        entry.assetPath?.let(::assetExists) ?: File(context.applicationInfo.sourceDir).isFile
-
-    private fun bundledPackages() = listOf(
-        PackageEntry(
-            platform = "Windows（x64）",
-            detail = "下载后双击安装包",
-            fileName = "KEMI-remote-desktop-windows-x64.exe",
-            assetPath = "$ASSET_ROOT/KEMI-remote-desktop-windows-x64.exe",
-            contentType = "application/vnd.microsoft.portable-executable",
-        ),
-        PackageEntry(
-            platform = "macOS（Apple 芯片）",
-            detail = "下载后拖入“应用程序”文件夹",
-            fileName = "KEMI-remote-desktop-macos-arm64.zip",
-            assetPath = "$ASSET_ROOT/KEMI-remote-desktop-macos-arm64.zip",
-            contentType = "application/zip",
-        ),
-        PackageEntry(
-            platform = "Linux（x86_64）",
-            detail = "下载 AppImage 后按系统提示运行",
-            fileName = "KEMI-remote-desktop-linux-x86_64.AppImage",
-            assetPath = "$ASSET_ROOT/KEMI-remote-desktop-linux-x86_64.AppImage",
-            contentType = "application/octet-stream",
-        ),
-    )
-
-    private fun assetExists(path: String): Boolean = try {
-        context.assets.open(path).use { }
-        true
-    } catch (_: Exception) {
-        false
+    private fun packageEntries(): List<PackageEntry> {
+        val targets = ClientPackageSync.definitions.associateWith {
+            packageSync.packageForId(it.id)
+        }
+        return targets.map { (definition, target) ->
+            val resolved = packageSync.resolvePackage(definition.id)
+            val servedTarget = resolved?.target ?: target
+            val fileName = servedTarget?.fileName
+                ?: if (definition.id == "android") packageSync.currentAndroidFileName()
+                else "unavailable-${definition.id}"
+            PackageEntry(
+                id = definition.id,
+                platform = definition.platform,
+                detail = definition.detail,
+                version = servedTarget?.version ?: "",
+                fileName = fileName,
+                contentType = definition.contentType,
+                file = resolved?.file,
+            )
+        }
     }
+
+    private fun availablePackages() = packageEntries().filter { it.file?.isFile == true }
 
     private fun acceptLoop(socket: ServerSocket) {
         while (running) {
@@ -204,10 +178,8 @@ class ClientDistributionServer(private val context: Context) {
                 val entry = availablePackages().firstOrNull { "/download/${it.fileName}" == path }
                 if (entry == null) {
                     writeText(output, 404, "Not found")
-                } else if (entry.assetPath == null) {
-                    writeFile(output, File(context.applicationInfo.sourceDir), entry)
                 } else {
-                    writeAsset(output, entry)
+                    writeFile(output, entry.file, entry)
                 }
             }
         }
@@ -215,10 +187,11 @@ class ClientDistributionServer(private val context: Context) {
 
     private fun buildHtml(): String {
         val packageLinks = packageEntries().joinToString(separator = "") { entry ->
-            if (isAvailable(entry)) {
-                """<a class="package" href="/download/${entry.fileName}"><b>${entry.platform}</b><span>${entry.detail}</span></a>"""
+            if (entry.file?.isFile == true) {
+                val version = entry.version.takeIf(String::isNotBlank)?.let { " · $it" } ?: ""
+                """<a class="package" href="/download/${entry.fileName}"><b>${entry.platform}</b><span>${entry.detail}$version</span></a>"""
             } else {
-                """<div class="package unavailable"><b>${entry.platform}</b><span>${entry.detail}（待导入）</span></div>"""
+                """<div class="package unavailable"><b>${entry.platform}</b><span>${entry.detail}（PAD 正在准备，请稍后刷新）</span></div>"""
             }
         }
         return """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KEMI 客户端下载</title><style>body{margin:0;background:#f1f5fb;color:#152039;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif}main{max-width:680px;margin:32px auto;padding:0 16px}.card{background:#fff;border:1px solid #dce3ef;border-radius:16px;padding:24px;box-shadow:0 8px 28px #15203912}h1{margin:0 0 8px;font-size:28px}p{color:#61708a;line-height:1.65}.notice{margin:20px 0;padding:13px 15px;border:1px solid #b9d2ff;border-radius:10px;background:#f7faff}.package{display:block;margin-top:12px;padding:16px;border:1px solid #dce3ef;border-radius:12px;color:#152039;text-decoration:none}.package:hover{border-color:#276ef1}.package b,.package span{display:block}.package span{margin-top:5px;color:#61708a;font-size:14px}.unavailable{opacity:.55;background:#f5f6f8}</style></head><body><main><div class="card"><h1>下载 KEMI 客户端</h1><p>请在需要安装客户端的设备浏览器中选择对应版本下载。</p><div class="notice"><b>请先连接同一个 Wi-Fi</b><br>PAD 与下载设备必须在同一局域网。</div>$packageLinks</div></main></body></html>"""
@@ -231,29 +204,14 @@ class ClientDistributionServer(private val context: Context) {
         output.flush()
     }
 
-    private fun writeFile(output: OutputStream, file: File, entry: PackageEntry) {
-        if (!file.isFile) {
+    private fun writeFile(output: OutputStream, file: File?, entry: PackageEntry) {
+        if (file?.isFile != true) {
             writeText(output, 404, "Package is unavailable")
             return
         }
         writeHeaders(output, 200, entry.contentType, file.length(), entry.fileName)
         FileInputStream(file).use { input -> input.copyTo(output) }
         output.flush()
-    }
-
-    private fun writeAsset(output: OutputStream, entry: PackageEntry) {
-        val assetPath = entry.assetPath ?: return
-        try {
-            context.assets.open(assetPath).use { input ->
-                // Assets can be compressed, so connection-close framing is used.
-                writeHeaders(output, 200, entry.contentType, null, entry.fileName)
-                input.copyTo(output)
-                output.flush()
-            }
-        } catch (error: Exception) {
-            Log.w(TAG, "Cannot serve asset $assetPath", error)
-            writeText(output, 404, "Package is unavailable")
-        }
     }
 
     private fun writeHeaders(output: OutputStream, status: Int, contentType: String, contentLength: Long?, attachmentName: String?) {
@@ -310,9 +268,4 @@ class ClientDistributionServer(private val context: Context) {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
             context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-    private fun versionName(): String = try {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "current"
-    } catch (_: Exception) {
-        "current"
-    }
 }

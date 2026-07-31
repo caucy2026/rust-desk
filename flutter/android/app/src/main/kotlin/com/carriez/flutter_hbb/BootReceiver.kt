@@ -20,6 +20,9 @@ class BootReceiver : BroadcastReceiver() {
         Log.d(logTag, "onReceive ${intent.action}")
 
         if (Intent.ACTION_BOOT_COMPLETED == intent.action || DEBUG_BOOT_COMPLETED == intent.action) {
+            // Client packages update independently from the optional remote-control
+            // start-on-boot switch. JobScheduler waits for Wi-Fi and device idle.
+            ClientPackageSyncJobService.schedule(context.applicationContext, afterBoot = true)
             // check SharedPreferences config
             val prefs = context.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
             if (!prefs.getBoolean(KEY_START_ON_BOOT_OPT, false)) {

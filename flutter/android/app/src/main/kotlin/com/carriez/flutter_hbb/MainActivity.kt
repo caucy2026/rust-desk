@@ -60,6 +60,7 @@ class MainActivity : FlutterActivity() {
     private var mainService: MainService? = null
     private var wifiNamePermissionResult: MethodChannel.Result? = null
     private val clientDistributionServer by lazy { ClientDistributionServer(applicationContext) }
+    private val clientPackageSync by lazy { ClientPackageSync.get(applicationContext) }
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
@@ -292,7 +293,15 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "client_distribution_start" -> {
+                    clientPackageSync.syncAllAsync()
                     result.success(clientDistributionServer.start())
+                }
+                "client_distribution_status" -> {
+                    result.success(clientDistributionServer.start())
+                }
+                "client_distribution_download" -> {
+                    val id = call.arguments as? String
+                    result.success(id?.let(clientPackageSync::syncOneAsync) ?: false)
                 }
                 "client_distribution_stop" -> {
                     clientDistributionServer.stop()

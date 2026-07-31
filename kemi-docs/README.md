@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前Flutter源码、Android release与PAD安装版为 **1.4.46+106**；内置Mac包为 **1.4.46+104**，Windows/Linux客户端为 **1.4.46**。Android使用Newlink正式applicationId与固定release签名，Mac使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前开发版本为 **1.4.46+107**；PAD、macOS、Windows、Linux 制品统一进入根目录 `BIN/`，并通过 `caucy2026/common-data` 稳定清单供 PAD 空闲时增量缓存。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -13,7 +13,7 @@
 | **远端目录记忆** | 再次打开文件传输时，优先恢复对方上次可用目录；无效时按初始目录与根目录回退 |
 | **远控操作栏** | 44px 高、48px 宽的中文图文按钮；“输入”打开手势说明，整格按钮统一水波纹与高亮反馈 |
 | **共享屏幕授权** | 点击启动后直接进入 Android 原生录屏确认；通知、文件访问和悬浮窗权限按功能独立申请 |
-| **局域网客户端下载** | PAD 的“客户端”页临时提供当前 APK 和已核验的离线包；下载设备必须与 PAD 处于同一 Wi-Fi |
+| **局域网客户端下载** | 四端制品同步到 common-data；PAD 开机后在 Wi-Fi 与空闲条件下增量缓存，进入“客户端”页才临时开放同网下载 |
 | **品牌定制** | KEMI 启动画面、应用命名、权限引导流程 |
 | **信令服务** | 自建 rendezvous 服务器，Mac ARM 交叉编译 Linux x86_64 |
 
@@ -21,6 +21,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+107` | 四端制品统一进入 `BIN/` 与 `common-data` Release；PAD 不再内置三端大文件，改为开机后空闲同步、断点续传、SHA-256 校验和最后成功缓存；缺失客户端可点击并查看下载动画 |
 | `1.4.46+106` | 按华为合规分发规范重发PAD：正式包名和固定release证书保持不变，递增versionCode并完整记录源码、APK与签名指纹；新增Mac同事从GitHub fresh clone到Release App的独立构建文档 |
 | `1.4.46+105` | Windows x64与Linux x86_64云端候选生成并导入PAD；最终release内置Windows EXE、Mac ZIP、Linux AppImage，实机完成三端HTTP下载和哈希核验 |
 | `1.4.46+104` | macOS Apple Silicon客户端与PAD同步发布：最新Mac App固定签名后内置到PAD，最终release完成实际HTTP下载、版本、签名和哈希端到端核验 |
@@ -75,7 +76,7 @@ kemi-docs/
 ├── android-release-signing.md    ← Android正式包名、固定签名、构建与迁移
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
-├── client-distribution.md         ← PAD 局域网客户端下载与离线包规范
+├── client-distribution.md         ← 四端BIN/common-data发布、PAD自动同步与局域网分发规范
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
@@ -148,7 +149,7 @@ Linux或CI时必须先读本文件。
 
 ### client-distribution.md
 
-PAD 首页“客户端”入口的唯一说明：同 Wi-Fi 下载原则、HTTP 服务的页面生命周期和安全边界、Android APK 运行时从已安装 `sourceDir` 自分发的机制，以及 macOS/Windows/Linux 离线包导入、四端打包顺序、哈希/签名/安装验收。涉及客户端分发或四端安装包时必须先读本文件。
+四端交付的唯一说明：`BIN/` 本地基准、`common-data` Release与稳定清单、未完成构建隔离、PAD开机空闲同步、断点续传、SHA-256门禁、缺包进度动画，以及同 Wi-Fi HTTP 服务生命周期。涉及客户端分发或四端安装包时必须先读本文件。
 
 ### windows-vscode-build-prompt.md
 
@@ -229,5 +230,5 @@ git rev-parse HEAD
 
 ---
 
-> 最后更新：2026-07-30
+> 最后更新：2026-07-31
 > 维护：KEMI 远程桌面团队

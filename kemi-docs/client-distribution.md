@@ -1,279 +1,250 @@
-# PAD 局域网客户端下载与四端打包
+# KEMI 四端客户端发布、PAD 自动同步与局域网分发
 
-> 适用源码版本：`1.4.46+106`。本文件是首页“客户端”入口、临时 HTTP 服务、APK 自分发和四端离线安装包的**唯一维护说明**。涉及此功能时，先读本文件，再修改代码或制作安装包。
+> 适用版本：`1.4.46+107` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
 
-## 1. 目标和用户可见流程
+## 1. 需求结论
 
-PAD 首页的“客户端”入口用于在私有局域网中，把 KEMI 客户端交给同一 Wi-Fi 下的另一台设备安装。进入页面即启动临时 HTTP 服务；离开页面或关闭 App 即关闭，不后台常驻。
-
-用户只需完成下面的流程：
-
-1. PAD 与下载设备连接到同一个 Wi-Fi。页面可在用户同意 Android 位置权限后显示真实 SSID；无法读取时不编造名称，只提示确认两台设备在同一网络。
-2. 在下载设备浏览器中**输入页面地址或扫描二维码，二选一**打开下载页。
-3. 选择对应平台的客户端，下载并按系统提示安装。
-
-页面只展示当前实际存在、且已核验的包。某个平台包尚未导入时显示“待导入”，没有虚假的下载链接；`1.4.46+106`沿用已核验的Windows、macOS和Linux三端资源。
-
-## 2. “APK 把自己打包进去”的真实实现
-
-这不是把 `base.apk` 再复制一份到 Android assets，也不是构建时递归把 APK 塞进自己。实际做法是：**已安装的 KEMI App 在运行时把系统保存的当前 APK 文件作为一个只读下载文件提供。**
+四个平台客户端统一按下面的链路管理：
 
 ```text
-PAD 已安装的 KEMI APK
-  └─ Android PackageManager / applicationInfo.sourceDir
-       └─ ClientDistributionServer
-            └─ GET /download/KEMI-remote-desktop-<version>.apk
-                 └─ 同 Wi-Fi 浏览器下载
+各平台构建并验收
+        ↓
+项目根目录 BIN/（本地发布基准，四端齐全）
+        ↓
+GitHub caucy2026/common-data Release（不可变二进制）
+        ↓ 最后发布 stable/manifest.json
+PAD 开机后联网且空闲时比较版本并增量下载
+        ↓
+PAD 私有缓存（最后一次校验成功的文件）
+        ↓ 用户进入“客户端”页才开启
+PAD 局域网 HTTP 服务
+        ↓
+同一 Wi-Fi 的 Android / macOS / Windows / Linux 设备下载
 ```
 
-对应代码在 `flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ClientDistributionServer.kt`：
+这里有三个强制原则：
 
-- `packageEntries()` 为 Android 条目设置 `assetPath = null`；
-- `isAvailable()` 因而检查 `File(context.applicationInfo.sourceDir)`；
-- `route()` 收到该条目的固定下载地址时，调用 `writeFile()` 流式读取 `sourceDir`；
-- 文件名由 `PackageManager` 读取当前 `versionName()` 生成，例如 `KEMI-remote-desktop-1.4.46.apk`。
+1. `BIN/` 每次必须同时保存本次准备发布的四端客户端、清单和校验表；聊天记录、Actions 临时 Artifact 和 PAD 缓存都不能替代它。
+2. `common-data` 的普通 Git 历史只保存小型清单和说明，大型客户端放 GitHub Release，避免仓库因每个版本重复提交二进制而失控。
+3. 先上传四个文件，逐个回读校验，最后才更新稳定清单。PAD 只相信稳定清单，因此不会看到“清单已更新但客户端还没传完”的半成品发布。
 
-因此有四个重要结果：
+## 2. 四端版本和文件名
 
-| 项目 | 结论 |
-|---|---|
-| 下载到的 APK | 就是此刻 PAD 已安装的那一份 APK，版本、签名、内容一致。 |
-| APK 体积 | 不会因“再嵌入自己”翻倍；Android 包不在 `assets` 里保存第二份 APK。 |
-| Debug / Release | PAD 装的是 debug 包，就会分发 debug 包；装的是正式签名 release 包，就会分发正式包。分发服务不会替换签名或版本。 |
-| 升级顺序 | 必须先构建并安装最终 PAD APK，再让它开启下载页；下载页不能产生新 APK。 |
+产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前下一版为 `+107`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+107`。
 
-这是一种“运行中应用自分发”而非“APK 自嵌套”。它适合局域网测试和现场安装，不替代正式应用商店、MDM 或官网发布。
-
-从构建关系看也不存在递归：
+`BIN/` 当前发布批次必须包含：
 
 ```text
-最终 PAD APK = KEMI Android 程序 + macOS ZIP + Windows EXE + Linux AppImage
+BIN/
+├── KEMI-远程桌面-PAD-1.4.46+107-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.46+107.zip
+├── KEMI-远程桌面-Windows-x64-1.4.46.exe
+├── KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage
+├── KEMI-client-manifest-1.4.46+107.json
+└── KEMI-client-SHA256SUMS-1.4.46+107.txt
 ```
 
-等号右边没有“最终 PAD APK”这一项。HTTP 服务启动后才由 Android 系统告诉程序当前安装文件的位置，服务只打开并发送该文件，不会修改它、重新执行 Gradle，也不会生成“包含下载副本的新 APK”。客户端把文件下载到另一台 Android 设备，只是得到相同字节的一份副本；新设备安装后又可以读取自己的安装文件提供下载，文件大小和层级仍保持不变。
+文件名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
 
-当前实现有一个必须保留的前提：PAD 使用本项目直接构建、侧载的**单体 APK**。如果以后改为 Google Play/AAB 或其他 split APK 安装方式，`applicationInfo.sourceDir` 通常只指向 `base.apk`，单独下载它可能缺少 ABI、语言或资源 split 而无法安装。届时不能继续宣称“Android 可直接自分发”，必须改为提供独立的通用 release APK，或完整导出并安装所有 split APK，再同步修改代码、页面和本文件。
+每个平台的“版本一致”含义如下：
 
-## 3. 四端制品如何进入 PAD
+| 平台 | 版本来源 | 本批次要求 |
+|---|---|---|
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=107`，清单写 `1.4.46+107` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=107` |
+| Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单同时记录发布批次 |
+| Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 
-Android 与其余三端的来源不同：
+## 3. common-data 仓库结构
 
-| 下载项 | CPU / 格式 | PAD 中的来源 | 是否增加 PAD APK 体积 | 当前状态 |
-|---|---|---|---|---|
-| PAD / Android | APK | 已安装 App 的 `applicationInfo.sourceDir` | 否 | 已可下载 |
-| macOS | Apple Silicon / ZIP | `assets/client-dist` 中的已签名 App ZIP | 是 | 已可下载 |
-| Windows | x64 / EXE | `assets/client-dist` 中的已核验 EXE | 是 | 已可下载 |
-| Linux | x86_64 / AppImage | `assets/client-dist` 中的已核验 AppImage | 是 | 已可下载 |
+仓库地址：<https://github.com/caucy2026/common-data>，默认分支 `main`。
 
-静态包的固定目录和文件名如下；文件名是 HTTP 白名单的一部分，**不可随意更名**：
+建议的普通 Git 目录只包含：
 
 ```text
-flutter/android/app/src/main/assets/client-dist/
-├── KEMI-remote-desktop-windows-x64.exe
-├── KEMI-remote-desktop-macos-arm64.zip
-└── KEMI-remote-desktop-linux-x86_64.AppImage
+kemi-rustdesk/
+├── README.md
+└── stable/
+    └── manifest.json
 ```
 
-`bundledPackages()` 只认识上述三项。文件存在时，Android Gradle 会将它们编入 PAD APK，`context.assets.open()` 在下载时流式输出；文件缺失时网页和 PAD 页面都只显示“待导入”。
-
-最终 PAD APK 的体积会近似增加三个静态包各自压缩后的大小，并需要额外安装空间；Android 自身 APK 不贡献第二份体积。替换静态包时除了校验文件，还要确认 PAD 的存储空间、APK 安装耗时和同网下载耗时仍可接受。若四端包继续增大，应把非 Android 包迁移到 PAD 本地可更新的独立文件目录或受控发布服务器，而不是无限扩大 APK assets。
-
-当前已内置 macOS Apple Silicon 包：`KEMI-remote-desktop-macos-arm64.zip`，对应 `1.4.46+104`，大小 `25,918,515` 字节，SHA-256 为：
+每批二进制使用不可变 Release，例如：
 
 ```text
-b0a826644814c488e2861d66ecd49b56983b270174e3de8de895b8f6ae06c2c4
+tag: kemi-rustdesk-v1.4.46-build107
+assets:
+  KEMI-remote-desktop-PAD-1.4.46+107.apk
+  KEMI-remote-desktop-macos-arm64-1.4.46+107.zip
+  KEMI-remote-desktop-windows-x64-1.4.46.exe
+  KEMI-remote-desktop-linux-x86_64-1.4.46.AppImage
+  manifest.json
+  SHA256SUMS.txt
 ```
 
-当前Windows x64 EXE对应源码commit `4e30063b9a0b293eca18a355264fbbe6852be84e`、focused run `30590581209`，大小22,637,056字节，SHA-256为：
+Release 资产一旦进入稳定清单就视为不可变；需要修复时增加构建号和新 tag，不覆盖同名文件。这样 PAD 的断点续传、哈希校验和问题追溯都有稳定依据。
+
+## 4. 稳定清单格式
+
+PAD 固定读取：
 
 ```text
-9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad
+https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stable/manifest.json
 ```
 
-当前Linux x86_64 AppImage复用同一run的成功DEB，由补包run `30593128802`生成，大小82,983,416字节，SHA-256为：
+清单格式版本为 1，必须一次包含四个平台：
 
-```text
-2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44
+```json
+{
+  "schema_version": 1,
+  "channel": "stable",
+  "release_version": "1.4.46+107",
+  "source_commit": "完整的 rust-desk 源码 commit",
+  "generated_at": "2026-07-31T12:00:00+08:00",
+  "targets": [
+    {
+      "id": "android",
+      "version": "1.4.46+107",
+      "architecture": "arm64-v8a",
+      "file": "KEMI-remote-desktop-PAD-1.4.46+107.apk",
+      "size": 12345678,
+      "sha256": "64位小写SHA-256",
+      "url": "https://github.com/caucy2026/common-data/releases/download/kemi-rustdesk-v1.4.46-build107/KEMI-remote-desktop-PAD-1.4.46%2B107.apk"
+    }
+  ]
+}
 ```
 
-两份不会随Actions 14天保留期过期的候选文件、manifest和校验表位于GitHub prerelease：
+其余三个目标的 `id` 必须依次使用 `windows`、`macos`、`linux`。文件名只允许 ASCII 字母、数字、点、下划线、加号和连字符；URL 必须是 HTTPS 且属于 GitHub 下载域名白名单。
 
-```text
-tag: kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e
-https://github.com/caucy2026/rust-desk/releases/tag/kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e
-```
+清单中的 SHA-256 用于确认下载字节与发布字节一致。它能防止传输错误和错误文件混入，但不能替代平台代码签名：Android 仍检查固定 release 签名，macOS 正式外发仍需 Developer ID 签名与公证，Windows 正式外发仍应做 Authenticode 签名。
 
-该tag已核验直接指向源码commit `4e30063b9`。Windows EXE没有Authenticode签名，Linux AppImage也未签名，均为团队测试候选，不是公开发布签名包。
+## 5. 发布顺序与未完成构建的处理
 
-最终PAD `1.4.46+106`已在`192.168.1.10:5555`卸载旧包后全新安装；APK内Windows、macOS、Linux三端文件的字节大小和SHA-256均与导入前一致。`1.4.46+105`已做过真实HTTP下载核验，本次HTTP实现和三端资源未改变；Windows和Linux仍需在各自目标系统完成GUI启动、远控和文件传输验收，不能把“构建与PAD内置资源通过”写成“目标平台功能已全部通过”。
+每次发布严格执行：
 
-## 4. 实现结构和服务边界
+1. 冻结本次源码 commit 和产品版本。
+2. 本地能编译的 PAD/macOS 在本地构建；Windows/Linux 优先由对应平台同事本机构建，本地确实不具备目标环境时才使用 GitHub Actions。
+3. 每个平台独立验收并进入候选区，不修改稳定清单。
+4. 四个候选文件全部齐备后复制到 `BIN/`，生成大小、SHA-256、源码 commit、构建机或 Actions run ID 记录。
+5. 创建新的 `common-data` Release，上传四端文件、批次 manifest 和 `SHA256SUMS.txt`。
+6. 从 GitHub 回读资产元数据，至少复核文件名和大小；能下载回读时再次核对 SHA-256。
+7. 最后一个单独提交更新 `kemi-rustdesk/stable/manifest.json`。
+8. PAD 读取稳定清单并完成下载后，验证局域网 HTTP 下载的四个文件与 `BIN/` 哈希一致。
 
-```text
-Flutter ClientDownloadPage
-  ├─ initState() → MethodChannel: client_distribution_start
-  ├─ 显示 IP、SSID、二维码和可用包状态
-  └─ dispose()   → MethodChannel: client_distribution_stop
-                 ↓
-Android MainActivity
-                 ↓
-ClientDistributionServer（仅页面存活期间）
-  ├─ /                         简化下载网页
-  ├─ /health                   返回 ok
-  └─ /download/<固定文件名>    仅提供白名单中的一个文件
-       ├─ Android → sourceDir（当前已安装 APK）
-       └─ macOS/Windows/Linux → Android assets
-```
+如果上一次云端构建没有完成，而源码又需要备份：
 
-相关文件职责：
+- 源码照常提交和推送，备份不等待二进制构建。
+- 不移动旧 tag，不覆盖旧 Release，不更新稳定清单。
+- 新构建继续绑定原候选 commit；若新源码已改变功能，则另开新候选批次，不能把两个 commit 的产物混在一个发布中。
+- 只有四端齐备且验收通过的批次才能成为 `stable`。
+
+这使“源码及时备份”和“上次构建继续完成”互不阻塞，也避免 PAD 自动下载半成品。
+
+## 6. PAD 自动同步设计
+
+相关 Android 文件：
 
 | 文件 | 职责 |
 |---|---|
-| `flutter/lib/mobile/pages/client_download_page.dart` | 页面生命周期、地址/二维码/SSID 与平台卡片 UI。 |
-| `flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt` | Flutter MethodChannel 转发、Wi-Fi 权限与 Activity 销毁兜底停止服务。 |
-| `flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ClientDistributionServer.kt` | HTTP 服务、包清单、路由白名单、APK/asset 文件流。 |
-| `flutter/android/app/src/main/assets/client-dist/` | 经过核验、要随 PAD APK 一起交付的非 Android 静态包。 |
+| `ClientPackageSync.kt` | 下载清单、比较版本、断点续传、大小/SHA-256 校验、最后成功缓存 |
+| `ClientPackageSyncJobService.kt` | 使用 Android `JobScheduler` 安排开机后和周期性空闲同步 |
+| `BootReceiver.kt` | 收到开机广播后独立安排客户端同步，不受“远控服务开机自启”开关影响 |
+| `MainApplication.kt` | App 升级或首次启动后补登记周期任务 |
+| `ClientDistributionServer.kt` | 只向局域网提供当前已验证文件 |
+| `client_download_page.dart` | 显示状态、手动触发、进度动画与错误重试 |
 
-服务规则：
+调度条件：
 
-- 优先监听 `8686`；端口占用时使用系统分配端口，页面显示实际地址。
-- 仅接受 `GET`，仅允许 `/`、`/health` 和精确的 `/download/<固定文件名>`；没有目录浏览、任意路径读文件、上传、远程命令或网络转发。
-- 下载使用 `Content-Disposition: attachment`、`Cache-Control: no-store`、`Connection: close`；asset 可能被 APK 压缩，故以连接关闭作为文件结束标记。
-- `dispose()` 和 `MainActivity.onDestroy()` 都会停止服务，避免离开页面仍暴露下载地址。
-- 当前服务不含账号登录、TLS 或访问令牌；仅可用于受信任的私有局域网，不能在公共 Wi-Fi、端口映射或公网环境开启。
+- 开机后登记一次性任务，最早 1 分钟后运行，最迟在系统允许的窗口内尝试；
+- 同时登记每 6 小时的周期任务；
+- 仅在非计费网络（通常为 Wi-Fi）并且系统判断设备空闲时下载；
+- Android 的省电策略和厂商调度可能推迟任务，因此“空闲同步”不是精确闹钟；
+- 用户在客户端页点击缺失项属于明确操作，会立即请求下载，不等待下一个空闲窗口。
 
-## 5. 打包前的硬性需求
-
-每个平台制品进入 `client-dist` 前，必须同时满足以下条件：
-
-1. **版本一致**：产品版本须与本次准备分发的 KEMI 版本一致；Android 的 `versionName/versionCode`、Mac 的 `CFBundleShortVersionString/CFBundleVersion`、Windows/Linux 的安装包元数据都要记录。
-2. **架构明确**：当前命名只支持 Windows x64、macOS arm64、Linux x86_64。需要 Intel Mac、Windows ARM64 或 Linux ARM64 时，先新增独立文件名、UI 文案和白名单，不能把不同架构替换进原文件。
-3. **来源可追溯**：记录源 Git commit、构建机/CI run、构建命令和 SHA-256。GitHub artifact 仅在对应 job 成功、来源 commit 匹配、下载后核验通过时才可用。
-4. **可安装**：至少在对应平台完成一次安装/启动验证；Mac 还必须验证签名，Windows/Linux 应验证其签名或包完整性。
-5. **先放包，后构建 PAD**：静态包是在 Android 构建阶段编入 APK。替换任何 `.zip`、`.exe`、`.AppImage` 后，不重新构建 PAD APK 就不会生效。
-6. **大文件治理**：二进制不作为普通源码历史反复提交。Windows/Linux 云端候选包统一保存到 `kemi-<完整commit>` GitHub prerelease，Mac 本地交付包保留在 `BIN/`；每次都保留版本、commit、run ID 和哈希记录。
-
-## 6. 标准打包流程
-
-### 6.1 统一顺序
+缓存目录使用 App 专属外部目录：
 
 ```text
-完成并验证四端候选制品
-        ↓
-记录版本 / 架构 / commit / SHA-256
-        ↓
-将 macOS、Windows、Linux 静态包导入 client-dist
-        ↓
-构建最终 PAD APK（静态包此时被编入）
-        ↓
-安装最终 PAD APK 到测试 PAD
-        ↓
-从 PAD 下载页下载四端包并逐端安装验证
+Android/data/com.newlinksz.kemi.remote/files/client-cache/
 ```
 
-不要先安装 PAD、后替换 `client-dist` 文件，然后以为已安装 PAD 会自动更新。Android 自分发项例外：它永远读取当前已安装 APK；但其余三端只能来自**构建该 APK 时**已存在的 assets。
+不申请公共存储写权限。卸载 App 会清除缓存，重新安装后会在下次空闲或用户点击时恢复。
 
-### 6.2 macOS Apple Silicon 包
-
-macOS 是当前本机可完成的 GUI 包。必须先构建、复制 `service`、使用固定证书签名并验证，然后压缩 `.app`。示例命令如下（构建环境路径以实际机器为准）：
-
-```bash
-cd /Users/newlink/kemi/RustDesk/client
-env VCPKG_ROOT=/Users/newlink/kemi/RustDesk/client/vcpkg \
-  cargo build --locked --features flutter --release
-
-cd flutter
-env PATH=/Users/newlink/.gem/ruby/2.6.0/bin:$PATH \
-  RUBYOPT=-rlogger \
-  FLUTTER_XCODE_ARCHS=arm64 \
-  FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES \
-  /Users/newlink/flutter/bin/flutter build macos --release --no-pub
-
-app='build/macos/Build/Products/Release/KEMI-远程桌面.app'
-cp ../target/release/service "$app/Contents/MacOS/service"
-../res/sign-kemi-local-macos.sh "$app"
-codesign --verify --deep --strict --verbose=2 "$app"
-
-ditto -c -k --sequesterRsrc --keepParent "$app" \
-  android/app/src/main/assets/client-dist/KEMI-remote-desktop-macos-arm64.zip
-shasum -a 256 android/app/src/main/assets/client-dist/KEMI-remote-desktop-macos-arm64.zip
-unzip -t android/app/src/main/assets/client-dist/KEMI-remote-desktop-macos-arm64.zip
-```
-
-固定测试证书仅适用于团队本地测试；正式外发 Mac 包必须按 `kemi-docs/macos-configuration.md` 改用 Developer ID 签名与公证。不可用 ad-hoc 签名替换当前固定签名，否则 macOS TCC 可能把升级包认作新应用并丢失授权。
-
-### 6.3 Windows x64 与 Linux x86_64 包
-
-原则是**本地优先、云端只做本地无法可靠交付的目标**。当前 Apple Silicon Mac 不能生成 Windows/MSVC Flutter GUI 安装包，也不能把 Linux GUI 所需的 GTK、音视频/X11、x64 vcpkg 和 Flutter Linux bundle 可靠交叉组成 AppImage；本机 Zig 脚本只能构建 Linux 服务端，不能替代客户端。因此 Windows x64 EXE 与 Linux x86_64 AppImage固定由 `.github/workflows/kemi-distribution.yml` 并行构建。详细分工、监控和失败处理见 `kemi-docs/ci-build.md`。
-
-导入前最小核验清单：
-
-```bash
-# 在制品所在目录执行；每次都将输出写入本次构建记录
-shasum -a 256 KEMI-remote-desktop-windows-x64.exe
-shasum -a 256 KEMI-remote-desktop-linux-x86_64.AppImage
-file KEMI-remote-desktop-windows-x64.exe
-file KEMI-remote-desktop-linux-x86_64.AppImage
-```
-
-核验后分别放入第 3 节的固定路径和文件名。Windows必须在Windows x64上补做安装/启动；Linux至少在目标发行版x86_64上执行`chmod +x`后补做启动。`1.4.46`当前已完成云构建、格式/架构/哈希和PAD真实HTTP下载核验，目标平台GUI、远控和文件传输结果继续单独登记。
-
-### 6.4 构建和安装最终 PAD APK
-
-静态离线包确认后再构建 PAD：
-
-```bash
-cd /Users/newlink/kemi/RustDesk/client/flutter
-env PATH=/private/tmp/kemi-flutter-3.29.3/bin:$PATH flutter build apk \
-  --release --target-platform android-arm64 --no-pub
-
-adb -s 192.168.1.10:5555 uninstall com.newlinksz.kemi.remote
-adb -s 192.168.1.10:5555 install build/app/outputs/flutter-apk/app-release.apk
-adb -s 192.168.1.10:5555 shell dumpsys package com.newlinksz.kemi.remote \
-  | rg 'versionName|versionCode|sourceDir'
-```
-
-上例省略了受控release签名环境变量；完整签名命令以`android-release-signing.md`为准。当前Android依赖实际使用Flutter 3.29.3；不要用共享SDK的任意最新版，也不要用缺少`extended_text 14`所需selection API的3.24.5直接构建。安装后再次读取`versionName/versionCode`。因为Android下载项直接服务`sourceDir`，这一步能同时证明“PAD本机运行的版本”和“它会提供给别人下载的APK”完全一致。
-
-## 7. 最终验收与记录模板
-
-每次四端包更新，按下面顺序验收：
-
-1. 在 PAD 进入“客户端”，日志应有 `Client download service started`，页面显示实际 IPv4 与端口。
-2. 同 Wi-Fi 设备访问 `http://<PAD-IP>:<端口>/health`，应返回 `ok`；访问根路径应显示下载页。
-3. 下载 Android APK，比较其 SHA-256 与 PAD 的 `sourceDir`，再检查下载包签名和 `versionName/versionCode`。
-4. 下载每个已显示的 macOS / Windows / Linux 包，比较其 SHA-256 与导入 assets 前的记录，并在对应系统安装或启动。
-5. 离开客户端页，原地址必须不可访问，日志应有 `Client download service stopped`。
-
-每次在 `kemi-docs/CHANGELOG-KEMI.md` 写入至少以下数据：
+单个文件的状态机：
 
 ```text
-KEMI 版本：1.x.y+build
-源 commit：<完整 Git commit>
-PAD APK：文件名、versionName/versionCode、SHA-256、签名类型
-macOS arm64 ZIP：版本、SHA-256、签名身份、安装验证结果
-Windows x64 EXE：版本、SHA-256、来源 CI run、安装验证结果
-Linux x86_64 AppImage：版本、SHA-256、来源 CI run/本地构建、启动验证结果
+missing → downloading(.part，可续传) → verifying → ready
+                      └─失败→ error → 点击重试/下次任务续传
 ```
 
-## 8. 常见误解和排查
+下载流程：
 
-| 现象 | 根因 | 处理 |
+1. 请求远端清单，限制最大 1 MiB，并校验格式、四个平台、文件名和 URL 白名单。
+2. 远端版本、文件大小或 SHA-256 与本地验证标记不一致时才下载。
+3. 写入 `<文件名>.part`；服务器支持 Range 时从已有长度继续，不支持时安全地从零重下。
+4. 下载完成后先核对长度，再计算 SHA-256。
+5. 只有校验成功才原子替换正式缓存并写 `.sha256` 验证标记。
+6. 新文件失败时保留旧的最后成功文件；不把 `.part` 提供给用户。
+7. 完整批次同步后清理不再被当前清单引用的旧缓存。
+
+Android/PAD 项有一个优化：远端清单版本和当前已安装 App 的 `versionName+versionCode` 相同，且 APK 大小与 SHA-256 一致时，直接使用系统的 `applicationInfo.sourceDir`，不再额外保存一份 APK；远端版本更高时才缓存新版 APK供局域网下载。不存在“APK 无限嵌套”。
+
+## 7. 客户端页交互
+
+进入首页“客户端”页后：
+
+1. 开启临时局域网 HTTP 服务，同时异步刷新远端清单。
+2. 页面显示真实 Wi-Fi 名称、浏览器地址和二维码；输入地址与扫码二选一。
+3. 四个平台每行显示平台图标、真实版本和状态。
+4. 已校验的项目显示绿色完成标记。
+5. 缺失项目显示“点击下载”。用户点击后弹出不可误解的进度窗口：圆形动画、百分比、校验阶段、错误原因和重试按钮。
+6. 用户可选择“后台下载”关闭弹窗，原生下载继续；页面行内仍显示进度条。
+7. 离开页面只关闭局域网 HTTP 服务，不删除缓存，也不中断后台客户端同步。
+
+浏览器网页只能下载 `ready` 文件，不能触发任意 URL、浏览目录、上传文件或执行命令。包尚未准备好时显示“PAD 正在准备，请稍后刷新”，不会提供旧路径或未校验临时文件。
+
+## 8. 局域网 HTTP 边界
+
+```text
+GET /                              简化下载网页
+GET /health                        返回 ok
+GET /download/<清单中的固定文件名>  发送已验证文件
+```
+
+- 进入客户端页时启动，离开页面或 Activity 销毁时停止。
+- 优先使用端口 `8686`，占用时回退到系统端口，始终以页面显示地址为准。
+- 只支持 GET 和固定白名单路径，不支持目录遍历。
+- 服务没有 TLS、账号或访问令牌，只允许可信的同一局域网临时使用，不能做公网端口映射。
+
+## 9. 失败、回退与用户提示
+
+| 情况 | PAD 行为 | 用户看到的内容 |
 |---|---|---|
-| 已替换 Mac/Windows/Linux 文件，但 PAD 网页还是旧包 | 已安装 PAD APK 的 assets 不会热更新。 | 重新构建并安装 PAD APK，再打开客户端下载页。 |
-| Android 下载文件版本与源码不一致 | 服务读取的是已安装 `sourceDir`，不是当前工作区的构建输出。 | 卸载/安装最终 APK 后再测试，检查 `dumpsys package`。 |
-| 包不显示 | 静态包缺失、文件名不匹配或 assets 无法打开。 | 核对第 3 节固定路径与文件名；不要改 `bundledPackages()` 白名单。 |
-| 浏览器打不开地址 | 不在同 Wi-Fi、没有可用 IPv4、端口不是 8686 回退后的实际端口，或已离开页面。 | 以页面显示的完整地址为准，重新进入客户端页。 |
-| 下载到错误架构 | 用错误包覆盖了固定文件名。 | 不覆盖；新增架构时同步新增文件名、包条目、UI 文案、文档和验收。 |
-| Mac 更新后权限看似丢失 | 包被 ad-hoc/其他证书重新签名或解包修改。 | 使用固定测试签名重签；正式发布使用 Developer ID + 公证。 |
+| GitHub 暂时无法访问 | 保留最后成功缓存，下次任务重试 | 已缓存项照常下载；缺失项提示错误和重试 |
+| 下载中断 | 保留 `.part` | 再次点击或下次空闲任务继续 |
+| 文件长度或 SHA 不符 | 删除异常临时文件，不替换正式缓存 | “校验失败”，可重试 |
+| 新清单格式错误/缺平台 | 拒绝新清单 | 继续使用上次有效清单与缓存 |
+| 用户刚进入页面但包未完成 | HTTP 不暴露临时包 | PAD 端点击项目查看动画；浏览器稍后刷新 |
+| 卸载 PAD App | Android 清除专属缓存 | 重装后重新同步 |
 
-## 9. 变更规则
+GitHub 在部分网络环境下可能不可达或速度不稳定。本版按用户指定以 `common-data` 为源；如果要面对普通国内客户，后续应在相同清单中增加公司域名下的国内对象存储/CDN 主地址并保留 GitHub 作为备用，下载校验规则不变。
 
-以下改动必须同步更新本文件、`CHANGELOG-KEMI.md` 和版本对应关系：
+## 10. 每次发布验收清单
 
-- 新增或删除平台、CPU 架构、文件格式或下载文件名；
-- 改动 HTTP 路由、端口、生命周期、认证或网络访问范围；
-- 替换任何内置静态包；
-- 改动 APK 自分发的来源、签名或版本策略。
+- [ ] `Cargo.toml`、Flutter、macOS、Windows、Linux 记录的版本关系正确。
+- [ ] `BIN/` 存在四端本批次文件、manifest 和 SHA256SUMS。
+- [ ] 四端文件大小和 SHA-256 已记录，目标平台至少完成启动检查。
+- [ ] PAD APK 使用固定 release 签名；macOS/Windows 公共发布签名状态如实记录。
+- [ ] `common-data` 新 Release 的 tag、四个资产和源码 commit 对应。
+- [ ] GitHub 资产回读校验完成后才更新 stable manifest。
+- [ ] PAD 开机任务已登记，Wi-Fi + idle 条件下能读取清单。
+- [ ] 缺失客户端点击后能看到进度动画、百分比、校验、失败重试。
+- [ ] 完成后 PAD 页面四项均为 ready。
+- [ ] 同 Wi-Fi 浏览器下载四端文件，SHA-256 与 `BIN/` 完全一致。
+- [ ] 离开客户端页后 `/health` 不再可访问；重新进入时缓存立即可用。
+- [ ] `CHANGELOG-KEMI.md` 记录版本、commit、Release tag、构建来源、哈希和实测结果。
 
-不要把安装包制作步骤散落在 README、CI 文档或聊天记录中：本文件描述“如何把四端制品交付到 PAD 下载页”，`ci-build.md` 仅描述“如何得到 Windows/Linux 等候选制品”，`macos-configuration.md` 仅描述“如何签名和交付 macOS App”。
+## 11. 当前批次特别说明
+
+`1.4.46+107` 是从“把 macOS/Windows/Linux 全部塞进 PAD APK”迁移到“GitHub 清单 + PAD 持久缓存”的首版。迁移完成后 PAD APK 不再内置约 125 MiB 的三端 assets，体积会显著下降。
+
+现有 macOS ZIP 使用本地测试签名，未经 Apple Developer ID 公证；通过浏览器下载后仍可能被 Gatekeeper 阻止。它可用于内部测试，但在正式面向客户前必须由公司的 Apple Developer 账号完成 Developer ID 签名、公证和 stapling。Windows 当前候选也未做 Authenticode 签名。清单和 HTTP 分发只保证文件一致性，不会绕过操作系统安全策略。
