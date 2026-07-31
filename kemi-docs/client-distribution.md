@@ -1,6 +1,6 @@
 # KEMI 四端客户端发布、PAD 自动同步与局域网分发
 
-> 适用版本：`1.4.46+108` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
+> 适用版本：`1.4.46+109` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
 
 ## 1. 需求结论
 
@@ -30,18 +30,18 @@ PAD 局域网 HTTP 服务
 
 ## 2. 四端版本和文件名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+108`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+108`。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+109`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+109`。
 
 `BIN/` 当前发布批次必须包含：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.46+108-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.46+108.zip
+├── KEMI-远程桌面-PAD-1.4.46+109-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.46+109.zip
 ├── KEMI-远程桌面-Windows-x64-1.4.46.exe
 ├── KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage
-├── KEMI-client-manifest-1.4.46+108.json
-└── KEMI-client-SHA256SUMS-1.4.46+108.txt
+├── KEMI-client-manifest-1.4.46+109.json
+└── KEMI-client-SHA256SUMS-1.4.46+109.txt
 ```
 
 文件名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -50,8 +50,8 @@ BIN/
 
 | 平台 | 版本来源 | 本批次要求 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=108`，清单写 `1.4.46+108` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=108` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=109`，清单写 `1.4.46+109` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=109` |
 | Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 | Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单同时记录发布批次 |
 
@@ -71,10 +71,10 @@ kemi-rustdesk/
 每批二进制使用不可变 Release，例如：
 
 ```text
-tag: kemi-rustdesk-v1.4.46-build108
+tag: kemi-rustdesk-v1.4.46-build109
 assets:
-  KEMI-remote-desktop-PAD-1.4.46+108.apk
-  KEMI-remote-desktop-macos-arm64-1.4.46+108.zip
+  KEMI-remote-desktop-PAD-1.4.46+109.apk
+  KEMI-remote-desktop-macos-arm64-1.4.46+109.zip
   KEMI-remote-desktop-windows-x64-1.4.46.exe
   KEMI-remote-desktop-linux-x86_64-1.4.46.AppImage
   manifest.json
@@ -97,15 +97,15 @@ https://raw.githubusercontent.com/caucy2026/common-data/main/kemi-rustdesk/stabl
 {
   "schema_version": 1,
   "channel": "stable",
-  "release_version": "1.4.46+108",
+  "release_version": "1.4.46+109",
   "source_commit": "完整的 rust-desk 源码 commit",
   "generated_at": "2026-07-31T12:00:00+08:00",
   "targets": [
     {
       "id": "android",
-      "version": "1.4.46+108",
+      "version": "1.4.46+109",
       "architecture": "arm64-v8a",
-      "file": "KEMI-remote-desktop-PAD-1.4.46+108.apk",
+      "file": "KEMI-remote-desktop-PAD-1.4.46+109.apk",
       "size": 12345678,
       "sha256": "64位小写SHA-256",
       "url": "https://api.github.com/repos/caucy2026/common-data/releases/assets/<PAD_ASSET_ID>"
@@ -245,6 +245,6 @@ GitHub 在部分网络环境下可能不可达或速度不稳定。本版按用�
 
 ## 11. 当前批次特别说明
 
-`1.4.46+107` 完成了从“把 macOS/Windows/Linux 全部塞进 PAD APK”到“GitHub 清单 + PAD 持久缓存”的代码迁移，但真机发现`github.com/releases`下载首跳超时，保留为失败候选。`1.4.46+108`改用Release Assets API并补齐失败日志，是进入稳定清单的修正版。迁移后PAD APK不再内置约125 MiB的三端assets。
+`1.4.46+107`完成代码迁移，但真机发现`github.com/releases`首跳超时。`+108`改用Release Assets API后进一步发现Accept同时声明JSON会得到资产元数据。`1.4.46+109`将API Accept严格限定为二进制，并自动清理旧JSON临时文件，是进入稳定清单的修正版。迁移后PAD APK不再内置约125 MiB的三端assets。
 
 现有 macOS ZIP 使用本地测试签名，未经 Apple Developer ID 公证；通过浏览器下载后仍可能被 Gatekeeper 阻止。它可用于内部测试，但在正式面向客户前必须由公司的 Apple Developer 账号完成 Developer ID 签名、公证和 stapling。Windows 当前候选也未做 Authenticode 签名。清单和 HTTP 分发只保证文件一致性，不会绕过操作系统安全策略。

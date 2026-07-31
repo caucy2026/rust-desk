@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前开发版本为 **1.4.46+108**；PAD、macOS、Windows、Linux 制品统一进入根目录 `BIN/`，并通过 `caucy2026/common-data` 稳定清单供 PAD 空闲时增量缓存。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前开发版本为 **1.4.46+109**；PAD、macOS、Windows、Linux 制品统一进入根目录 `BIN/`，并通过 `caucy2026/common-data` 稳定清单供 PAD 空闲时增量缓存。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -21,6 +21,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+109` | Release Assets API请求只接受二进制响应，并自动清理旧版误存的JSON临时文件，防止把资产元数据当客户端 |
 | `1.4.46+108` | 真机确认PAD网络访问`github.com/releases`首跳超时后，改用GitHub官方Release Assets API跳转下载，并补齐失败日志；107保留为未进入稳定分发的网络失败候选 |
 | `1.4.46+107` | 四端制品统一进入 `BIN/` 与 `common-data` Release；PAD 不再内置三端大文件，改为开机后空闲同步、断点续传、SHA-256 校验和最后成功缓存；缺失客户端可点击并查看下载动画 |
 | `1.4.46+106` | 按华为合规分发规范重发PAD：正式包名和固定release证书保持不变，递增versionCode并完整记录源码、APK与签名指纹；新增Mac同事从GitHub fresh clone到Release App的独立构建文档 |

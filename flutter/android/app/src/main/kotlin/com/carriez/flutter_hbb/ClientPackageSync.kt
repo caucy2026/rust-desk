@@ -338,6 +338,11 @@ class ClientPackageSync private constructor(private val context: Context) {
         }
         val part = File(cacheDir, "${target.fileName}.part")
         var offset = part.takeIf(File::isFile)?.length() ?: 0L
+        if (offset > 0 && part.inputStream().buffered().use { it.read() } == '{'.code) {
+            // GitHub Assets API metadata from an older client is not resumable binary data.
+            part.delete()
+            offset = 0
+        }
         if (offset > target.size) {
             part.delete()
             offset = 0
@@ -348,6 +353,10 @@ class ClientPackageSync private constructor(private val context: Context) {
             val code = connection.responseCode
             val append = offset > 0 && code == HttpURLConnection.HTTP_PARTIAL
             if (code !in 200..299) throw IllegalStateException("下载请求失败：HTTP $code")
+            if (connection.contentType?.contains("application/json", ignoreCase = true) == true) {
+                part.delete()
+                throw IllegalStateException("GitHub返回了资产信息而不是客户端文件")
+            }
             if (!append) offset = 0
             RandomAccessFile(part, "rw").use { output ->
                 if (!append) output.setLength(0)
@@ -409,18 +418,24 @@ class ClientPackageSync private constructor(private val context: Context) {
         }
     }
 
-    private fun openConnection(url: String, rangeStart: Long = 0): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
+    private fun openConnection(url: String, rangeStart: Long = 0): HttpURLConnection {
+        val targetUrl = URL(url)
+        return (targetUrl.openConnection() as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             instanceFollowRedirects = true
             useCaches = false
             requestMethod = "GET"
-            setRequestProperty("Accept", "application/octet-stream,application/json")
+            setRequestProperty(
+                "Accept",
+                if (targetUrl.host == "api.github.com") "application/octet-stream"
+                else "application/json,application/octet-stream",
+            )
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
             setRequestProperty("User-Agent", "KEMI-PAD/${installedPadVersion()}")
             if (rangeStart > 0) setRequestProperty("Range", "bytes=$rangeStart-")
         }
+    }
 
     private fun replaceFile(source: File, destination: File): Boolean {
         return try {
