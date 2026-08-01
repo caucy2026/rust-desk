@@ -52,10 +52,12 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
         page: DesktopHomePage(
           key: const ValueKey(kTabLabelHomePage),
         )));
-    // On macOS keep both top-level destinations visible from first launch.
+    // On macOS and Windows keep both top-level destinations visible from first launch.
     // Previously the settings tab existed only after the password edit icon
     // opened the Safety page, which made the navigation look incomplete.
-    if (isMacOS && !bind.isIncomingOnly() && !bind.isDisableSettings()) {
+    if ((isMacOS || isWindows) &&
+        !bind.isIncomingOnly() &&
+        !bind.isDisableSettings()) {
       DesktopTabPage.onAddSetting();
       tabController.jumpTo(0, callOnSelected: false);
     }
