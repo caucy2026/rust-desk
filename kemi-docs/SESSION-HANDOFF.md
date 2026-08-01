@@ -2,9 +2,9 @@
 
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
-> 当前基线日期：2026-07-31
-> 当前Flutter源码、Android release与PAD安装：`1.4.46+106`；内置Mac包：`1.4.46+104`；Windows/Linux客户端：`1.4.46`
-> 功能代码基线：`8f4c18c577a2352ba7d270ec4a350ef22c3d9abc`
+> 当前基线日期：2026-08-01
+> 当前Flutter源码与Android release候选：`1.4.46+123`；用户已真机确认外接物理鼠标右键能够传到远端，同时保留`+122`传输记录长期持久化；Mac包：`1.4.46+110`；Windows/Linux客户端：`1.4.46`
+> 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
 当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN` 已包含：
@@ -55,6 +55,7 @@
 - Android 文件传输删除功能保持禁用。
 - 远控页底栏固定为 44px 高、每项 48px 宽的中文图文按钮；“输入”是唯一手势说明入口，不再增加重复“说明”按钮。所有可用项必须保持整格水波纹与高亮点击反馈。
 - 当前触摸约定：单指轻触为左键、单指长按为右键、单指移动为拖动；双指纵向滑动为远端滚轮、双指捏合缩放本地画布、三指滑动平移本地画布。
+- PAD外接物理鼠标右键必须同时兼容Android`BUTTON_SECONDARY`和鼠标来源`KEYCODE_BACK`，只在当前显示远控页的Activity中转发；不得让主屏主页、设置、另一块显示屏或其他App的右键影响远端。完整原理见`kemi-docs/android-physical-mouse.md`。
 - Android 软键盘：双屏时必须弹到发起 Activity 的对面可用屏；没有可用副屏时必须弹回当前屏，并由当前 Activity 直接启动代理，不得依赖 `launchDisplayId=0`。
 - Android 共享屏幕启动必须直接调用原生 `MediaProjection` 录屏确认，不能再显示防诈骗或服务启动警告，也不能在此前请求通知、文件访问或悬浮窗权限；这些权限只允许从各自的权限配置入口按需申请。系统录屏弹窗由用户点“允许”或“立即开始”。
 - macOS 远程查看和控制本机只需要两项：屏幕录制和辅助功能。它们只能由 KEMI 主窗口的前台引导申请，不能从首个远程鼠标/键盘事件抢弹系统授权；每项各有独立“申请授权”按钮，说明窗口保持显示、可刷新状态。输入监控仅用于可选的 Mac 本机键盘输入源抓取，绝不能阻止 PAD 控制本机、加入必需权限状态或自动打开 `Privacy_ListenEvent` 页面。
@@ -64,10 +65,11 @@
 - macOS 登录项以 Dock「选项 → 登录时打开」为唯一系统语义，系统菜单标题不能由 App 重命名。macOS 13+ 必须使用 `SMAppService.mainApp`，不得再新增 `~/Library/LaunchAgents/com.carriez.kemi-remote-desktop.plist`。App 设置里的“开机自启”只读取/设置该同一系统项；正式 `/Applications` 包启动时会修复错误指向临时构建目录的已启用项。
 - macOS 主窗口启动即必须显示“主页”“设置”两个顶层标签，并默认选中主页；不得再把密码编辑图标当作唯一设置入口。关于页“版本”必须读取 App `PackageInfo` 并显示 `KEMI-远程桌面 v<version> (<build>)`，不可读取 Rust 内核版本作为产品交付版本。
 - 文件传输再次打开时：对方目录优先读取保存的 `remote_dir`；目录无效再回退当前目录、初始目录和根目录。该规则适用于 iOS/macOS 对方端；Android 本地目录仍优先 Download。
+- 文件传输页必须保留“记录”入口。记录按方向、源目录、目标目录归组，同组完整源路径去重；记录必须在发送任务分发前持久化，不能依赖完成回调才创建。记录页右上角必须明确显示“返回文件”，列表顶部保留返回提示；“再次传输”前必须实时校验源文件和目标目录，缺失时在原记录行显示错误。完整规格见`kemi-docs/file-transfer-history.md`。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
 - Android 首页“客户端”是临时局域网安装包分发页：进入页启动、离开页或销毁 App 关闭 HTTP 服务；只允许白名单下载路由。PAD 与下载设备必须同一 Wi-Fi；当前 APK 可直接分发，其他平台包只有经过核验并在构建 APK 前放入 `assets/client-dist` 时才显示。详见 `client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.46、Cargo.lock rustdesk=1.4.46、flutter/pubspec.yaml=1.4.46+106；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD已安装并核验1.4.46+106；PAD内置Mac为1.4.46+104，Windows/Linux为1.4.46。
+- 当前源码版本必须一致：Cargo.toml=1.4.46、Cargo.lock rustdesk=1.4.46、flutter/pubspec.yaml=1.4.46+123；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键已在1.4.46+123真机确认；Mac为1.4.46+110，Windows/Linux为1.4.46。
 - Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.46`。
 
 工作方式：

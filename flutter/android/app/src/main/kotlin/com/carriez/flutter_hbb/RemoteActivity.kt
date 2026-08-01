@@ -22,6 +22,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Display
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
 import com.hjq.permissions.XXPermissions
 import io.flutter.embedding.android.FlutterActivity
@@ -44,6 +46,10 @@ class RemoteActivity : FlutterActivity() {
     private var peerId: String = ""
     private var password: String? = null
     private var forceRelay: Boolean = false
+    private var flutterMethodChannel: MethodChannel? = null
+    private val physicalMouseRightButton by lazy {
+        PhysicalMouseRightButtonForwarder(::forwardPhysicalMouseRightButton)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -148,6 +154,7 @@ class RemoteActivity : FlutterActivity() {
 
         // ===== mChannel: 双屏键盘代理 (Flutter 调用 gFFI.invokeMethod 走此通道) =====
         val mChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mChannel")
+        flutterMethodChannel = mChannel
         mChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "check_permission" -> {
@@ -177,6 +184,10 @@ class RemoteActivity : FlutterActivity() {
                     // RemoteActivity uses cross-display keyboard proxy on Android.
                     // Do not mutate window IME flags here; it can interfere with
                     // proxy focus/IME routing between displays.
+                    result.success(true)
+                }
+                "set_remote_mouse_input_active" -> {
+                    physicalMouseRightButton.setActive(call.arguments == true)
                     result.success(true)
                 }
                 "try_sync_clipboard" -> {
@@ -237,8 +248,33 @@ class RemoteActivity : FlutterActivity() {
         }, 500)
     }
 
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (physicalMouseRightButton.handleMotionEvent(event)) return true
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (physicalMouseRightButton.handleMotionEvent(event)) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (physicalMouseRightButton.handleKeyEvent(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun forwardPhysicalMouseRightButton(type: String) {
+        Log.i(TAG, "[PhysicalMouse] right $type on display ${display?.displayId}")
+        flutterMethodChannel?.invokeMethod(
+            "on_physical_mouse_button",
+            mapOf("button" to "right", "type" to type),
+        )
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
+        physicalMouseRightButton.setActive(false)
+        flutterMethodChannel = null
         KeyboardProxyManager.release("activity_destroyed")
         SessionState.reset()
         super.onDestroy()

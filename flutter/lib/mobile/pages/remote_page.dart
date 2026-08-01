@@ -120,6 +120,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     keyboardSubscription =
         keyboardVisibilityController.onChange.listen(onSoftKeyboardChanged);
     if (isAndroid) {
+      unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", true));
       keyboardProxyController.addListener(_onKeyboardProxyChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -158,6 +159,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
     if (isAndroid) {
+      unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", false));
       keyboardProxyController.removeListener(_onKeyboardProxyChanged);
       unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
       keyboardProxyController.reset();

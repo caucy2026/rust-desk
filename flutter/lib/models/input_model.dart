@@ -340,6 +340,7 @@ class InputModel {
   // or a different button was pressed in between.
   static final Map<MouseButtons, InputModel> _sideButtonDownModels = {};
   static bool _sideButtonChannelInitialized = false;
+  bool _androidSecondaryMouseDownSent = false;
 
   /// Each Flutter engine (main window + sub-windows from desktop_multi_window)
   /// runs its own Dart isolate with its own statics. Called from initEnv()
@@ -1094,6 +1095,31 @@ class InputModel {
 
   Future<void> tapUp(MouseButtons button) async {
     await sendMouse('up', button);
+  }
+
+  /// Forward a physical Android mouse right button captured by the Activity.
+  /// Android variants may expose this button as a native mouse-button action
+  /// or as a mouse-sourced Back key instead of a Flutter PointerDownEvent.
+  Future<void> handleAndroidPhysicalMouseButton(String type) async {
+    if (!isAndroid || (type != 'down' && type != 'up')) return;
+
+    if (type == 'down') {
+      _lastButtons = kSecondaryMouseButton;
+      if (_androidSecondaryMouseDownSent ||
+          !keyboardPerm ||
+          isViewCamera ||
+          (isViewOnly && !showMyCursor)) {
+        return;
+      }
+      _androidSecondaryMouseDownSent = true;
+      await _sendMouseUnchecked(type, MouseButtons.right);
+      return;
+    }
+
+    _lastButtons = 0;
+    if (!_androidSecondaryMouseDownSent) return;
+    _androidSecondaryMouseDownSent = false;
+    await _sendMouseUnchecked(type, MouseButtons.right);
   }
 
   /// Send scroll event with scroll distance [y].

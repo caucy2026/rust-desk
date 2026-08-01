@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_breadcrumb/flutter_breadcrumb.dart';
 import 'package:flutter_hbb/models/file_model.dart';
+import 'package:flutter_hbb/models/transfer_history_model.dart';
 import 'package:get/get.dart';
 import 'package:toggle_switch/toggle_switch.dart';
 import 'package:uuid/uuid.dart';
@@ -77,8 +78,11 @@ extension SelectModeExt on Rx<SelectMode> {
 class _FileManagerPageState extends State<FileManagerPage> {
   late final FFI _ffi;
   late final FileModel model;
+  late final TransferHistoryStore _historyStore;
   final selectMode = SelectMode.none.obs;
   bool _navigatingBackToRemote = false;
+  bool _showHistory = false;
+  final Set<String> _repeatingHistoryItems = {};
 
   var showLocal = true;
 
@@ -96,6 +100,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     super.initState();
     _ffi = widget.isOverlay ? FFI(Uuid().v4obj()) : gFFI;
     model = _ffi.fileModel;
+    _historyStore = TransferHistoryStore(widget.id)..load();
+    model.jobController.onTransferJobChanged = _historyStore.updateFromJob;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
@@ -124,6 +130,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   @override
   void dispose() {
+    model.jobController.onTransferJobChanged = null;
     model.close().whenComplete(() {
       if (widget.isOverlay || !_navigatingBackToRemote) {
         _ffi.close();
@@ -139,7 +146,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget build(BuildContext context) {
     final content = WillPopScope(
         onWillPop: () async {
-          if (selectMode.value != SelectMode.none) {
+          if (_showHistory) {
+            setState(() => _showHistory = false);
+          } else if (selectMode.value != SelectMode.none) {
             selectMode.value = SelectMode.none;
             setState(() {});
           } else {
@@ -176,7 +185,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   }),
             ]),
             centerTitle: true,
-            title: ToggleSwitch(
+            title: _showHistory
+                ? const Text('传输记录')
+                : ToggleSwitch(
               initialLabelIndex: showLocal ? 0 : 1,
               activeBgColor: [MyTheme.idColor],
               inactiveBgColor: Theme.of(context).brightness == Brightness.light
@@ -198,9 +209,23 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 }
               },
             ),
-            actions: widget.isOverlay
-                ? null
-                : [
+            actions: [
+              Obx(() {
+                final count = _historyStore.groups.fold<int>(
+                    0, (total, group) => total + group.items.length);
+                return TextButton.icon(
+                  onPressed: _toggleHistory,
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  icon: Icon(_showHistory ? Icons.arrow_back : Icons.history,
+                      size: 20),
+                  label: Text(_showHistory
+                      ? '返回文件'
+                      : count > 0
+                          ? '记录($count)'
+                          : '记录'),
+                );
+              }),
+              if (!widget.isOverlay && !_showHistory)
                     PopupMenuButton<String>(
                         tooltip: "",
                         icon: Icon(Icons.more_vert),
@@ -322,9 +347,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
                             currentFileController.toggleShowHidden();
                           }
                         }),
-                  ],
+            ],
           ),
-          body: showLocal
+          body: _showHistory
+              ? _buildTransferHistory()
+              : showLocal
               ? FileManagerView(
                   controller: model.localController,
                   selectMode: selectMode,
@@ -360,6 +387,360 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     }
     return content;
+  }
+
+  void _toggleHistory() {
+    if (!_showHistory) {
+      model.localController.selectedItems.clear();
+      model.remoteController.selectedItems.clear();
+      selectMode.value = SelectMode.none;
+    }
+    setState(() => _showHistory = !_showHistory);
+  }
+
+  Future<void> _startRecordedTransfer(FileController source,
+      SelectedItems originalItems, DirectoryData target) async {
+    final items = SelectedItems(isLocal: source.isLocal);
+    items.items.addAll(originalItems.items);
+    if (items.items.isEmpty) return;
+
+    // Persist before dispatch. A small file can finish before the asynchronous
+    // completion callback arrives, but it must already be visible in history.
+    final bindings = <Entry, TransferHistoryBinding>{};
+    for (final entry in items.items) {
+      bindings[entry] = _historyStore.registerTransfer(
+        entry: entry,
+        isRemoteToLocal: !source.isLocal,
+        targetDir: target.directory.path,
+        sourceIsWindows: source.options.value.isWindows,
+        targetIsWindows: target.options.isWindows,
+        showHidden: target.options.showHidden,
+      );
+    }
+
+    try {
+      await source.sendFiles(
+        items,
+        target,
+        onJobCreated: (entry, jobId) {
+          final binding = bindings[entry];
+          if (binding != null) _historyStore.bindJob(jobId, binding);
+        },
+      );
+    } catch (error) {
+      debugPrint('[TransferHistory] start transfer failed: $error');
+      if (mounted) showToast('传输启动失败：$error');
+    }
+  }
+
+  Future<void> _repeatTransfer(
+      TransferHistoryGroup group, TransferHistoryItem historyItem) async {
+    final repeatKey = '${group.key}|${historyItem.sourcePath}';
+    if (_repeatingHistoryItems.contains(repeatKey)) return;
+    setState(() => _repeatingHistoryItems.add(repeatKey));
+
+    final source = group.isRemoteToLocal
+        ? model.remoteController
+        : model.localController;
+    final target = group.isRemoteToLocal
+        ? model.localController
+        : model.remoteController;
+
+    try {
+      await target.fileFetcher.fetchDirectory(
+          group.targetDir, target.isLocal, group.showHidden);
+    } catch (error) {
+      _historyStore.setValidationError(group, historyItem,
+          '目标文件夹不存在或无法访问：${group.targetDir}');
+      return _finishRepeating(repeatKey);
+    }
+
+    Entry? sourceEntry;
+    try {
+      final sourceDirectory = await source.fileFetcher.fetchDirectory(
+          group.sourceDir, source.isLocal, group.showHidden);
+      sourceDirectory.format(group.sourceIsWindows);
+      sourceEntry = sourceDirectory.entries.firstWhereOrNull((entry) =>
+          _samePath(entry.path, historyItem.sourcePath, group.sourceIsWindows));
+    } catch (error) {
+      debugPrint('[TransferHistory] validate source failed: $error');
+    }
+    if (sourceEntry == null) {
+      _historyStore.setValidationError(
+          group, historyItem, '源文件不存在：${historyItem.sourcePath}');
+      return _finishRepeating(repeatKey);
+    }
+
+    final selectedItems = SelectedItems(isLocal: source.isLocal)
+      ..add(sourceEntry);
+    final targetDirectory = FileDirectory()..path = group.targetDir;
+    final targetOptions = DirectoryOptions(
+      isWindows: group.targetIsWindows,
+      showHidden: group.showHidden,
+    );
+    await _startRecordedTransfer(
+        source, selectedItems, DirectoryData(targetDirectory, targetOptions));
+    _finishRepeating(repeatKey);
+  }
+
+  void _finishRepeating(String repeatKey) {
+    if (!mounted) return;
+    setState(() => _repeatingHistoryItems.remove(repeatKey));
+  }
+
+  bool _samePath(String first, String second, bool isWindowsPath) {
+    String normalize(String value) {
+      var result = value.trim();
+      if (isWindowsPath) {
+        result = result.replaceAll('/', '\\').toLowerCase();
+        while (result.length > 3 && result.endsWith('\\')) {
+          result = result.substring(0, result.length - 1);
+        }
+      } else {
+        result = result.replaceAll('\\', '/');
+        while (result.length > 1 && result.endsWith('/')) {
+          result = result.substring(0, result.length - 1);
+        }
+      }
+      return result;
+    }
+
+    return normalize(first) == normalize(second);
+  }
+
+  Widget _buildTransferHistory() {
+    return Obx(() {
+      final groups = _historyStore.groups;
+      if (groups.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.history, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Text('暂无传输记录',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                SizedBox(height: 6),
+                Text('完成一次文件传输后，可在这里一键再次传输',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey)),
+                SizedBox(height: 8),
+                Text('点击右上角“返回文件”继续浏览',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          ),
+        );
+      }
+
+      return ListView.builder(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
+        itemCount: groups.length + 1,
+        itemBuilder: (context, groupIndex) {
+          if (groupIndex == 0) return _historyReturnHint();
+          final group = groups[groupIndex - 1];
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  color: MyTheme.idColor.withOpacity(0.08),
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: MyTheme.idColor.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          group.isRemoteToLocal
+                              ? '对方 → PAD'
+                              : 'PAD → 对方',
+                          style: TextStyle(
+                              color: MyTheme.idColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _historyPathLine('源目录', group.sourceDir),
+                            const SizedBox(height: 3),
+                            _historyPathLine('目标目录', group.targetDir),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                for (var itemIndex = 0;
+                    itemIndex < group.items.length;
+                    itemIndex++)
+                  _buildTransferHistoryItem(
+                      group, group.items[itemIndex], itemIndex),
+              ],
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  Widget _historyReturnHint() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: MyTheme.idColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: MyTheme.idColor),
+          const SizedBox(width: 7),
+          const Expanded(child: Text('点击右上角“返回文件”继续浏览和传输')),
+        ],
+      ),
+    );
+  }
+
+  Widget _historyPathLine(String label, String path) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 54,
+          child: Text('$label：',
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        ),
+        Expanded(
+          child: Text(path,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransferHistoryItem(TransferHistoryGroup group,
+      TransferHistoryItem item, int itemIndex) {
+    final repeatKey = '${group.key}|${item.sourcePath}';
+    final isChecking = _repeatingHistoryItems.contains(repeatKey);
+    final isError = item.lastStatus == TransferHistoryStatus.error;
+    final status = item.lastStatus == TransferHistoryStatus.inProgress
+        ? '传输中'
+        : isError
+            ? '失败'
+            : '已完成';
+    final statusColor = item.lastStatus == TransferHistoryStatus.inProgress
+        ? Colors.orange
+        : isError
+            ? Colors.red
+            : Colors.green;
+    final size = item.isDirectory || item.size <= 0
+        ? ''
+        : ' · ${readableFileSize(item.size.toDouble())}';
+
+    return Container(
+      decoration: itemIndex == 0
+          ? null
+          : const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0x14000000)))),
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(item.isDirectory ? Icons.folder_outlined : Icons.description,
+              size: 28, color: item.isDirectory ? Colors.amber[700] : null),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 5,
+                  children: [
+                    Text(status,
+                        style: TextStyle(fontSize: 11, color: statusColor)),
+                    Text('已传输 ${item.transferCount} 次$size',
+                        style:
+                            const TextStyle(fontSize: 11, color: Colors.grey)),
+                    if (item.lastTransferredAt > 0)
+                      Text(_formatHistoryTime(item.lastTransferredAt),
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+                if (item.lastError.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(item.lastError,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11, color: Colors.red)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 94,
+            child: OutlinedButton(
+              onPressed: isChecking ? null : () => _repeatTransfer(group, item),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(88, 36),
+              ),
+              child: isChecking
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('再次传输', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+          IconButton(
+            tooltip: '删除记录',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+            onPressed: isChecking
+                ? null
+                : () => _historyStore.removeItem(group, item),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatHistoryTime(int milliseconds) {
+    final time = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    String two(int value) => value.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    if (now.year == time.year &&
+        now.month == time.month &&
+        now.day == time.day) {
+      return '今天 ${two(time.hour)}:${two(time.minute)}';
+    }
+    return '${two(time.month)}-${two(time.day)} '
+        '${two(time.hour)}:${two(time.minute)}';
   }
 
   Widget? bottomSheet() {
@@ -421,14 +802,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.paste),
-                  onPressed: () {
+                  onPressed: () async {
                     selectMode.value = SelectMode.none;
                     final otherSide = showLocal
                         ? model.remoteController
                         : model.localController;
                     final thisSideData =
                         DirectoryData(currentDir, currentOptions);
-                    otherSide.sendFiles(selectedItems, thisSideData);
+                    await _startRecordedTransfer(
+                        otherSide, selectedItems, thisSideData);
                     selectedItems.items.clear();
                     selectMode.value = SelectMode.none;
                   },
@@ -470,7 +852,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           return BottomSheetBody(
             leading: Icon(Icons.error),
             title: "${translate("Error")}!",
-            text: "",
+            text: activeJob.err,
             onCanceled: () => jobTable.clear(),
           );
         case JobState.none:

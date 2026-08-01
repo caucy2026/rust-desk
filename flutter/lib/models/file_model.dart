@@ -628,11 +628,11 @@ class FileController {
   }
 
   /// sendFiles from current side (FileController.isLocal) to other side (SelectedItems).
-  Future<void> sendFiles(
-      SelectedItems items, DirectoryData otherSideData) async {
+  Future<List<int>> sendFiles(SelectedItems items, DirectoryData otherSideData,
+      {void Function(Entry entry, int jobId)? onJobCreated}) async {
     /// ignore wrong items side status
     if (items.isLocal != isLocal) {
-      return;
+      return const [];
     }
 
     // alias
@@ -647,6 +647,7 @@ class FileController {
       final jobID = jobController.addTransferJob(from, isRemoteToLocal);
       transferJobs.add((from, jobID));
       transferJobIds.add(jobID);
+      onJobCreated?.call(from, jobID);
     }
     jobController.registerTransferConflictBatch(transferJobIds);
     for (final (from, jobID) in transferJobs) {
@@ -666,7 +667,7 @@ class FileController {
     if (isWeb ||
         (!isLocal &&
             versionCmp(rootState.target!.ffiModel.pi.version, '1.3.3') < 0)) {
-      return;
+      return transferJobIds;
     }
 
     final List<Entry> entrys = items.items.toList();
@@ -699,6 +700,7 @@ class FileController {
         createDirWithRemote(dir, isRemote);
       }
     });
+    return transferJobIds;
   }
 
   bool _removeCheckboxRemember = false;
@@ -1001,6 +1003,7 @@ class JobController {
   bool? _transferConflictRememberOverrideConfirm;
   final GetSessionID getSessionID;
   final GetDialogManager getDialogManager;
+  void Function(JobProgress job)? onTransferJobChanged;
   SessionID get sessionId => getSessionID();
   OverlayDialogManager? get alogManager => getDialogManager();
   int _lastTimeShowMsgbox = DateTime.now().millisecondsSinceEpoch;
@@ -1162,6 +1165,9 @@ class JobController {
       job.state = JobState.done;
     }
     jobTable.refresh();
+    if (job.type == JobType.transfer) {
+      onTransferJobChanged?.call(job);
+    }
     if (job.state == JobState.done || job.state == JobState.error) {
       unregisterTransferConflictJob(id);
     }
@@ -1205,6 +1211,9 @@ class JobController {
         }
       }
       jobTable.refresh();
+      if (job.type == JobType.transfer) {
+        onTransferJobChanged?.call(job);
+      }
       if (job.state == JobState.done || job.state == JobState.error) {
         unregisterTransferConflictJob(job.id);
       }

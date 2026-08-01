@@ -2,6 +2,24 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 六十五、2026-08-01 PAD物理鼠标右键原生兼容（PAD 1.4.46+123）
+
+- 远控协议和被控端原本已支持`right`按下/抬起；问题位于Android输入入口。部分PAD会把物理鼠标右键上报为原生`ACTION_BUTTON_PRESS/RELEASE + BUTTON_SECONDARY`，或转换成鼠标来源的`KEYCODE_BACK`，未必生成Flutter现有监听依赖的`PointerDownEvent(buttons=2)`，因此切换触摸/鼠标输入模式都不能恢复。
+- 新增Android原生右键兼容层，同时覆盖单屏`MainActivity`和副屏`RemoteActivity`。远控页进入时才激活当前Activity的拦截，退出立即关闭并补发必要的右键释放；PAD主页、设置、另一块物理屏幕及其他应用仍保留Android原行为。
+- 原生层只识别鼠标来源的次键，分别转发`down/up`，支持右键菜单和右键拖动；Flutter输入模型同步维护`kSecondaryMouseButton`状态，避免后续移动事件再次生成重复按下。右键释放使用已记录的同一远控会话，即使期间权限状态变化也不会留下远端按键卡住。
+- 每次原生右键转发记录`[PhysicalMouse] right down/up on display N`，便于真机失败时通过`adb logcat`区分PAD没有上报、原生已捕获或远端执行失败。用户已在`+123`真机确认物理鼠标右键能够传到远端，功能闭环通过；完整输入链路和回归清单见`kemi-docs/android-physical-mouse.md`。
+- 构建号升级为`1.4.46+123`。Release APK为26,534,833字节，SHA-256 `51d23973073c84708ee28e958e736f9dd92ef895212b91cb91e4fc915540d2f6`；包名`com.newlinksz.kemi.remote`、仅`arm64-v8a`，zipalign通过、v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。已保存到`BIN/KEMI-远程桌面-PAD-1.4.46+123-release.apk`并覆盖`BIN/release/KEMI-PAD.apk`，六文件SHA256清单一致。
+
+## 六十四、2026-08-01 PAD 文件传输记录与再次传输（PAD 1.4.46+122）
+
+- 文件传输页新增“记录”入口。记录按“传输方向 + 源目录 + 目标目录”归组，同一组内按完整源路径去重；重复发送同一路径只更新次数、时间和状态，不新增重复行。每项提供明确的“再次传输”和删除记录按钮。
+- 用户切到记录页后不清楚如何返回的问题，改为右上角箭头加“返回文件”，记录列表顶部固定提示“点击右上角‘返回文件’继续浏览和传输”；空记录页也保留同样引导，系统返回键优先退回文件页。
+- 完成传输后没有记录的根因是旧方案把“创建历史记录”依赖在异步任务创建/完成回调上。小文件可能在UI绑定任务前就完成，回调找不到记录项，最终持久化仍是空数组。新流程在调用`sendFiles`前逐项`registerTransfer`并同步落盘，随后只用任务ID绑定完成/失败状态；因此无论文件多小，发送动作一旦确认就已有可追踪记录。
+- “再次传输”不复用旧文件元数据直接盲发：先实时读取目标目录，再读取源目录并按完整路径寻找源项。目标目录无效或源文件不存在时不启动任务，在该记录行原位显示明确错误；校验期间按钮显示转圈且禁止重复点击。
+- 状态持久化在对应peer的Flutter option `kemi-transfer-history-v1`。`+122`取消原先50组/每组100项的自动淘汰：用户不主动删除记录、不清除App数据且不卸载App时，关闭页面、结束进程和PAD重新开机后都继续保留；上次退出时仍为“传输中”的项，重进时标记为“上次传输未完成，可点击再次传输”。
+- 真机`192.168.3.46:5555`实测：从PAD `/storage/emulated/0/Download`向本机`/Users/newlink`复制8,483,380字节文件，日志先出现`[TransferHistory] registered`，文件SHA-256为`ecd611bfe949a643d44a16e4fece9400894a6f809843e34cf3ccfb371275ec24`；记录页立即显示“PAD → 对方 / 已完成 / 已传输1次 / 再次传输”。强制停止并重新打开KEMI后记录仍存在，同时“返回文件”和顶部引导均可见。测试生成的Mac副本和PAD临时测试文件均已清理，PAD原始源文件未改。
+- `+122` Release APK为26,533,162字节，SHA-256 `5c4affe9f0ded75999593d79bea7fec76af5ce8cfba815a9f8c5a89116f13fa5`；`versionName=1.4.46 / versionCode=122`，包名`com.newlinksz.kemi.remote`、仅`arm64-v8a`，zipalign通过、v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。已覆盖安装到`192.168.3.46:5555`且系统回读版本正确；整机重启命令已执行，但设备开机后尚未恢复Wi-Fi/无线ADB，开机后记录页回读仍待设备重新上线完成。
+
 ## 六十三、2026-08-01 PAD 副屏键盘偶发跑到副屏（PAD 1.4.46+120）
 
 - 现场现象不是 Display 检测随机错误。真机日志在每次点击时都正确计算出 `source=2 / target=0`，但旧实现为了恢复已停放代理的焦点，用 `PendingIntent` 对 `singleInstance` 的 `KeyboardProxyActivity` 执行 `NEW_TASK | REORDER_TO_FRONT | SINGLE_TOP` 自启动。该厂商 Android 12 ROM 会把这次“从副屏发起的重新排序”解释为任务迁移，把原本位于主屏的代理 task 重新挂到 Display 2；Manager 仍保存 target=0，于是状态记录与真实窗口位置分离，键盘表现为有时在主屏、有时在副屏。

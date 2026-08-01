@@ -29,6 +29,8 @@ import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.media.MediaCodecInfo
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
@@ -61,6 +63,9 @@ class MainActivity : FlutterActivity() {
     private var wifiNamePermissionResult: MethodChannel.Result? = null
     private val clientDistributionServer by lazy { ClientDistributionServer(applicationContext) }
     private val clientPackageSync by lazy { ClientPackageSync.get(applicationContext) }
+    private val physicalMouseRightButton by lazy {
+        PhysicalMouseRightButtonForwarder(::forwardPhysicalMouseRightButton)
+    }
 
     private var isAudioStart = false
     private val audioRecordHandle = AudioRecordHandle(this, { false }, { isAudioStart })
@@ -166,6 +171,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
+        physicalMouseRightButton.setActive(false)
         KeyboardProxyManager.release("activity_destroyed")
         clientDistributionServer.stop()
         mainService?.let {
@@ -286,6 +292,10 @@ class MainActivity : FlutterActivity() {
                     } else {
                         window.addFlags(WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
                     }
+                    result.success(true)
+                }
+                "set_remote_mouse_input_active" -> {
+                    physicalMouseRightButton.setActive(call.arguments == true)
                     result.success(true)
                 }
                 "try_sync_clipboard" -> {
@@ -427,6 +437,29 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (physicalMouseRightButton.handleMotionEvent(event)) return true
+        return super.dispatchTouchEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (physicalMouseRightButton.handleMotionEvent(event)) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (physicalMouseRightButton.handleKeyEvent(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun forwardPhysicalMouseRightButton(type: String) {
+        Log.i(logTag, "[PhysicalMouse] right $type on display ${display?.displayId}")
+        flutterMethodChannel?.invokeMethod(
+            "on_physical_mouse_button",
+            mapOf("button" to "right", "type" to type),
+        )
     }
 
     private fun setCodecInfo() {

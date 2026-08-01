@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD开发版本为 **1.4.46+120**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub `1.4.46+110`保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD开发版本为 **1.4.46+123**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -11,7 +11,9 @@
 | **双屏适配** | Android PAD 主屏键控 + 副屏远控画面，跨屏触摸与键盘转发 |
 | **文件传输** | 60% × 60% 圆角浮窗，独立 Session 与远控视频并行，Android 默认 Download |
 | **远端目录记忆** | 再次打开文件传输时，优先恢复对方上次可用目录；无效时按初始目录与根目录回退 |
+| **传输记录** | 按方向、源目录和目标目录归组；同一路径不重复，完成后可“再次传输”，源或目标失效时原位提示 |
 | **远控操作栏** | 44px 高、48px 宽的中文图文按钮；“输入”打开手势说明，整格按钮统一水波纹与高亮反馈 |
+| **物理鼠标右键** | Android原生捕获次键及鼠标来源Back事件，只在当前显示远控页的物理屏幕转发右键按下/抬起 |
 | **共享屏幕授权** | 点击启动后直接进入 Android 原生录屏确认；通知、文件访问和悬浮窗权限按功能独立申请 |
 | **局域网客户端下载** | 页面显示真实Wi-Fi；四端可选PAD已校验本地下载或实时HTTPS云端下载，并可复制实际云端地址 |
 | **品牌定制** | KEMI 启动画面、应用命名、权限引导流程 |
@@ -21,6 +23,8 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `1.4.46+123` | PAD外接鼠标右键增加Android原生兜底，兼容`BUTTON_SECONDARY`和鼠标来源`KEYCODE_BACK`；仅当前远控页所在屏幕响应，离页不影响PAD系统右键行为 |
+| `1.4.46+122` | PAD文件传输新增持久化传输记录、目录归组、同路径去重、“再次传输”和源/目标失效提示；记录页固定显示“返回文件”与返回说明；改为发送前落盘，并取消自动数量淘汰，用户不删除就跨进程、跨开机长期保留 |
 | `Windows 1.4.46 / 0594554b4` | Windows首次启动和macOS一致，默认直接显示“主页/设置”，不再依赖点击密码编辑；focused云端候选构建中，验收前不替换稳定EXE |
 | `1.4.46+120` | 修复副屏反复开关软键盘时代理任务偶发迁移回副屏：复用改为仅置前原任务，并在每次IME请求前校验真实Display；副屏连续15轮、含三次HOME重建均保持键盘在主屏 |
 | `1.4.46+119` | HTTP下载页增加真实Wi-Fi网络卡；四个平台均提供“从PAD下载”“HTTPS云端下载”和“复制地址”，只展示本次解析且通过域名白名单的实际CDN地址 |
@@ -88,6 +92,8 @@ kemi-docs/
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
 ├── client-distribution.md         ← 四端BIN/common-data发布、PAD自动同步与局域网分发规范
+├── file-transfer-history.md       ← PAD传输记录、去重、再次传输与错误提示设计
+├── android-physical-mouse.md       ← PAD外接物理鼠标右键输入链路与排查
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
@@ -161,6 +167,14 @@ Linux或CI时必须先读本文件。
 ### client-distribution.md
 
 四端交付的唯一说明：`BIN/`本地基准、`BIN/release/`六个固定上传文件、Newlink云端`Common`项目的人机分工、六个固定查询地址、上传顺序与回读验收，以及GitHub备用源、PAD同步和同Wi-Fi HTTP服务。涉及客户端分发或四端安装包时必须先读本文件。
+
+### file-transfer-history.md
+
+PAD文件传输记录的产品与代码规格：记录时机、目录归组和同路径去重键、持久化位置、再次传输前的源/目标校验、错误显示以及真机验收步骤。修改文件传输记录时以本文为准。
+
+### android-physical-mouse.md
+
+Android PAD外接物理鼠标的专项说明：右键失效根因、`BUTTON_SECONDARY`与鼠标来源`KEYCODE_BACK`兼容、单屏/双屏作用域、按下/移动/释放去重和ADB排查。修改物理鼠标输入时以本文为准。
 
 ### windows-vscode-build-prompt.md
 
@@ -241,5 +255,5 @@ git rev-parse HEAD
 
 ---
 
-> 最后更新：2026-07-31
+> 最后更新：2026-08-01
 > 维护：KEMI 远程桌面团队

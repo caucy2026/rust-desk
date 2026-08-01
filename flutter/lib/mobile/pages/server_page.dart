@@ -783,6 +783,15 @@ void androidChannelInit() {
             gFFI.serverModel.changeStatue(name, value);
             break;
           }
+        case "on_physical_mouse_button":
+          {
+            final button = arguments["button"] as String? ?? '';
+            final type = arguments["type"] as String? ?? '';
+            if (button == 'right') {
+              unawaited(gFFI.inputModel.handleAndroidPhysicalMouseButton(type));
+            }
+            break;
+          }
         case "on_android_permission_result":
           {
             var type = arguments["type"] as String;
