@@ -35,6 +35,7 @@ class ClientDistributionServer(private val context: Context) {
         val fileName: String,
         val contentType: String,
         val file: File?,
+        val cloudUrl: String?,
     )
 
     private val packageSync = ClientPackageSync.get(context)
@@ -97,6 +98,7 @@ class ClientDistributionServer(private val context: Context) {
             // 不伪造 Wi-Fi 名称，界面会只提示两台设备需在同一网络。
             "wifiName" to currentWifiName(),
             "wifiNamePermissionGranted" to hasWifiNamePermission(),
+            "metadata" to packageSync.metadataStatus(),
             "packages" to packageSync.packageStatus(),
         )
     }
@@ -119,11 +121,19 @@ class ClientDistributionServer(private val context: Context) {
                 fileName = fileName,
                 contentType = definition.contentType,
                 file = resolved?.file,
+                cloudUrl = target?.url?.takeIf(::isSafeCloudUrl),
             )
         }
     }
 
     private fun availablePackages() = packageEntries().filter { it.file?.isFile == true }
+
+    private fun isSafeCloudUrl(value: String): Boolean = try {
+        val uri = URI(value)
+        uri.scheme == "https" && uri.host.equals("cdn.newlink-sz.com", ignoreCase = true)
+    } catch (_: Exception) {
+        false
+    }
 
     private fun acceptLoop(socket: ServerSocket) {
         while (running) {
@@ -210,20 +220,56 @@ class ClientDistributionServer(private val context: Context) {
             val recommendedClass = if (id == "windows") " recommended" else ""
             val recommendedTag = if (id == "windows") "<em class=\"tag\">推荐</em>" else ""
             val version = entry.version.takeIf(String::isNotBlank)?.let { " · 版本 ${escapeHtml(it)}" } ?: ""
-            if (entry.file?.isFile == true) {
-                """<a class="download$recommendedClass" href="/download/${entry.fileName}"><div class="icon">$icon</div><div><b>$title $recommendedTag</b><span>$detail$version</span></div></a>"""
+            val localAction = if (entry.file?.isFile == true) {
+                """<a class="action primary" href="/download/${entry.fileName}">从 PAD 下载 <small>已校验</small></a>"""
             } else {
-                """<div class="download unavailable$recommendedClass"><div class="icon">$icon</div><div><b>$title $recommendedTag</b><span>$detail · PAD 正在准备，请稍后刷新</span></div></div>"""
+                """<span class="action disabled">PAD 正在校验</span>"""
             }
+            val cloudUrl = entry.cloudUrl
+            val cloudActions = if (cloudUrl != null) {
+                val safeUrl = escapeHtml(cloudUrl)
+                """
+                  <a class="action secondary" href="$safeUrl" target="_blank" rel="noopener noreferrer">HTTPS 云端下载</a>
+                  <div class="cloud-address">
+                    <span>云端实时地址</span>
+                    <code>$safeUrl</code>
+                    <button class="copy-cloud" type="button" data-url="$safeUrl" onclick="copyCloudUrl(this)">复制地址</button>
+                  </div>
+                """.trimIndent()
+            } else {
+                """<div class="cloud-address unavailable-address">云端地址暂未解析，请稍后刷新。</div>"""
+            }
+            """
+              <article class="download$recommendedClass">
+                <div class="icon">$icon</div>
+                <div class="package-body">
+                  <div class="package-title"><b>$title</b>$recommendedTag</div>
+                  <p>$detail$version</p>
+                  <div class="actions">$localAction $cloudActions</div>
+                </div>
+              </article>
+            """.trimIndent()
         }
         val address = localIpv4Addresses().firstOrNull()?.let { "http://$it:$port" } ?: ""
         val wifiName = currentWifiName()
-        val networkText = if (wifiName.isNullOrBlank()) {
-            "PAD 与下载设备连接同一个 Wi‑Fi。"
+        val wifiTitle = if (wifiName.isNullOrBlank()) {
+            "未读取到 Wi-Fi 名称"
         } else {
-            "PAD 与下载设备都连接 <b>${escapeHtml(wifiName)}</b>。"
+            escapeHtml(wifiName)
+        }
+        val wifiDetail = if (wifiName.isNullOrBlank()) {
+            "请在 PAD 的“客户端”页授权读取 Wi-Fi 名称，并确认下载设备与 PAD 在同一网络。"
+        } else {
+            "下载设备必须与 PAD 连接同一个 Wi-Fi。"
         }
         val androidVersion = entries["android"]?.version?.takeIf(String::isNotBlank) ?: "当前版本"
+        val metadata = packageSync.metadataStatus()
+        val sourceText = when (metadata["source"]) {
+            "newlink_https" -> "Newlink HTTPS 实时地址"
+            "github_fallback" -> "GitHub 备用源"
+            "error" -> "云端暂不可用，保留已验证缓存"
+            else -> "已验证缓存"
+        }
         return """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -241,29 +287,46 @@ class ClientDistributionServer(private val context: Context) {
     .dot { width: 8px; height: 8px; background: var(--ok); border-radius: 50%; box-shadow: 0 0 0 4px rgba(20,128,74,.13); }
     h1 { margin: 18px 0 8px; font-size: clamp(27px, 5vw, 38px); letter-spacing: -.03em; }
     .intro { max-width: 680px; margin: 0; color: var(--muted); font-size: 17px; line-height: 1.7; }
-    .network-note { margin: 23px 0 14px; padding: 14px 16px; border: 1px solid #b9d2ff; border-radius: 12px; background: #fff; color: #34425c; font-size: 15px; line-height: 1.55; }
-    .network-note b { color: var(--ink); }
+    .wifi-card { display: flex; align-items: center; gap: 15px; margin: 23px 0 14px; padding: 16px; border: 1px solid #b9d2ff; border-radius: 14px; background: #fff; }
+    .wifi-symbol { display: grid; flex: 0 0 50px; width: 50px; height: 50px; place-items: center; border-radius: 14px; background: #e9f2ff; color: var(--blue-dark); font-size: 13px; font-weight: 800; }
+    .wifi-card small, .wifi-card strong, .wifi-card p { display: block; }
+    .wifi-card small { color: var(--muted); font-size: 12px; }
+    .wifi-card strong { margin-top: 2px; font-size: 18px; }
+    .wifi-card p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
     .address { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 19px; border-radius: 15px; background: #17233c; color: #fff; }
     .address small { width: 100%; color: #b9c6dc; font-size: 13px; }
-    code { flex: 1; min-width: 230px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: clamp(17px, 3vw, 21px); overflow-wrap: anywhere; }
+    .address code { flex: 1; min-width: 230px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: clamp(17px, 3vw, 21px); overflow-wrap: anywhere; }
     button { appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
     .copy { padding: 10px 15px; border-radius: 9px; background: #fff; color: #17233c; font-size: 14px; }
     section { margin-top: 24px; padding: 28px; }
     h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
     .hint { margin: 8px 0 22px; color: var(--muted); line-height: 1.6; }
     .downloads { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
-    .download { display: flex; gap: 14px; align-items: center; min-height: 112px; padding: 16px; text-align: left; text-decoration: none; border: 1px solid var(--line); border-radius: 14px; background: #fff; transition: .16s ease; }
-    .download:hover, .download:focus-visible { border-color: var(--blue); box-shadow: 0 8px 20px rgba(39,110,241,.13); transform: translateY(-1px); outline: none; }
+    .download { display: flex; gap: 14px; align-items: flex-start; min-height: 238px; padding: 17px; text-align: left; border: 1px solid var(--line); border-radius: 14px; background: #fff; transition: .16s ease; }
+    .download:hover { border-color: #a9c5fa; box-shadow: 0 8px 20px rgba(39,110,241,.09); transform: translateY(-1px); }
     .icon { display: grid; flex: 0 0 43px; width: 43px; height: 43px; place-items: center; border-radius: 12px; background: var(--pale); font-size: 21px; }
-    .download b, .download span { display: block; }
-    .download b { color: var(--ink); font-size: 16px; }
-    .download span { margin-top: 5px; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
+    .package-body { flex: 1; min-width: 0; }
+    .package-title { display: flex; flex-wrap: wrap; align-items: center; }
+    .package-title b { color: var(--ink); font-size: 16px; }
+    .package-body p { min-height: 38px; margin: 5px 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .action { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; padding: 9px 12px; border-radius: 9px; text-decoration: none; font-size: 13px; font-weight: 750; }
+    .action small { margin-left: 5px; font-size: 10px; opacity: .8; }
+    .primary { background: var(--blue); color: #fff; }
+    .primary:hover, .primary:focus-visible { background: var(--blue-dark); }
+    .secondary { border: 1px solid #a9c5fa; background: #f3f7ff; color: var(--blue-dark); }
+    .secondary:hover, .secondary:focus-visible { border-color: var(--blue); background: #eaf2ff; }
+    .disabled { background: #edf0f5; color: #8b94a6; cursor: wait; }
+    .cloud-address { display: grid; grid-template-columns: 1fr auto; width: 100%; margin-top: 2px; padding: 10px; border: 1px solid #e2e7f0; border-radius: 9px; background: #f8fafc; }
+    .cloud-address > span { grid-column: 1 / -1; margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+    .cloud-address code { min-width: 0; padding-right: 8px; color: #45516a; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; word-break: break-all; }
+    .copy-cloud { align-self: center; padding: 7px 9px; border: 1px solid #ccd6e7; border-radius: 7px; background: #fff; color: #34425c; font-size: 12px; }
+    .unavailable-address { display: block; color: var(--muted); font-size: 12px; }
     .recommended { grid-column: 1 / -1; border-color: #95b9ff; background: #f6f9ff; }
     .tag { display: inline-block; margin: 0 0 5px 7px; padding: 3px 7px; border-radius: 5px; background: #dce9ff; color: var(--blue-dark); font-size: 11px; vertical-align: middle; }
     .footnote { margin-top: 18px; padding: 13px 15px; border-radius: 10px; background: #fff8e7; color: #6c571e; font-size: 13px; line-height: 1.6; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px; color: var(--muted); font-size: 12px; }
-    .unavailable { opacity: .58; cursor: not-allowed; }
-    @media (max-width: 650px) { main { width: min(100% - 20px, 960px); margin-top: 10px; } .hero, section { padding: 23px 18px; } .downloads { grid-template-columns: 1fr; } .recommended { grid-column: auto; } .address { padding: 15px; } }
+    @media (max-width: 650px) { main { width: min(100% - 20px, 960px); margin-top: 10px; } .hero, section { padding: 23px 18px; } .downloads { grid-template-columns: 1fr; } .recommended { grid-column: auto; } .address { padding: 15px; } .download { min-height: 0; } .cloud-address { grid-template-columns: 1fr; } .copy-cloud { width: 100%; margin-top: 8px; } }
   </style>
 </head>
 <body>
@@ -271,8 +334,11 @@ class ClientDistributionServer(private val context: Context) {
     <header class="panel hero">
       <div class="badge"><i class="dot"></i> 客户端下载服务已开启</div>
       <h1>下载 KEMI 客户端</h1>
-      <p class="intro">请在要安装客户端的设备浏览器中打开下面的网址。</p>
-      <p class="network-note"><b>先连接同一个 Wi‑Fi：</b>$networkText</p>
+      <p class="intro">先确认 Wi-Fi，再选择从 PAD 下载已校验文件，或直接使用 HTTPS 云端地址。</p>
+      <div class="wifi-card">
+        <div class="wifi-symbol">Wi-Fi</div>
+        <div><small>当前 PAD 网络</small><strong>$wifiTitle</strong><p>$wifiDetail</p></div>
+      </div>
       <div class="address">
         <small>在电脑或手机浏览器中输入</small>
         <code id="url">${escapeHtml(address)}</code>
@@ -281,18 +347,39 @@ class ClientDistributionServer(private val context: Context) {
     </header>
     <section class="panel">
       <h2>选择客户端</h2>
-      <p class="hint">点击对应设备的下载按钮。</p>
+      <p class="hint">“从PAD下载”适合同一 Wi-Fi；“HTTPS云端下载”可直接下载，也可复制真实地址到其他浏览器。</p>
       <div class="downloads">$packageLinks</div>
-      <div class="footnote">打不开？确认两台设备连接同一个 Wi‑Fi，并关闭电脑 VPN。</div>
-      <div class="meta"><span>版本：${escapeHtml(androidVersion)}</span><span>此 PAD 本地提供</span></div>
+      <div class="footnote">PAD 先通过 HTTPS 下载并校验完整文件，只向局域网提供校验成功的版本。打不开时，请确认两台设备连接同一个 Wi-Fi，并关闭电脑 VPN。</div>
+      <div class="meta"><span>版本：${escapeHtml(androidVersion)}</span><span>上游：${escapeHtml(sourceText)}</span><span>可选：PAD本地 / HTTPS云端</span></div>
     </section>
   </main>
   <script>
-    function copyUrl() {
-      navigator.clipboard?.writeText(document.getElementById('url').textContent);
-      const button = document.querySelector('.copy');
+    async function copyText(value) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const area = document.createElement('textarea');
+      area.value = value;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    async function flashCopied(button, original) {
       button.textContent = '已复制';
-      setTimeout(() => button.textContent = '复制网址', 1600);
+      setTimeout(() => button.textContent = original, 1600);
+    }
+    async function copyUrl() {
+      const button = document.querySelector('.copy');
+      await copyText(document.getElementById('url').textContent);
+      flashCopied(button, '复制网址');
+    }
+    async function copyCloudUrl(button) {
+      await copyText(button.dataset.url);
+      flashCopied(button, '复制地址');
     }
   </script>
 </body>

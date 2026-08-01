@@ -2,6 +2,72 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 六十三、2026-08-01 PAD 副屏键盘偶发跑到副屏（PAD 1.4.46+120）
+
+- 现场现象不是 Display 检测随机错误。真机日志在每次点击时都正确计算出 `source=2 / target=0`，但旧实现为了恢复已停放代理的焦点，用 `PendingIntent` 对 `singleInstance` 的 `KeyboardProxyActivity` 执行 `NEW_TASK | REORDER_TO_FRONT | SINGLE_TOP` 自启动。该厂商 Android 12 ROM 会把这次“从副屏发起的重新排序”解释为任务迁移，把原本位于主屏的代理 task 重新挂到 Display 2；Manager 仍保存 target=0，于是状态记录与真实窗口位置分离，键盘表现为有时在主屏、有时在副屏。
+- 修复不再重新启动代理 Activity。复用路径只调用 `ActivityManager.moveTaskToFront(taskId, MOVE_TASK_NO_USER_ACTION)`，把已经存在的任务置前，避免生成新的 Activity launch/reparent 请求。代理停放、IME 真实隐藏门禁、HOME 销毁重建和 Android 12 跨屏启动许可逻辑保持不变。
+- 在每次 `showSoftInput()` 前增加最后一道真实屏幕校验：`activity.displayId` 必须等于创建时记录的 `expectedDisplayId`。如 ROM 或后续代码仍导致任务跑屏，立即记录 `display_mismatch`、释放代理且不显示键盘，禁止错误屏幕上的偶发弹出。
+- `192.168.3.46:5555` 覆盖安装后，系统回读 `versionName=1.4.46 / versionCode=120`，且从设备回读的 `base.apk` 与 `BIN/release/KEMI-PAD.apk` SHA-256完全一致。副屏 Display 2 发起的 request 2～16 连续 15 次均记录 `Moved keyboard task ... display=0 expected=0`，每轮都到达 `visible`；其间覆盖输入法收起后复用同一 task，并在 request 5、12、14 后三次覆盖 HOME 销毁和主屏新建 task，全部保持在 Display 0，未出现 `Refuse IME` 或 `display_mismatch`。
+- Release APK 为 26,517,870 字节，SHA-256 `1279ba88bfa54f482246b17da48e1e8decdd7a7b9f117772a6ce24f4bec030e6`；包名 `com.newlinksz.kemi.remote`、仅 arm64-v8a，zipalign通过，v1/v2签名有效，固定证书SHA-256仍为 `8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+
+## 六十二、2026-08-01 Windows默认主页/设置与自安装来源（Windows 1.4.46候选）
+
+- Windows只显示“主页”、点击密码编辑后才出现“设置”的根因位于`DesktopTabPage`构造流程：主页始终创建，但此前KEMI新增的设置预创建条件写死为`isMacOS`。密码编辑只是间接调用同一个`onAddSetting()`，不是设置页真实初始化依赖。
+- 最小修复将条件扩大为`isMacOS || isWindows`；Windows普通完整客户端首次启动直接得到“主页/设置”，并跳回主页作为默认选中项。`incoming-only`和`disable-settings`限制保持原样，Linux及其他逻辑未改。
+- 本地Flutter静态分析未发现本次新增语法或类型问题；只保留该文件既有的`ColorScheme.background`弃用提示。修复以独立commit `0594554b47b6d9b6ee61bc6ee96d6457abe2153d`推送到`caucy2026/rust-desk`，由`KEMI Focused Client Artifacts` run `30688275054`构建Windows候选，避免混入本地尚未提交的PAD改动。
+- 当前Windows下载物是KEMI源码构建的单文件便携包。`generate.py`把本次构建的完整Windows目录压入EXE；运行时本地解包，点击“安装”后`install_me()`复制当前解包程序并创建服务、快捷方式及卸载项，不请求RustDesk官网下载另一个客户端。云端产物完成后仍必须在真实Windows上覆盖“便携首次启动→默认主页/设置→点击安装→安装版再次默认主页/设置”的闭环，未完成前不替换`BIN/release/KEMI-Windows.exe`。
+
+## 六十一、2026-08-01 HTTP页本地/HTTPS双路径与真实Wi-Fi（PAD 1.4.46+119）
+
+- 局域网HTTP页顶部增加独立Wi-Fi网络卡，读取并显示PAD当前真实SSID；本次真机显示`KEMI-T1`。若系统没有授予Wi-Fi名称权限，不猜测、不展示伪名称，而是明确提示回PAD客户端页授权。
+- 每个平台下载卡现在同时提供“从PAD下载”和“HTTPS云端下载”。前者只发送PAD已完成大小、SHA-256和MD5门禁的本地缓存；后者直接使用本次固定Newlink接口解析出的实际CDN地址，适合不想等待PAD中转或希望自行在浏览器下载的用户。
+- 实际HTTPS地址显示在浅色地址框，并提供“复制地址”。复制逻辑兼容局域网HTTP页面的非安全上下文：优先使用Clipboard API，不可用时回退临时textarea与`execCommand('copy')`。页面不接受用户输入URL，也不生成开放代理；只有`https`且主机精确为`cdn.newlink-sz.com`的解析结果才展示云端入口。
+- 页面文案明确两种方式的取舍：同一Wi-Fi优先“从PAD下载”以获得已校验副本；“HTTPS云端下载”可直接下载或复制真实地址到其他浏览器。Windows继续作为推荐项，macOS/Linux/Android维持响应式双列，窄屏自动单列。
+- 真机`192.168.3.46:5555`安装后，系统回读`versionName=1.4.46`、`versionCode=119`，固定签名证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。Mac以Chrome实际渲染`http://192.168.3.46:8686/`，确认真实SSID、四组双下载按钮、四个CDN地址和复制按钮均存在。
+- Mac分别从`http://192.168.3.46:8686/download/KEMI-macOS.zip`和页面解析出的`https://cdn.newlink-sz.com/.../KEMI-macOS.zip`下载，二者均为25,874,761字节，SHA-256均为`a69a61fefa8ddc8c1d5c9c3124ed50d393cca22da2e55bad2c50e3d2f167b03d`且逐字节一致。PAD Release为26,517,708字节，SHA-256为`22294e0572c546b151b0c7a975e4ab13c9b529ea9a8272a7c9dae3660d13cdcc`，zipalign及v1/v2签名校验通过，APK未内置四端客户端大文件。
+- 当前云端PAD仍是`1.4.46+117`，因此HTTP页如实显示云端稳定清单版本，不用`+119`文件名包装旧字节。发布本次PAD需最后上传`KEMI-PAD.apk`、`release-manifest.json`与`SHA256SUMS.txt`三个固定名文件。
+- `client-distribution.md`补齐Newlink云端人工交接：管理入口固定为`https://www.newlinksz.cn/screensaver/main/configPlug/Common`，账号密码向公司后台负责人申请且不进入仓库；用户只负责在`Common`项目按顺序覆盖六个固定项，开发流程负责构建、生成六文件、回读六个固定查询地址、PAD同步和跨设备闭环。四端二进制先上传，`SHA256SUMS`倒数第二，`release-manifest`最后作为发布完成标志。
+
+## 六十、2026-08-01 Newlink HTTPS实时地址与PAD本地分发闭环（PAD 1.4.46+118）
+
+- `ClientPackageSync`将Newlink固定接口设为主源：先解析`release-manifest`与`SHA256SUMS`动态URL，逐项核对两份清单，再通过`KEMI-PAD/KEMI-Windows/KEMI-macOS/KEMI-Linux`固定接口取得当前CDN URL和MD5。仅允许`www.newlinksz.cn`元数据和`cdn.newlink-sz.com`资产的HTTPS链路；动态CDN URL不硬编码。
+- 每次进入“客户端”页立即重新解析六个固定接口，页面保持打开时每5分钟再刷新。任一云盘元数据异常时自动回退raw GitHub/jsDelivr清单；两类源都失败时不删除上次校验成功缓存。
+- 固定云盘文件名不再直接作为PAD缓存路径；本地使用`SHA-256前16位 + 固定文件名`隔离新旧版本。下载先写`.part`，大小、清单SHA-256、接口MD5全部通过后才原子替换并生成`.sha256`侧车；HTTP服务只暴露通过门禁的文件。
+- PAD页面和局域网网页都显示当前上游为“Newlink HTTPS实时地址”，但客户实际下载仍由PAD本地HTTP提供，便于PAD在出错时立即显示进度/校验/失败状态。离开客户端页`8686`立即关闭，重新进入重新解析实时地址。
+- 真机`192.168.3.46:5555`安装`1.4.46+118`后，日志在1秒内解析出四端`cdn.newlink-sz.com`地址，随后完成四端约151MiB的HTTPS下载和双哈希校验。当前Mac从`http://192.168.3.46:8686/download/KEMI-macOS.zip`下载25,874,761字节，SHA-256为`a69a61fefa8ddc8c1d5c9c3124ed50d393cca22da2e55bad2c50e3d2f167b03d`，与`BIN/release`完全一致；解包回读`1.4.46+110`。离页后Mac连接`8686`失败，重进后HTTP恢复且日志再次记录四个实时URL，完整闭环通过。
+- PAD Release为26,515,706字节，SHA-256 `e8e83d3fb2096f74c290485d65cb330a1ef327fcdb72d82dac5b596bb98f2d3f`；`versionName=1.4.46`、`versionCode=118`、仅arm64-v8a，zipalign通过，v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。云端当前仍为PAD `+117`；必须重新上传`KEMI-PAD.apk`、`release-manifest.json`和`SHA256SUMS.txt`后才让新安装包成为云端稳定版。
+
+## 五十九、2026-08-01 云盘固定文件名发布区（产品版本不变）
+
+- 新增根目录`BIN/release/`作为唯一云盘上传区。四端名称永久固定为`KEMI-PAD.apk`、`KEMI-macOS.zip`、`KEMI-Windows.exe`、`KEMI-Linux.AppImage`；后续升级只覆盖对应内容，不添加版本号、不改大小写、不换名。`release-manifest.json`与`SHA256SUMS.txt`同样使用固定名称。
+- `BIN/`根目录仍保留所有带版本号的不可变历史归档，本轮不删除、不重命名旧包。固定云盘名不承担版本判断，必须通过清单中的平台、架构、包内版本、字节数和SHA-256验证。
+- 当前待上传内容为：PAD `1.4.46+117`（26,505,768字节，SHA-256 `87622e4b00c20139b5576fd27dde99937e40ed10e2efad505626274b49c52661`）；macOS arm64 `1.4.46+110`（25,874,761字节，`a69a61fefa8ddc8c1d5c9c3124ed50d393cca22da2e55bad2c50e3d2f167b03d`）；Windows x64 `1.4.46`（22,637,056字节，`9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`）；Linux x86_64 `1.4.46`（82,983,416字节，`2276a6860c482b21f6ab4d9bb2502c5dadd69d2a140ef038506c638eebe5fa44`）。
+- 云盘直链尚未提供，因此本轮只准备文件与本地校验清单，不提前改动PAD下载代码。收到地址后必须验证为无登录、不过期的HTTPS文件直链，回读四个文件的大小/SHA-256一致后才写入代码，GitHub源在新链路验收前保持不变。
+
+## 五十八、2026-08-01 PAD 副屏键盘强制收起后无法再次打开（PAD 1.4.46+112 → +117）
+
+- 真机日志确认根因：键盘被系统返回键/输入法收起按钮强制关闭后，`KeyboardProxyActivity`会被销毁；副屏再次点击键盘时，Android 12把从`displayId=2`新建主屏`displayId=0`代理窗口判定为后台跨屏启动，并明确输出`Abort background activity starts`。Flutter按钮已经进入`opening`，但原生Activity根本没有创建，因此等待超时后仍无法弹出；这不是远程会话、输入权限或键盘按钮坐标问题。
+- 补全原先只有返回值、没有任何准备动作的`keyboard_proxy_prepare`：远程页面进入前台时提前在对面屏幕建立键盘代理容器；单屏设备仍在用户点击时使用当前屏幕，不额外创建容器。
+- 用户主动关闭或系统强制收起输入法后，状态机仍完整发送`visible → closing → hidden`，但不再销毁跨屏代理Activity；代理窗口改为透明、不可触摸、不可聚焦的停放状态，不遮挡本地屏幕。再次点击时清除停放标记、恢复焦点并直接复用同一Activity，不再触发Android的跨屏启动限制。
+- 退出远程页面、App退到后台、目标显示器断开或Activity被系统销毁时仍执行真正释放，避免无会话时长期保留代理窗口。Android构建号由`1.4.46+111`升级为`1.4.46+112`，用于区分本轮键盘生命周期修复。
+- 真机`192.168.3.46:5555`（Android 12）覆盖安装后，从副屏进入已保存Mac会话时成功在主屏预创建代理。首次打开及三轮“主屏返回键强制收起→副屏再次点击键盘”均通过：请求号`2→3→4→5`每轮完整到达`visible → closing(user_hidden) → hidden → visible`，系统始终复用同一`ActivityRecord b74a269 / task 1453`，未再次出现`Abort background activity starts`；最终输入法回读`displayId=0 / mInputShown=true`。
+- 用户随后按主屏输入法真实收起控件测试，`+112`仍复现。未清日志现场确认第二根因：系统先回调`visible=false`完成停放，随后又为旧窗口延迟回调`visible=true/bottom=741`；下一次请求更新了`requestId`后立即读取到这份旧Insets，Manager在没有真正调用成功`showSoftInput()`的情况下错误发布`visible`，所以按钮看似切换而键盘没有出现。
+- `+115`为每次激活增加`imeShowAccepted=false`门禁：在本次`showSoftInput()`返回接受之前，所有`visible=true`一律记录为旧状态并忽略，也不能取消IME重试；接受后重新请求Insets，只有真实可见才发布`visible`。复用代理的焦点恢复改由副屏按钮这次明确用户操作触发的`PendingIntent`完成；Android 12不允许主屏已主动回到桌面后的后台拉起，该路径会保持真实`opening`并超时回到`hidden`，不再伪报已显示。
+- 真机按截图确认的主屏左下角输入法收起按钮坐标完成最终验收：`request=2`首次显示，收起后完整到达`closing(user_hidden) → hidden`；副屏再次点击产生`request=3`，`showSoftInput accepted=true`后才进入`visible`。系统最终回读`displayId=0 / mInputShown=true`，代理始终为同一`task=1461`。
+- 用户进一步确认主屏HOME是明确的“关闭”操作，不应继续保留后台代理。`+117`在`KeyboardProxyActivity.onUserLeaveHint()`识别HOME，立即发布`closing(home_pressed)`、隐藏IME、`finish()`代理并完成`hidden(home_pressed)`资源清理；副屏下次点键盘时一定新建主屏Activity，不复用已被HOME退到后台的旧任务。输入法自身的收起按钮仍按`user_hidden`停放复用，两种用户动作不再混淆。
+- Android 12默认会拒绝副屏App在主屏HOME后再跨屏启动Activity；因此该设备已按用户明确授权将`SYSTEM_ALERT_WINDOW`设为`allow`。此权限在本功能中只用作Android的后台Activity启动例外，代码不创建悬浮窗或悬浮图标。普通新设备需由用户授予一次“允许显示在其他应用上层”，受管PAD可由MDM/预装策略授予；不得在未授权设备上伪报键盘已打开。
+- 真机`192.168.3.46:5555`在`+117`上连续多轮验证通过：HOME时旧`task 1465/1466/1467`依次到达`closing(home_pressed) → hidden(home_pressed)`并移除；副屏再点键盘后新建`task 1466/1467/1468`，系统日志明确记录`allowed because SYSTEM_ALERT_WINDOW permission is granted`，随后`showSoftInput accepted=true → visible`。最终回读`displayId=0 / mInputShown=true`。
+- `+113/+114/+116`仅为现场诊断中间包，未归档为交付版本；其中默认主屏不支持`Presentation`并返回`InvalidDisplayException`，该实验代码已完全移除。最终Release为26,505,768字节，SHA-256 `87622e4b00c20139b5576fd27dde99937e40ed10e2efad505626274b49c52661`；包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=117`、仅`arm64-v8a`，zipalign通过，v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`，APK未内置`assets/client-dist`。
+
+## 五十七、2026-08-01 PAD 原始尺寸与适应窗口修复（PAD 1.4.46+111）
+
+- 根因不是`+106 → +110`的显示代码回归：`toolbarViewStyle`从KEMI `1.4.9+67`到`1.4.46+110`字节一致，`+106 → +110`的显示菜单、画布模型和远控页面也没有源码差异。当前Mac输出`1920×1080`，PAD副屏为`1920×1280`、App可用区约`1920×1192`，原始尺寸与适应窗口在水平方向都得到1920px，因此旧问题主要表现为垂直偏移。
+- `CanvasModel.getSize()`此前按整个系统窗口1280px高计算，而远控画布实际位于44px底栏和安全区上方。原始`1920×1080`画面因此按`(1280-1080)/2=100px`定位，而不是在约1192px真实画布中按`(1192-1080)/2≈56px`居中，造成原始尺寸垂直方向的视觉排布不符合点对点预期；本问题不涉及当前已正确工作的鼠标点击映射。
+- 移动端远控画布现在由`LayoutBuilder`把当前实际布局尺寸写入`CanvasModel`；原始尺寸保持远端1个物理像素对应PAD 1个物理像素，并在实际画布内居中。底栏收起/展开、安全区或双屏布局变化会触发重新计算；适应窗口也使用同一真实画布边界。
+- 重新点击当前已选显示模式会强制清除手势产生的平移/缩放状态并重新计算，不再因`ViewStyle`字段相同提前返回。显示模式保存改为等待完成后再刷新画布，避免异步时序导致读取旧值。
+- Android构建号升级为`1.4.46+111`。Debug与Release构建均成功；Release为26,503,841字节，SHA-256 `1ec129978652cf2c72c641d7422484af1a59d7c6714601026dd3a60803a5785d`，包名`com.newlinksz.kemi.remote`、`versionName=1.4.46`、`versionCode=111`，v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`，且未误内置`assets/client-dist`。
+- `192.168.3.46:5555`已使用`install -r`保留配置覆盖安装并在副屏启动，系统回读`1.4.46(111)`且进程正常。App自动恢复当前Mac会话后，真机截图确认远端`1920×1080`画面从错误的约100px顶部偏移改为在底栏上方`1920×1192`画布内上下各约56px；显示菜单回读“原始尺寸”已选中，点对点画面和现有鼠标点击映射均保持正常。
+
 ## 五十六、2026-07-31 四端制品仓与PAD空闲同步（PAD 1.4.46+107 → +110）
 
 - 四端制品交付基准统一为项目根目录`BIN/`；每批必须包含PAD APK、macOS arm64 ZIP、Windows x64 EXE、Linux x86_64 AppImage、版本清单和SHA256SUMS。远端统一使用`caucy2026/common-data`：普通Git只保存稳定清单和说明，大文件使用不可变GitHub Release，先传完并回读校验四端资产，最后更新`stable/manifest.json`。

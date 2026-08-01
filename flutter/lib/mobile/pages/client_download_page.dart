@@ -31,6 +31,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   var _starting = true;
   var _refreshWifiNameOnResume = false;
   Timer? _statusTimer;
+  Timer? _cloudRefreshTimer;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   @override
   void dispose() {
     _statusTimer?.cancel();
+    _cloudRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     unawaited(gFFI.invokeMethod('client_distribution_stop'));
     super.dispose();
@@ -70,6 +72,10 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
       _statusTimer ??= Timer.periodic(
         const Duration(seconds: 1),
         (_) => _refreshStatus(),
+      );
+      _cloudRefreshTimer ??= Timer.periodic(
+        const Duration(minutes: 5),
+        (_) => unawaited(gFFI.invokeMethod('client_distribution_refresh')),
       );
     } else {
       setState(() {
@@ -150,6 +156,12 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         _status!['wifiNamePermissionGranted'] == true;
     final packages = (_status!['packages'] as List? ?? const []);
     final addresses = (_status!['addresses'] as List? ?? const []);
+    final metadata =
+        _status!['metadata'] is Map
+            ? _status!['metadata'] as Map
+            : const <dynamic, dynamic>{};
+    final metadataSource = metadata['source']?.toString() ?? 'cached';
+    final metadataMessage = metadata['message']?.toString() ?? '';
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
@@ -295,6 +307,22 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                 ),
                 const SizedBox(height: 5),
                 const Text('打开网址后，点击对应设备的下载按钮。'),
+                const SizedBox(height: 5),
+                Text(
+                  metadataSource == 'newlink_https'
+                      ? '已解析 Newlink HTTPS 最新地址；PAD 校验成功后才对外提供。'
+                      : metadataSource == 'github_fallback'
+                      ? '云盘暂不可用，当前使用 GitHub 备用源。'
+                      : metadataMessage.isNotEmpty
+                      ? metadataMessage
+                      : '正在解析云端实时地址……',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color:
+                        metadataSource == 'newlink_https'
+                            ? Colors.green.shade700
+                            : Theme.of(context).colorScheme.secondary,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 if (packages.isEmpty)
                   const Text('当前没有可分发的安装包。')

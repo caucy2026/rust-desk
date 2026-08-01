@@ -299,6 +299,9 @@ class MainActivity : FlutterActivity() {
                 "client_distribution_status" -> {
                     result.success(clientDistributionServer.start())
                 }
+                "client_distribution_refresh" -> {
+                    result.success(clientPackageSync.syncAllAsync())
+                }
                 "client_distribution_download" -> {
                     val id = call.arguments as? String
                     result.success(id?.let(clientPackageSync::syncOneAsync) ?: false)

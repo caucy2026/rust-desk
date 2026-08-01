@@ -1,6 +1,6 @@
-# KEMI 四端客户端发布、PAD 自动同步与局域网分发
+# KEMI 四端客户端发布、云盘同步与局域网分发
 
-> 适用版本：`1.4.46+110` 起。本文是四端制品、项目 `BIN/`、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP 下载的唯一维护说明。
+> 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
 ## 1. 需求结论
 
@@ -9,10 +9,14 @@
 ```text
 各平台构建并验收
         ↓
-项目根目录 BIN/（本地发布基准，四端齐全）
+项目根目录 BIN/（带版本号、不可变的历史归档）
         ↓
-GitHub caucy2026/common-data Release（不可变二进制）
-        ↓ 最后发布 stable/manifest.json
+BIN/release/（无版本号、固定文件名的云盘上传区）
+        ↓ 上传后回读校验
+国内云盘直链（主源，地址待用户提供）
+        ↓ 失败时回退
+GitHub caucy2026/common-data Release（备用源）
+        ↓ 最后发布 stable manifest
 PAD 开机后联网且空闲时比较版本并增量下载
         ↓
 PAD 私有缓存（最后一次校验成功的文件）
@@ -24,15 +28,15 @@ PAD 局域网 HTTP 服务
 
 这里有三个强制原则：
 
-1. `BIN/` 每次必须同时保存本次准备发布的四端客户端、清单和校验表；聊天记录、Actions 临时 Artifact 和 PAD 缓存都不能替代它。
+1. `BIN/` 根目录保存带真实版本号的不可变历史归档；`BIN/release/` 只保存当前准备上传云盘的固定文件名副本。聊天记录、Actions 临时 Artifact 和 PAD 缓存都不能替代这两层。
 2. `common-data` 的普通 Git 历史只保存小型清单和说明，大型客户端放 GitHub Release，避免仓库因每个版本重复提交二进制而失控。
 3. 先上传四个文件，逐个回读校验，最后才更新稳定清单。PAD 只相信稳定清单，因此不会看到“清单已更新但客户端还没传完”的半成品发布。
 
-## 2. 四端版本和文件名
+## 2. 四端版本、归档名和云盘固定名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。Flutter/PAD 和 macOS 还需要构建号，当前发布版为 `+110`。Windows/Linux 如果产物元数据只支持三段版本，记录为 `1.4.46`，但仍在本次发布清单中绑定到发布批次 `1.4.46+110`。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。当前最新PAD为`1.4.46+119`；macOS最新已验收制品为`1.4.46+110`；Windows/Linux产物元数据为`1.4.46`，来自已验收的`+110`四端批次。不同平台构建号尚未齐平时必须在清单里如实记录，不得为了“看起来一致”重命名旧字节冒充新构建。
 
-`BIN/` 当前发布批次必须包含：
+`BIN/`根目录中最后一个四端构建号齐平的GitHub stable批次为：
 
 ```text
 BIN/
@@ -44,16 +48,76 @@ BIN/
 └── KEMI-client-SHA256SUMS-1.4.46+110.txt
 ```
 
-文件名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
+上述`BIN/`根目录归档名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
+
+### 2.1 `BIN/release/` 云盘固定文件名
+
+```text
+BIN/release/
+├── KEMI-PAD.apk
+├── KEMI-macOS.zip
+├── KEMI-Windows.exe
+├── KEMI-Linux.AppImage
+├── release-manifest.json
+└── SHA256SUMS.txt
+```
+
+这六个名称是云盘稳定接口，后续不得增加版本号、改大小写或换名。二进制升级时覆盖同名云盘对象，同时更新`release-manifest.json`与`SHA256SUMS.txt`的版本、大小和SHA-256。固定名本身不代表版本；PAD和发布人员必须以清单的字节数、SHA-256及包内版本为准。
+
+代码不保存任何动态CDN URL。PAD每次进入“客户端”页时请求Newlink固定HTTPS元数据接口，页面保持打开时每5分钟刷新；读取返回的`url`后仅允许`cdn.newlink-sz.com`。云盘路径任一步失败则回退GitHub源，不删除上一份校验成功缓存。
+
+固定元数据名称为：`release-manifest`、`SHA256SUMS`、`KEMI-PAD`、`KEMI-Windows`、`KEMI-macOS`、`KEMI-Linux`，统一请求`https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=<名称>`。接口的`version=1`和`size=0`不参与判断：版本、架构、大小、SHA-256以`release-manifest`为准，并必须与`SHA256SUMS`一致；接口MD5作为完整下载的第二道校验。
+
+### 2.2 Newlink云端人工上传与自动流程分工
+
+人工上传管理入口：<https://www.newlinksz.cn/screensaver/main/configPlug/Common>。
+
+- 这是新智联云端文件管理后台的`Common`独立项目，不是客户下载地址。
+- 账号和密码由公司后台负责人分配；凭据只由上传人员保管，不写入源码、文档、聊天记录、脚本或GitHub。
+- 每次发布只操作下表六个固定项目。管理后台中的项目名、上传文件名和大小写都必须完全一致；使用“覆盖/更新文件”，不要删除后新建、不要增加版本号。
+
+| 上传顺序 | Common项目中的固定名称 | 从本地选择的文件 | PAD使用的固定查询地址 |
+|---:|---|---|---|
+| 1 | `KEMI-PAD` | `BIN/release/KEMI-PAD.apk` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-PAD` |
+| 2 | `KEMI-macOS` | `BIN/release/KEMI-macOS.zip` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-macOS` |
+| 3 | `KEMI-Windows` | `BIN/release/KEMI-Windows.exe` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-Windows` |
+| 4 | `KEMI-Linux` | `BIN/release/KEMI-Linux.AppImage` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-Linux` |
+| 5 | `SHA256SUMS` | `BIN/release/SHA256SUMS.txt` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=SHA256SUMS` |
+| 6（最后） | `release-manifest` | `BIN/release/release-manifest.json` | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=release-manifest` |
+
+#### 用户负责
+
+1. 向公司后台负责人申请并保管Newlink云端管理账号。
+2. 收到“六个文件已准备并校验完成”的通知后，打开上述管理入口并确认当前项目是`Common`。
+3. 严格按表格顺序覆盖上传六个文件；客户端二进制先传，`SHA256SUMS`倒数第二，`release-manifest`最后上传。
+4. 六项都显示上传成功后，只回复“六个文件已上传完成”及实际完成时间；无需发送账号、密码或CDN动态URL。
+5. 如果任何一项失败，停止上传`release-manifest`并告知失败的固定名称；不要拿旧文件、改名文件或空文件补位。
+
+#### 开发/自动流程负责
+
+1. 统一版本号，构建或接收四个平台候选，并确认它们确实来自KEMI源码；Windows下载项必须是本项目验收的`KEMI-Windows.exe`，不会跳转RustDesk官网安装器。
+2. 校验包内版本、架构、启动能力和签名状态；Android必须使用固定Newlink release证书，macOS/Windows的签名与公证状态必须如实记录。
+3. 在`BIN/`保存带版本号、不可变的历史归档；再生成`BIN/release/`六个固定名文件，不让用户手工重命名或修改清单。
+4. 计算四端文件大小和SHA-256，生成`SHA256SUMS.txt`与`release-manifest.json`，执行本地六文件一致性检查后通知用户上传。
+5. 用户确认上传后，逐个请求上述六个固定查询地址，解析每次上传产生的新CDN URL，验证HTTPS域名、接口MD5、文件名、大小、SHA-256及两份清单一致性。
+6. 云端回读通过后，让PAD重新解析、下载并校验；再从Mac或Windows浏览器分别验证PAD本地下载与HTTPS云端下载，确认字节一致。
+7. 最后更新版本记录和当前发布状态；需要GitHub备用源时另行更新`common-data`，但不要求用户参与GitHub命令。
+
+#### 交接边界
+
+- 用户只承担“登录后台并上传六个已准备文件”这一项人工权限操作；构建、命名、哈希、清单、回读、PAD安装和闭环测试均由开发流程承担。
+- `BIN/release/`是一次发布的完整快照。即使本次只有PAD发生变化，也仍交付六个文件，避免服务器混用不同批次。
+- `release-manifest`必须最后上传，它是本批次发布完成标志。上传未完成时PAD保留最后一次校验成功缓存并可回退GitHub，不把半成品提供给客户。
+- 六个查询地址永久固定；接口返回的`url`是随覆盖上传变化的CDN实际地址，只能实时解析，禁止复制后硬编码到源码。
 
 每个平台的“版本一致”含义如下：
 
-| 平台 | 版本来源 | 本批次要求 |
+| 平台 | 版本来源 | 当前`BIN/release/`内容 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=110`，清单写 `1.4.46+110` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=119`，清单写 `1.4.46+119` |
 | macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=110` |
-| Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单同时记录发布批次 |
-| Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单同时记录发布批次 |
+| Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单记录来自`1.4.46+110`批次 |
+| Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单记录来自`1.4.46+110`批次 |
 
 ## 3. common-data 仓库结构
 
@@ -131,11 +195,13 @@ PAD读取的是同一份小型stable manifest，按`github-cloud-resource-guide.
 1. 冻结本次源码 commit 和产品版本。
 2. 本地能编译的 PAD/macOS 在本地构建；Windows/Linux 优先由对应平台同事本机构建，本地确实不具备目标环境时才使用 GitHub Actions。
 3. 每个平台独立验收并进入候选区，不修改稳定清单。
-4. 四个候选文件全部齐备后复制到 `BIN/`，生成大小、SHA-256、源码 commit、构建机或 Actions run ID 记录。
-5. 创建新的 `common-data` Release，上传四端文件、批次 manifest 和 `SHA256SUMS.txt`。
-6. 从 GitHub 回读资产元数据，至少复核文件名和大小；能下载回读时再次核对 SHA-256。
-7. 最后一个单独提交更新 `kemi-rustdesk/stable/manifest.json`。
-8. PAD 读取稳定清单并完成下载后，验证局域网 HTTP 下载的四个文件与 `BIN/` 哈希一致。
+4. 四个候选文件全部齐备后先保存带版本号的`BIN/`归档，生成大小、SHA-256、源码 commit、构建机或 Actions run ID 记录。
+5. 只有候选验收通过后，才可以覆盖`BIN/release/`的四个固定名副本，然后重新生成两份校验文件。
+6. 通知具备Newlink后台权限的用户按“2.2”顺序覆盖上传六个云盘固定文件；动态直链不写入代码。
+7. 如仍需GitHub备用源，创建新的 `common-data` Release，上传四端带版本文件、批次 manifest 和 `SHA256SUMS.txt`。
+8. 从 GitHub 回读资产元数据，至少复核文件名和大小；能下载回读时再次核对 SHA-256。
+9. 最后一个单独提交更新 `kemi-rustdesk/stable/manifest.json`。
+10. 用户确认上传完成后，由开发流程解析六个固定查询地址并回读校验；PAD完成下载后，再验证局域网HTTP和HTTPS直链下载与`BIN/release/`同名文件哈希一致。
 
 如果上一次云端构建没有完成，而源码又需要备份：
 
@@ -199,14 +265,15 @@ Android/PAD 项有一个优化：远端清单版本和当前已安装 App 的 `v
 进入首页“客户端”页后：
 
 1. 开启临时局域网 HTTP 服务，同时异步刷新远端清单。
-2. 页面显示真实 Wi-Fi 名称、浏览器地址和二维码；输入地址与扫码二选一。
+2. PAD页面显示真实 Wi-Fi 名称、浏览器地址和二维码；输入地址与扫码二选一。HTTP网页顶部再次显示PAD当前SSID，帮助用户确认两台设备是否接入同一网络。
 3. 四个平台每行显示平台图标、真实版本和状态。
 4. 已校验的项目显示绿色完成标记。
 5. 缺失项目显示“点击下载”。用户点击后弹出不可误解的进度窗口：圆形动画、百分比、校验阶段、错误原因和重试按钮。
 6. 用户可选择“后台下载”关闭弹窗，原生下载继续；列表右侧圆形进度环内持续显示整数百分比，校验阶段显示“校验”。
-7. 离开页面只关闭局域网 HTTP 服务，不删除缓存，也不中断后台客户端同步。
+7. HTTP网页每个平台提供两条明确路径：“从PAD下载”读取已校验本地缓存；“HTTPS云端下载”直接打开本次解析出的CDN URL，旁边可复制完整实际地址。
+8. 离开页面只关闭局域网 HTTP 服务，不删除缓存，也不中断后台客户端同步。
 
-浏览器网页只能下载 `ready` 文件，不能触发任意 URL、浏览目录、上传文件或执行命令。包尚未准备好时显示“PAD 正在准备，请稍后刷新”，不会提供旧路径或未校验临时文件。
+浏览器网页的本地入口只能下载 `ready` 文件，不能触发任意 URL、浏览目录、上传文件或执行命令。云端入口只展示当前固定接口解析出的`https://cdn.newlink-sz.com/...`，不接收网页参数或用户输入，不能把PAD变成开放代理。包尚未准备好时显示“PAD 正在准备，请稍后刷新”，不会提供旧路径或未校验临时文件；云端地址未通过白名单时不显示直链和复制按钮。
 
 ## 8. 局域网 HTTP 边界
 
@@ -220,6 +287,7 @@ GET /download/<清单中的固定文件名>  发送已验证文件
 - 优先使用端口 `8686`，占用时回退到系统端口，始终以页面显示地址为准。
 - 只支持 GET 和固定白名单路径，不支持目录遍历。
 - 服务没有 TLS、账号或访问令牌，只允许可信的同一局域网临时使用，不能做公网端口映射。
+- 网页中的HTTPS按钮由浏览器直接连接Newlink CDN，文件不经过PAD HTTP服务器；这不改变本地服务的路由和访问边界。
 
 ## 9. 失败、回退与用户提示
 
@@ -230,6 +298,7 @@ GET /download/<清单中的固定文件名>  发送已验证文件
 | 文件长度或 SHA 不符 | 删除异常临时文件，不替换正式缓存 | “校验失败”，可重试 |
 | 新清单格式错误/缺平台 | 拒绝新清单 | 继续使用上次有效清单与缓存 |
 | 用户刚进入页面但包未完成 | HTTP 不暴露临时包 | PAD 端点击项目查看动画；浏览器稍后刷新 |
+| CDN实时地址缺失或域名不合规 | 不生成云端按钮和复制数据 | 继续使用已校验的PAD本地副本；无副本时提示稍后刷新 |
 | 卸载 PAD App | Android 清除专属缓存 | 重装后重新同步 |
 
 GitHub在部分网络环境下可能不可达或速度不稳定。小型清单已有raw/jsDelivr双源；Release大文件不能错误套用jsDelivr小资源方案。如果面向普通国内客户仍不稳定，应在相同清单中增加公司域名下的国内对象存储/CDN大文件地址并保留GitHub备用，下载校验规则不变。
@@ -238,14 +307,20 @@ GitHub在部分网络环境下可能不可达或速度不稳定。小型清单�
 
 - [ ] `Cargo.toml`、Flutter、macOS、Windows、Linux 记录的版本关系正确。
 - [ ] `BIN/` 存在四端本批次文件、manifest 和 SHA256SUMS。
+- [ ] `BIN/release/` 六个固定名文件齐全，与本次选定归档的大小和SHA-256一致。
+- [ ] 已明确通知用户本次上传批次；用户只需登录Newlink云端管理后台的`Common`项目，按顺序覆盖六个固定项。
 - [ ] 四端文件大小和 SHA-256 已记录，目标平台至少完成启动检查。
 - [ ] PAD APK 使用固定 release 签名；macOS/Windows 公共发布签名状态如实记录。
 - [ ] `common-data` 新 Release 的 tag、四个资产和源码 commit 对应。
 - [ ] GitHub 资产回读校验完成后才更新 stable manifest。
+- [ ] 云盘地址是无需登录的HTTPS文件直链，不是分享页；回读的大小和SHA-256与`release-manifest.json`一致。
+- [ ] `release-manifest`最后上传；六个固定查询接口均返回本批次文件，动态CDN URL没有写入源码。
 - [ ] PAD 开机任务已登记，Wi-Fi + idle 条件下能读取清单。
 - [ ] 缺失客户端点击后能看到进度动画、百分比、校验、失败重试。
 - [ ] 完成后 PAD 页面四项均为 ready。
 - [ ] 同 Wi-Fi 浏览器下载四端文件，SHA-256 与 `BIN/` 完全一致。
+- [ ] HTTP网页显示真实SSID；四个平台的HTTPS按钮和复制地址均来自本次解析，主机严格为`cdn.newlink-sz.com`。
+- [ ] 至少选择一个平台，分别走PAD本地和HTTPS云端下载，确认大小、SHA-256和文件字节一致。
 - [ ] 离开客户端页后 `/health` 不再可访问；重新进入时缓存立即可用。
 - [ ] `CHANGELOG-KEMI.md` 记录版本、commit、Release tag、构建来源、哈希和实测结果。
 

@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong
 object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleObserver {
     private const val TAG = "KeyboardProxyManager"
     private const val OPEN_TIMEOUT_MS = 8_000L
+    private const val PREPARE_TIMEOUT_MS = 2_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val requestIds = AtomicLong(0)
@@ -38,11 +39,61 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private val openTimeout = Runnable {
         if (state == "opening") close("open_timeout")
     }
+    private val prepareTimeout = Runnable { handlePrepareTimeout() }
+
+    @Synchronized
+    private fun handlePrepareTimeout() {
+        if (preparingRequestId == 0L || proxyActivity.get() != null) return
+        Log.w(TAG, "Keyboard proxy preparation timed out request=$preparingRequestId")
+        preparingRequestId = 0L
+        if (state == "hidden") {
+            displayManager?.unregisterDisplayListener(this)
+            displayManager = null
+        }
+    }
 
     @Synchronized
     fun prepare(source: Activity, methodChannel: MethodChannel): Boolean {
         channel = methodChannel
-        return state == "hidden"
+        if (state != "hidden") return false
+
+        val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val sourceId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
+        val targetId = findTargetDisplay(manager, sourceId)
+        val existing = proxyActivity.get()
+        if (existing != null && !existing.isFinishing && !existing.isDestroyed &&
+            existing.display?.displayId == targetId
+        ) {
+            Log.i(TAG, "Keyboard proxy already prepared on display=$targetId")
+            return true
+        }
+
+        // A same-display Activity can be created reliably from the explicit keyboard tap,
+        // so pre-launch only matters for the cross-display path. Android 12 may reject a
+        // later Display 2 -> Display 0 Activity start as a background launch even while
+        // the source Activity is visible. Prepare the reusable host while the remote page
+        // is entering the foreground instead.
+        if (sourceId == targetId || preparingRequestId != 0L) return true
+
+        val prepareId = requestIds.incrementAndGet()
+        preparingRequestId = prepareId
+        sourceDisplayId = sourceId
+        targetDisplayId = targetId
+        displayManager = manager
+        manager.registerDisplayListener(this, mainHandler)
+        Log.i(TAG, "Preparing keyboard proxy source=$sourceId target=$targetId request=$prepareId")
+        try {
+            KeyboardProxyActivity.launch(source, prepareId, "", targetId)
+            mainHandler.removeCallbacks(prepareTimeout)
+            mainHandler.postDelayed(prepareTimeout, PREPARE_TIMEOUT_MS)
+        } catch (error: Exception) {
+            Log.e(TAG, "Failed to prepare keyboard proxy", error)
+            preparingRequestId = 0L
+            displayManager?.unregisterDisplayListener(this)
+            displayManager = null
+            return false
+        }
+        return true
     }
 
     @Synchronized
@@ -106,7 +157,10 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             return false
         }
         proxyActivity = WeakReference(activity)
-        if (preparedActivity) preparingRequestId = 0L
+        if (preparedActivity) {
+            preparingRequestId = 0L
+            mainHandler.removeCallbacks(prepareTimeout)
+        }
         if (state == "opening") {
             mainHandler.post { activity.activate(requestId, sessionId) }
         }
@@ -129,8 +183,12 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     fun onImeHidden(activityRequestId: Long, reason: String) {
         if (activityRequestId != requestId || state != "closing") return
         val activity = proxyActivity.get()
-        finishHidden(reason, false)
-        activity?.releaseAndFinish(reason)
+        // Keep the transparent host alive. Recreating it from a foreground Activity on a
+        // different display is rejected by Android 12's background-activity-start policy.
+        // The parked host is non-focusable and non-touchable, so it does not block the
+        // local screen while still allowing the next keyboard tap to reuse it.
+        finishHidden(reason, activity != null)
+        activity?.parkForReuse(reason)
     }
 
     @Synchronized
@@ -160,13 +218,21 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         if (proxyActivity.get() !== activity) return
         proxyActivity.clear()
         preparingRequestId = 0L
-        if (state != "hidden") finishHidden(reason, false)
+        mainHandler.removeCallbacks(prepareTimeout)
+        // Always release the channel/display listener. A prepared Activity may be
+        // destroyed by HOME while Manager already reports hidden.
+        finishHidden(reason, false)
     }
 
     @Synchronized
     fun release(reason: String = "release_requested") {
         mainHandler.removeCallbacks(openTimeout)
+        mainHandler.removeCallbacks(prepareTimeout)
         preparingRequestId = 0L
+        if (state != "hidden" && state != "closing") {
+            state = "closing"
+            publishState(reason)
+        }
         val activity = proxyActivity.get()
         if (activity != null) {
             activity.releaseAndFinish(reason)
@@ -194,10 +260,13 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     @Synchronized
     private fun finishHidden(reason: String, keepPreparedActivity: Boolean) {
         mainHandler.removeCallbacks(openTimeout)
+        mainHandler.removeCallbacks(prepareTimeout)
         state = "hidden"
         publishState(reason)
         sessionId = ""
-        if (!keepPreparedActivity) {
+        if (keepPreparedActivity) {
+            preparingRequestId = 0L
+        } else {
             proxyActivity.clear()
             displayManager?.unregisterDisplayListener(this)
             displayManager = null

@@ -2279,6 +2279,10 @@ class CanvasModel with ChangeNotifier {
   bool _bumpMouseIsWorking = true;
   ViewStyle _lastViewStyle = ViewStyle.defaultViewStyle();
 
+  // MediaQuery describes the whole Flutter window, while the mobile remote
+  // canvas may be smaller because of toolbars, safe areas, or a second screen.
+  Size? _mobileViewportSize;
+
   Timer? _timerMobileFocusCanvasCursor;
   Timer? _timerMobileRestoreCanvasOffset;
   Offset? _offsetBeforeMobileSoftKeyboard;
@@ -2340,6 +2344,13 @@ class CanvasModel with ChangeNotifier {
       isDesktop ? windowBorderWidth + kDragToResizeAreaPadding.bottom : 0;
 
   Size getSize() {
+    final mobileViewportSize = _mobileViewportSize;
+    if (isMobile && mobileViewportSize != null) {
+      final obscuredBottom =
+          parent.target?.cursorModel.keyHelpToolsRectToAdjustCanvas?.bottom ?? 0;
+      final height = mobileViewportSize.height - obscuredBottom;
+      return Size(mobileViewportSize.width, height < 0 ? 0 : height);
+    }
     final mediaData = MediaQueryData.fromView(ui.window);
     final size = mediaData.size;
     // If minimized, w or h may be negative here.
@@ -2385,7 +2396,26 @@ class CanvasModel with ChangeNotifier {
 
   updateSize() => _size = getSize();
 
-  updateViewStyle({refreshMousePos = true, notify = true}) async {
+  void setMobileViewportSize(Size size) {
+    if (!isMobile ||
+        !size.width.isFinite ||
+        !size.height.isFinite ||
+        size.width <= 0 ||
+        size.height <= 0) {
+      return;
+    }
+    final oldSize = _mobileViewportSize;
+    if (oldSize != null &&
+        (oldSize.width - size.width).abs() < 0.01 &&
+        (oldSize.height - size.height).abs() < 0.01) {
+      return;
+    }
+    _mobileViewportSize = size;
+    unawaited(updateViewStyle(force: true));
+  }
+
+  updateViewStyle(
+      {refreshMousePos = true, notify = true, bool force = false}) async {
     final style = await bind.sessionGetViewStyle(sessionId: sessionId);
     if (style == null) {
       return;
@@ -2407,7 +2437,9 @@ class CanvasModel with ChangeNotifier {
     // ViewStyle fields and is not captured by the equality check. Therefore, we must
     // allow updates to proceed when style == kRemoteViewStyleCustom, even if the
     // rest of the ViewStyle fields are unchanged.
-    if (_lastViewStyle == viewStyle && style != kRemoteViewStyleCustom) {
+    if (!force &&
+        _lastViewStyle == viewStyle &&
+        style != kRemoteViewStyleCustom) {
       return;
     }
     if (_lastViewStyle.style != viewStyle.style) {
@@ -2415,6 +2447,7 @@ class CanvasModel with ChangeNotifier {
     }
     _lastViewStyle = viewStyle;
     _scale = viewStyle.scale;
+    isMobileCanvasChanged = false;
 
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
@@ -2769,6 +2802,7 @@ class CanvasModel with ChangeNotifier {
     _y = 0;
     _scale = 1.0;
     _lastViewStyle = ViewStyle.defaultViewStyle();
+    _mobileViewportSize = null;
     _timerMobileFocusCanvasCursor?.cancel();
     _timerMobileRestoreCanvasOffset?.cancel();
     _offsetBeforeMobileSoftKeyboard = null;

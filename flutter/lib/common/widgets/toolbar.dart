@@ -653,9 +653,9 @@ Future<List<TRadioMenu<String>>> toolbarViewStyle(
       await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
   void onChanged(String? value) async {
     if (value == null) return;
-    bind
-        .sessionSetViewStyle(sessionId: ffi.sessionId, value: value)
-        .then((_) => ffi.canvasModel.updateViewStyle());
+    await bind.sessionSetViewStyle(sessionId: ffi.sessionId, value: value);
+    // Reapplying the selected mode must also reset manual pan/zoom state.
+    await ffi.canvasModel.updateViewStyle(force: true);
   }
 
   return [

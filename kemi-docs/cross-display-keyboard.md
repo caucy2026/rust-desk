@@ -52,9 +52,11 @@
 
 1. 目标屏幕原生代理窗口监听该窗口的 IME Insets。
 2. 只有检测到 `WindowInsets.Type.ime()` 实际可见，状态才变为 `visible`。
-3. IME 从可见变为不可见时，状态立即变为 `hidden`。
-4. 原生层通知 Flutter 更新按钮颜色。
-5. 代理窗口随后释放输入连接并结束，不残留透明 Activity。
+3. 新打开请求必须先获得本次`showSoftInput()`的接受结果；代理停放后延迟到达的旧`visible=true` Insets不得确认新请求。
+4. IME 从可见变为不可见时，状态立即变为 `hidden`。
+5. 原生层通知 Flutter 更新按钮颜色。
+6. 用户从输入法的收起键/返回键关闭时，代理窗口释放输入焦点并进入透明、不可触摸、不可聚焦的停放状态，下次直接复用。
+7. 用户在主屏按HOME时，必须把这次动作视为明确关闭：隐藏IME、销毁代理Activity并释放Manager资源；副屏下次点击必须新建主屏代理，不得复用退到后台的旧任务。
 
 不能使用当前 App 屏幕的 `KeyboardVisibilityController` 判断目标屏幕键盘状态。
 
@@ -66,6 +68,7 @@
 - 用户在目标屏幕强制收起键盘。
 - 远程连接结束或远程页面销毁。
 - App 进入后台。
+- 主屏代理收到HOME / `onUserLeaveHint`。
 - 代理 Activity 被系统销毁。
 - 目标 Display 断开或变为不可用。
 - 打开请求失败或超时。
@@ -148,7 +151,7 @@ Android 原生层拥有以下事实：
 | `hidden` | 无代理或 IME 不可见 | 默认颜色，可点击打开 |
 | `opening` | 已创建打开请求，等待 IME Insets 确认可见 | 默认颜色，暂时禁用 |
 | `visible` | 目标屏幕 IME 实际可见 | 激活颜色，可点击关闭 |
-| `closing` | 已请求关闭，等待 IME 隐藏或代理销毁 | 激活颜色，暂时禁用 |
+| `closing` | 已请求关闭，等待 IME 隐藏或代理停放 | 激活颜色，暂时禁用 |
 
 状态事件必须携带递增的 `requestId`。旧代理实例的延迟回调若 `requestId` 不匹配，必须被忽略。
 
@@ -168,7 +171,8 @@ KeyboardProxyManager（进程级单例，唯一状态源）
         +-- 枚举在线 Displays
         +-- 选择对面 targetDisplayId
         +-- 创建 requestId 和 sessionId 快照
-        +-- 在 targetDisplayId 启动 KeyboardProxyActivity
+        +-- 进入远程页时在 targetDisplayId 预创建 KeyboardProxyActivity
+        +-- 打开键盘时优先复用已停放的代理
         |
         v
 KeyboardProxyActivity（目标屏幕，无可见 UI）
@@ -199,7 +203,7 @@ Flutter 只更新键盘按钮状态与颜色
 - 维护 `hidden/opening/visible/closing` 状态。
 - 生成和校验 `requestId`。
 - 持有发起请求时的远程 `sessionId`。
-- 启动、关闭 `KeyboardProxyActivity`。
+- 预创建、激活、停放和最终释放 `KeyboardProxyActivity`。
 - 接收 Activity 的 IME 状态和输入事件。
 - 向正确的 Flutter engine 发布状态。
 - 监听 Display 移除事件并关闭代理。
@@ -213,10 +217,10 @@ Manager 不持有 Activity 强引用；当前代理使用弱引用或仅由 Acti
 - 只在指定 `targetDisplayId` 启动。
 - 在 `onCreate` 校验实际 `displayId`；不匹配则失败并结束。
 - 使用不可见但合法尺寸的原生 `EditText` 获取输入连接。
-- 不设置 `FLAG_NOT_TOUCHABLE` 等可能阻止 IME 焦点的 flag。
+- 激活时不得设置`FLAG_NOT_FOCUSABLE/FLAG_NOT_TOUCHABLE`；停放时必须设置，避免透明窗口遮挡本地屏幕。
 - 使用 `WindowInsets` 监听目标窗口 IME 的实际可见性。
 - 在第一次确认可见后上报 `visible`。
-- 可见后检测到隐藏时上报 `hidden` 并 `finish()`。
+- 可见后检测到输入法自身隐藏时上报 `hidden`并停放复用；收到HOME、页面退出、App后台化或Display移除时`finish()`。
 - `onDestroy` 必须幂等上报关闭。
 - 不显示标题、背景、提醒、快捷键或任何可见控件。
 
@@ -313,6 +317,7 @@ Activity 的 theme 和 window 配置应保证：
 - `activity_destroyed`
 - `session_closed`
 - `app_backgrounded`
+- `home_pressed`
 
 ### 输入事件
 
@@ -343,7 +348,7 @@ Activity 的 theme 和 window 配置应保证：
 - 将 `show_input_proxy`/`hide_input_proxy` 替换为新协议。
 - 删除 `SOFT_INPUT_STATE_ALWAYS_HIDDEN` 与 `FLAG_ALT_FOCUSABLE_IM` 的交叉控制；当前 App 页面不创建输入连接后不再需要依赖这些 flag 阻止副屏 IME。
 - 删除隐式 `ACTION_TEXT_INPUT` 广播转发，改为 Manager 内部有请求归属的回调。
-- 代理关闭必须真正结束 Activity；当前空实现 `hide()` 不符合要求。
+- 代理关闭必须真正隐藏IME并释放输入焦点；输入法自身收起时可保留不可交互容器，主屏HOME时必须销毁容器。
 
 ## 10. 打开与关闭时序
 
@@ -352,9 +357,9 @@ Activity 的 theme 和 window 配置应保证：
 1. Flutter 状态为 `hidden`，用户点击键盘按钮。
 2. Flutter 调用 `keyboard_proxy_open(sessionId)`，按钮暂时禁用。
 3. Manager 计算目标 Display，状态设为 `opening`。
-4. Manager 启动 `KeyboardProxyActivity`，传入 `requestId/sessionId/targetDisplayId`。
-5. Activity 校验实际 Display，创建输入连接并请求显示 IME。
-6. `WindowInsets.Type.ime()` 确认可见。
+4. Manager 优先激活进入远程页时预创建的`KeyboardProxyActivity`；无可复用实例时才启动新Activity。
+5. Activity 校验实际 Display，把现有代理任务切到目标屏前台，恢复输入焦点并请求显示 IME。
+6. `showSoftInput()`先确认本次请求已被输入法服务接受，随后`WindowInsets.Type.ime()`确认实际可见；旧请求的延迟Insets必须忽略。
 7. Manager 发布 `visible`。
 8. Flutter 将按钮切换为激活色并恢复可点击。
 
@@ -362,8 +367,8 @@ Activity 的 theme 和 window 配置应保证：
 
 1. Flutter 状态为 `visible`，用户再次点击键盘按钮。
 2. Flutter 调用 `keyboard_proxy_close(requestId)`。
-3. Manager 状态设为 `closing`，请求隐藏 IME 并结束代理 Activity。
-4. Activity 检测 IME 隐藏或执行 `onDestroy`。
+3. Manager 状态设为 `closing`并请求隐藏IME。
+4. Activity 检测IME隐藏，释放输入焦点并停放为透明、不可触摸状态。
 5. Manager 发布 `hidden`。
 6. Flutter 按钮恢复默认色。
 
@@ -373,11 +378,19 @@ Activity 的 theme 和 window 配置应保证：
 2. Activity 的 IME Insets 从可见变为不可见。
 3. Activity 通知 Manager，Manager 发布 `hidden(reason=user_hidden)`。
 4. Flutter 按钮恢复默认色。
-5. Activity 结束并释放输入连接。
+5. Activity释放输入焦点并停放；下一次点击复用同一实例。
+
+### 10.4 主屏按HOME关闭
+
+1. 主屏键盘代理收到`onUserLeaveHint()`。
+2. Activity请求Manager执行`release(home_pressed)`，状态从`visible/opening`进入`closing`。
+3. Activity隐藏IME、清理输入连接并`finish()`；Manager幂等发布`hidden(home_pressed)`。
+4. 副屏下次点击键盘时创建全新的主屏Activity任务。
+5. Android 12及部分厂商ROM需授予`SYSTEM_ALERT_WINDOW`（系统界面通常显示为“允许显示在其他应用上层”），才允许副屏上的用户点击在主屏桌面上新建代理。该权限不用于创建可见悬浮窗。
 
 ## 11. 失败与超时
 
-- `opening` 超时建议为 2 秒。
+- 当前`opening`超时为8秒，覆盖部分输入法首次唤起较慢的设备。
 - 超时未检测到 IME 可见：关闭代理并发布 `hidden(reason=open_timeout)`。
 - 目标 Display 在启动前不可用：发布 `hidden(reason=launch_failed)`。
 - Activity 实际 Display 与目标不一致：结束 Activity 并发布失败。
@@ -406,7 +419,8 @@ Activity 的 theme 和 window 配置应保证：
 - 首次点击：`hidden -> opening -> visible`。
 - 再次点击：`visible -> closing -> hidden`。
 - 用户强制收起：App 在 500ms 内收到 `hidden`，按钮恢复默认色。
-- 打开失败：2 秒内恢复 `hidden`，按钮不保持激活。
+- 主屏按HOME：旧代理任务被销毁并返回`hidden(home_pressed)`；副屏再次点击后新任务到达`visible`。
+- 打开失败：超时后恢复`hidden`，按钮不保持激活。
 
 ### 12.4 输入
 
@@ -418,7 +432,7 @@ Activity 的 theme 和 window 配置应保证：
 
 ### 12.5 稳定性
 
-- 连续开关 50 次无崩溃、无透明 Activity 残留。
+- 连续开关50次无崩溃；停放Activity不可触摸、不可聚焦，主屏HOME或退出远程页后必须销毁。
 - 两屏分别启动 App 并测试交叉弹出。
 - 目标屏拔出时代理正确关闭。
 - 连接退出、App 后台化后代理正确关闭。
@@ -918,3 +932,29 @@ Future<dynamic> invokeMethod(String method, [dynamic arguments]) async { ... }
 - **现象**：`git push backup master` 报 `did not receive expected object`。
 - **根因**：backup 远程仓库存在对象损坏（浅克隆历史不完整）。
 - **处理**：`git fetch --unshallow origin` 补全历史，再 force push 修复 backup/master。
+
+## 19. 复用代理任务的跨屏稳定性（2026-08-01，PAD +120）
+
+### 19.1 现场根因
+
+每次点击时 `KeyboardProxyManager` 都正确得到 `sourceDisplayId=2`、`targetDisplayId=0`，所以问题不在 Display 枚举或源屏检测。错误发生在代理已经停放后的恢复阶段：旧实现用 `PendingIntent` 再次启动自身，并同时使用 `singleInstance`、`NEW_TASK`、`REORDER_TO_FRONT` 和 `SINGLE_TOP`。在当前 Android 12 双屏 ROM 上，这个从 Display 2 发出的 Activity launch 会把既有代理 task 迁移到 Display 2，即使第一次创建时的 `launchDisplayId` 是 0。
+
+这也解释了“有时正确、有时错误”：第一次创建严格使用 `ActivityOptions.launchDisplayId=0`，通常正确；输入法被收起、代理进入复用路径后，下一次自启动才可能触发迁移。Manager 的 `targetDisplayId` 没变，因此只看 Manager 日志会误以为仍在主屏，必须同时读取 `KeyboardProxyActivity.displayId`、Activity task 所属 Display 和 IME token Display。
+
+### 19.2 固定规则
+
+1. 已存在的代理 Activity 不得通过 Intent、PendingIntent、`startActivity()` 或 `REORDER_TO_FRONT` 恢复焦点。
+2. 复用只允许按已有 `taskId` 调用 `ActivityManager.moveTaskToFront()`；该操作不创建新的 Activity launch 请求。
+3. `KeyboardProxyActivity` 创建时保存 `expectedDisplayId`。每次请求 IME 前必须用 Activity 的真实 `displayId` 再校验一次。
+4. 真实屏幕不符时不得尝试“将错就错”显示 IME；必须发布 `display_mismatch`、释放代理，让下一次用户点击重新按当前屏幕关系创建。
+5. HOME 仍属于显式退出：旧代理销毁，下一次点击走完整跨屏创建；不能把 HOME 后的后台 task 当成普通停放实例复用。
+
+### 19.3 真机验收证据
+
+`192.168.3.46:5555`、Display 2 远控页、PAD `1.4.46+120`：
+
+- request 2～16连续打开均为 `display=0 expected=0`，输入法真实可见后进入 `visible`；收起后停放仍为 Display 0。
+- request 5、12、14 后分别按 HOME，旧 task 均释放；request 6、13、15创建的新 task 仍位于 Display 0。
+- 共15次打开，没有 `Refuse IME on unexpected display`、`display_mismatch`或 task 迁移到 Display 2。
+
+后续修改跨屏键盘时，至少重复“首次打开→输入法收起→再次打开”10轮，并额外覆盖一次“HOME→副屏再打开”。只验证第一次弹出不能证明复用路径正确。

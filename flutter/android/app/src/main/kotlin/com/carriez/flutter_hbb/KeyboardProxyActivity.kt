@@ -1,6 +1,7 @@
 package com.carriez.flutter_hbb
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Bundle
@@ -65,11 +66,13 @@ class KeyboardProxyActivity : Activity() {
 
     private var requestId = 0L
     private var sessionId = ""
+    private var expectedDisplayId = Display.DEFAULT_DISPLAY
     private var finishReason = "activity_destroyed"
     private lateinit var rootView: FrameLayout
     private lateinit var editText: EditText
     private var ignoreTextChange = false
     private var imeRequestAttempts = 0
+    private var imeShowAccepted = false
     private var lastLoggedImeVisible: Boolean? = null
     private var lastLoggedImeBottom = -1
     private var lastForwardedText = ""
@@ -79,9 +82,28 @@ class KeyboardProxyActivity : Activity() {
     private var closeRequested = false
     private var releaseRequested = false
     private val finishAfterHideTimeout = Runnable { completeHide() }
+    private val applyParkedWindowFlags = Runnable {
+        if (!active && !closeRequested && !isFinishing && !isDestroyed) {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            )
+            Log.i(TAG, "Applied parked window flags task=$taskId request=$requestId")
+        }
+    }
     private val requestIme = object : Runnable {
         override fun run() {
             if (!active || closeRequested || isFinishing || isDestroyed || !::editText.isInitialized) return
+            val actualDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+            if (actualDisplayId != expectedDisplayId) {
+                Log.e(
+                    TAG,
+                    "Refuse IME on unexpected display=$actualDisplayId " +
+                        "expected=$expectedDisplayId task=$taskId request=$requestId"
+                )
+                KeyboardProxyManager.release("display_mismatch")
+                return
+            }
             if (!editText.isFocused) {
                 editText.requestFocus()
             }
@@ -92,10 +114,14 @@ class KeyboardProxyActivity : Activity() {
                 editText,
                 InputMethodManager.SHOW_IMPLICIT
             )
+            if (accepted) {
+                imeShowAccepted = true
+                ViewCompat.requestApplyInsets(window.decorView)
+            }
             Log.i(
                 TAG,
                 "IME request accepted=$accepted attempt=$imeRequestAttempts " +
-                    "windowFocus=${hasWindowFocus()} viewFocus=${editText.isFocused} " +
+                    "windowFocus=${editText.hasWindowFocus()} viewFocus=${editText.isFocused} " +
                     "display=${display?.displayId} request=$requestId"
             )
             if (!accepted && imeRequestAttempts < MAX_IME_REQUEST_ATTEMPTS) {
@@ -135,6 +161,7 @@ class KeyboardProxyActivity : Activity() {
         requestId = intent.getLongExtra(EXTRA_REQUEST_ID, 0L)
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val targetDisplayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+        expectedDisplayId = targetDisplayId
         val actualDisplayId = display?.displayId ?: -1
 
         if (actualDisplayId != targetDisplayId) {
@@ -147,6 +174,12 @@ class KeyboardProxyActivity : Activity() {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
         )
+        if (sessionId.isEmpty()) {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            )
+        }
         rootView = FrameLayout(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             isFocusable = true
@@ -311,10 +344,7 @@ class KeyboardProxyActivity : Activity() {
             ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         val insetsView = window.decorView
-        ViewCompat.setOnApplyWindowInsetsListener(insetsView) { _, insets ->
-            reportImeInsets(insets)
-            insets
-        }
+        installInsetsListener(insetsView)
 
         rootView.requestFocus()
         insetsView.doOnAttach { ViewCompat.requestApplyInsets(it) }
@@ -333,9 +363,16 @@ class KeyboardProxyActivity : Activity() {
         closeRequested = false
         releaseRequested = false
         imeRequestAttempts = 0
+        imeShowAccepted = false
         lastForwardedText = ""
         lastForwardedSource = ""
         lastForwardedAtMs = 0L
+        window.decorView.removeCallbacks(applyParkedWindowFlags)
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        )
+        requestTaskFocus("activate")
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(finishAfterHideTimeout)
         editText.isFocusable = true
@@ -344,6 +381,74 @@ class KeyboardProxyActivity : Activity() {
         window.decorView.requestFocus()
         ViewCompat.requestApplyInsets(window.decorView)
         editText.post(requestIme)
+    }
+
+    private fun requestTaskFocus(reason: String) {
+        try {
+            val actualDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+            val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+            activityManager.moveTaskToFront(
+                taskId,
+                ActivityManager.MOVE_TASK_NO_USER_ACTION
+            )
+            Log.i(
+                TAG,
+                "Moved keyboard task to front reason=$reason task=$taskId " +
+                    "display=$actualDisplayId expected=$expectedDisplayId request=$requestId"
+            )
+        } catch (error: Exception) {
+            Log.w(
+                TAG,
+                "Unable to focus keyboard task reason=$reason task=$taskId request=$requestId",
+                error
+            )
+        }
+    }
+
+    private fun installInsetsListener(view: android.view.View) {
+        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+            reportImeInsets(insets)
+            insets
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus && active && !closeRequested && ::editText.isInitialized) {
+                editText.removeCallbacks(requestIme)
+                editText.post(requestIme)
+            }
+        }
+        ViewCompat.requestApplyInsets(view)
+    }
+
+    fun parkForReuse(reason: String) {
+        finishReason = reason
+        active = false
+        closeRequested = false
+        releaseRequested = false
+        imeRequestAttempts = 0
+        imeShowAccepted = false
+        if (!::editText.isInitialized) return
+        editText.removeCallbacks(requestIme)
+        editText.removeCallbacks(finishAfterHideTimeout)
+        window.decorView.removeCallbacks(applyParkedWindowFlags)
+        val lostWindowFocus = !editText.hasWindowFocus()
+        editText.clearFocus()
+        editText.isFocusable = false
+        rootView.requestFocus()
+        if (lostWindowFocus) {
+            // Some IMEs return to the launcher while their hide animation is completing.
+            // Reassert the already-existing task during that same user gesture, then make
+            // the transparent window non-interactive after ActivityTaskManager has had a
+            // chance to keep it at the front of the target display.
+            window.clearFlags(
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            )
+            requestTaskFocus("park_after_user_hide")
+            window.decorView.postDelayed(applyParkedWindowFlags, 250L)
+        } else {
+            applyParkedWindowFlags.run()
+        }
+        Log.i(TAG, "Parked keyboard proxy for reuse display=${display?.displayId} request=$requestId reason=$reason")
     }
 
     private fun reportImeInsets(insets: WindowInsetsCompat) {
@@ -355,8 +460,16 @@ class KeyboardProxyActivity : Activity() {
             Log.i(
                 TAG,
                 "IME insets visible=$visible bottom=$bottom " +
-                    "windowFocus=${hasWindowFocus()} display=${display?.displayId} request=$requestId"
+                    "windowFocus=${editText.hasWindowFocus()} display=${display?.displayId} request=$requestId"
             )
+        }
+        if (!active && !closeRequested) return
+        if (visible && active && !imeShowAccepted) {
+            Log.i(
+                TAG,
+                "Ignore stale IME visible before show acceptance request=$requestId"
+            )
+            return
         }
         if (visible) editText.removeCallbacks(requestIme)
         KeyboardProxyManager.onImeVisibilityChanged(requestId, visible)
@@ -415,11 +528,20 @@ class KeyboardProxyActivity : Activity() {
         KeyboardProxyManager.close("user_hidden", requestId)
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (!releaseRequested) {
+            Log.i(TAG, "HOME/user leave: release keyboard proxy task=$taskId request=$requestId")
+            KeyboardProxyManager.release("home_pressed")
+        }
+    }
+
     override fun onDestroy() {
         if (::editText.isInitialized) {
             editText.removeCallbacks(requestIme)
             editText.removeCallbacks(finishAfterHideTimeout)
         }
+        window.decorView.removeCallbacks(applyParkedWindowFlags)
         KeyboardProxyManager.onActivityDestroyed(this, finishReason)
         super.onDestroy()
     }

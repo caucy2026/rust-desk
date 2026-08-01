@@ -1,6 +1,6 @@
 # Windows + VSCode 本地构建 KEMI 客户端提示词
 
-> 适用版本：`1.4.46+106`，目标：Windows 10/11 x64。本文给从 GitHub 下载源码的同事使用。最省事的方式是把第 2 节整段复制给 VSCode 中的 Codex/Copilot/其他编程助手，让它先检查环境，再逐步执行并报告。
+> 适用版本：`1.4.46`，目标：Windows 10/11 x64。本文给从 GitHub 下载源码的同事使用。最省事的方式是把第 2 节整段复制给 VSCode 中的 Codex/Copilot/其他编程助手，让它先检查环境，再逐步执行并报告。
 
 ## 1. 使用前说明
 
@@ -14,6 +14,14 @@ https://github.com/caucy2026/rust-desk
 Windows 本地生成的是 Flutter GUI 客户端，必须使用 Windows x64 主机。不要在 WSL 中执行 Windows GUI 打包，也不要使用服务器目录中的 Linux 交叉编译脚本。
 
 完整构建依赖较多，第一次主要耗时在 Visual Studio、Flutter engine 和 vcpkg；依赖准备完成后，后续构建会复用缓存。若只想取得已构建候选包，可直接到 GitHub 的 `KEMI Focused Client Artifacts` 对应 commit run 下载；Windows/Linux 都成功后也会生成 `kemi-<完整commit>` 候选 prerelease，无需本地重编。
+
+### 1.1 下载、运行和“安装”分别做什么
+
+PAD/HTTPS下载项提供的是本项目构建并验收的`KEMI-Windows.exe`，不跳转RustDesk官网。云端Windows job从对应KEMI源码commit执行`build.py --portable --flutter`，再把生成的`rustdesk.exe`、Flutter DLL、`data/`、服务与驱动文件整体交给`libs/portable/generate.py`，压入单文件便携包。
+
+用户双击便携包时，打包器把内部文件解压到本机应用数据目录并启动其中的`rustdesk.exe`。程序内点击“安装”后，Windows端`install_me()`复制当前这份已经解包的KEMI程序到安装目录，随后创建服务、快捷方式、注册表卸载项和防火墙规则；这个安装步骤没有从官网重新下载客户端。因此必须同时满足两项门禁：下载文件哈希对应计划commit，安装后的主程序哈希/版本/界面也对应同一候选，不能只看到“KEMI”文件名就默认正确。
+
+从提交`0594554b47b6d9b6ee61bc6ee96d6457abe2153d`起，Windows首次打开主窗口时和macOS一致，直接创建“主页”和“设置”两个顶层标签，并保持“主页”为当前页。设置入口不再依赖先点击密码编辑按钮；`incoming-only`或策略禁用设置的定制模式仍按原限制隐藏设置。
 
 ## 2. 可直接复制给 VSCode AI 的提示词
 
@@ -143,6 +151,8 @@ Windows 本地生成的是 Flutter GUI 客户端，必须使用 Windows x64 主�
     - 在当前 Windows x64机器启动
     - 检查 Windows 文件属性中的 ProductName、FileDescription、FileVersion、ProductVersion
     - 检查主窗口标题、主页品牌和产品版本
+    - 使用干净的Windows用户配置首次启动，确认顶部立即同时显示“主页”和“设置”，当前仍停留在“主页”；全程不得先点击密码编辑或其他设置入口
+    - 点击便携版中的“安装”，安装完成后从开始菜单启动；再次确认“主页/设置”默认存在，并核对安装目录程序来自当前候选而不是官网重新下载
     - 验证远程控制与文件传输入口
     - 未配置正式代码签名证书时明确写“unsigned测试候选包”，不能声称已签名
     - 当前仓库部分 Windows资源和默认 APP_NAME仍可能显示RustDesk；仅把最终文件改名为
