@@ -2497,12 +2497,17 @@ class _AboutState extends State<_About> {
       final packageInfo = await PackageInfo.fromPlatform();
       final buildDate = await bind.mainGetBuildDate();
       final fingerprint = await bind.mainGetFingerprint();
+      final configuredServer =
+          bind.mainGetOptionSync(key: 'custom-rendezvous-server').trim();
       return {
         'license': license,
         'version': packageInfo.version,
         'buildNumber': packageInfo.buildNumber,
         'buildDate': buildDate,
-        'fingerprint': fingerprint
+        'fingerprint': fingerprint,
+        'idServer': configuredServer.isEmpty
+            ? 'kemi-chat.newlinksz.com'
+            : configuredServer,
       };
     }(), hasData: (data) {
       final license = data['license'].toString();
@@ -2510,6 +2515,7 @@ class _AboutState extends State<_About> {
       final buildNumber = data['buildNumber'].toString();
       final buildDate = data['buildDate'].toString();
       final fingerprint = data['fingerprint'].toString();
+      final idServer = data['idServer'].toString();
       const linkStyle = TextStyle(decoration: TextDecoration.underline);
       final scrollController = ScrollController();
       return SingleChildScrollView(
@@ -2528,6 +2534,9 @@ class _AboutState extends State<_About> {
               SelectionArea(
                   child: Text('${translate('Build Date')}: $buildDate')
                       .marginSymmetric(vertical: 4.0)),
+              SelectionArea(
+                  child: Text('${translate('ID Server')}: $idServer')
+                      .marginSymmetric(vertical: 4.0)),
               if (!isWeb)
                 SelectionArea(
                     child: Text('${translate('Fingerprint')}: $fingerprint')
@@ -2542,7 +2551,7 @@ class _AboutState extends State<_About> {
                   ).marginSymmetric(vertical: 4.0)),
               InkWell(
                   onTap: () {
-                    launchUrlString('https://rustdesk.com');
+                    launchUrlString('https://www.newlink-sz.com');
                   },
                   child: Text(
                     translate('Website'),

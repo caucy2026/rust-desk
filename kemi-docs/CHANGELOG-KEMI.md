@@ -2,6 +2,34 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 六十八、2026-08-02 PAD服务器可见性与公司官网（PAD 1.4.48+125）
+
+- 当前服务端是开源`hbbs/hbbr 1.1.16`，负责ID注册、发现、UDP打洞协商和中继，不包含RustDesk Pro账户/API服务；因此`21114`未监听属于部署能力边界，不是`hbbs`或`hbbr`漏启动。客户端实际远控链路仍以`21116`和`21117`为准。
+- PAD“设置”首页的“ID/中继服务器”条目新增当前运行时地址摘要，用户不进入编辑弹窗即可看到`kemi-chat.newlinksz.com`；点击该条目仍可查看完整ID服务器、中继服务器、API服务器和公钥。
+- PAD“关于”区域新增可选择复制的“ID服务器”行，值读取`custom-rendezvous-server`当前运行时配置；仅当配置为空时才回退显示KEMI产品默认服务器，避免用静态装饰文字掩盖实际配置。
+- 关于区域版本号旁的网站由`rustdesk.com`改为`newlink-sz.com`，点击打开`https://www.newlink-sz.com/`。旧的备用`showAbout`弹窗同步修改；MAC关于页源码也同步展示当前ID服务器并把网站入口切到Newlink，待下一次MAC正常发布时随包交付。
+- PAD版本升级为`1.4.48+125`，固定签名Release已覆盖安装到`192.168.3.46:5555`。现场截图确认设置首页、服务器详情弹窗和关于区域分别显示正确地址、公钥、`newlink-sz.com`与版本；APK SHA-256为`5f7eb1315ad411fe9d0d5382c64bd575281a874982b9fa056cbd88092120755f`，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 已更新`BIN/KEMI-远程桌面-PAD-1.4.48+125-release.apk`、`BIN/release/KEMI-PAD.apk`、`release-manifest.json`及`SHA256SUMS.txt`；Windows、Linux和MAC稳定文件未改。
+
+## 六十七、2026-08-02 自建服务器固定配置与 MAC/PAD 交付（1.4.48+124）
+
+- KEMI 客户端统一使用 ID 服务器 `kemi-chat.newlinksz.com`（当前解析为 `119.96.24.110`）和服务器公钥 `gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=`；私钥仍只允许保存在服务器 `/var/lib/kemi-rustdesk-server/id_ed25519`，没有进入源码、BIN或文档。
+- `flutter/lib/main.dart` 在全局 FFI 初始化后、桌面服务启动前执行统一配置。升级旧安装时先写 `key`，再写 `custom-rendezvous-server`；Android 随服务器项更新重启 rendezvous mediator，避免使用旧公钥连接新服务器。配置一致时直接返回，不在每次启动无意义重启。
+- 完整 Rust 默认值也同步写入 `libs/hbb_common/src/config.rs`，供以后全量编译的 Windows、Linux、MAC、PAD 核心使用。本次 MAC/PAD 交付复用已验证 Rust 动态库，只重打 Flutter 外壳即可生效，不再把单纯服务器配置变更错误扩大成 vcpkg/AOM 全依赖重建。
+- 网络验证：DNS、TCP `21115`～`21119`均可达；MAC `1.4.48+124`启动后配置文件精确回读地址与公钥，进程到 `119.96.24.110:21116` 为 `ESTABLISHED`，`21117`连通。PAD `1.4.48+124`启动日志实际请求 `kemi-chat.newlinksz.com`，证明运行时配置已生效；PAD无共享服务或远控会话时不会维持 `21116`长连接。
+- 开源服务端未提供 `21114`账户/API服务，因此客户端的账户刷新/心跳会记录 `Connection refused`；这不影响 hbbs `21116`注册和 hbbr `21117`中继。后续应把账户功能与开源服务端能力解耦，避免无意义警告，但不得把该警告误判为远控服务器离线。
+- PAD已覆盖安装到 `192.168.3.46:5555`，系统回读 `com.newlinksz.kemi.remote / 1.4.48 / 124`，固定签名证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。APK SHA-256为`44912ebcd37a083808cc4067b9a5db806f17f89ed995f8fb6801f405f8f41d60`。
+- MAC App已安装到`/Applications/KEMI-远程桌面.app`并运行，版本`1.4.48 (124)`，固定本地证书签名深度校验通过。`BIN/release/KEMI-macOS.zip` SHA-256为`f57c25b0cf258123dd1a2930550337586e37a6507fde8e52f6b891a18bddbcc4`；ZIP重新解包后版本和深度签名再次通过。
+- 固定交付文件已更新为`BIN/release/KEMI-PAD.apk`和`BIN/release/KEMI-macOS.zip`；版本化归档为`BIN/KEMI-远程桌面-PAD-1.4.48+124-release.apk`及`BIN/KEMI-远程桌面-macOS-arm64-1.4.48+124.zip`。`release-manifest.json`和`SHA256SUMS.txt`同步更新，四个平台校验均通过。
+
+## 六十六、2026-08-02 全端真实版本显示与UDP打洞客户端默认开启（源码 1.4.48 / PAD 1.4.48+124）
+
+- 全端源码版本统一提升到`1.4.48`，Android/PAD构建号为`+124`。`Cargo.toml`、`Cargo.lock`、`src/version.rs`、Flutter `pubspec.yaml`、GitHub工作流及Linux RPM/PKGBUILD入口保持一致；本节记录的是源码候选，未重新构建、签名和验收的安装包不得仅凭文件名宣称为`1.4.48`。
+- Windows、macOS、Linux共用的主页“控制远程桌面”标题后增加实际运行包版本，使用较小、较淡字体，版本值来自`PlatformFFI.getVersion()`最终读取的平台包信息；PAD首页继续读取`PackageInfo.fromPlatform()`，并把版本号拆成11px辅助文字，避免与产品标题争夺视觉层级。
+- UDP打洞默认值属于客户端行为，不增加服务端开关。旧客户端在自建 rendezvous 服务器下会把空的`enable-udp-punch`强制返回`N`，导致新装客户端即使没有关闭过该选项也不发起UDP打洞。`1.4.48`移除这条例外：空值按既有`enable-*`规则解释为开启，用户明确保存的`N`仍保持关闭，IPv6打洞的旧默认策略不变。
+- 服务端只需保证`hbbs`正常提供UDP协调并开放`21116/UDP`；服务端没有“替客户端打开UDP打洞”的配置。本次不修改`hbbs`、`hbbr`、systemd或服务器部署文件。
+- Flutter定向分析完成，只有项目既有/兼容旧Flutter基线而保留的弃用提示，没有新增语法或类型错误；PAD Debug APK完整构建成功，包内回读为`com.newlinksz.kemi.remote / versionName 1.4.48 / versionCode 124`，SHA-256为`fad74126d62f8a242d99285911e58580312109b13aaa4e7e631e67517e14fc87`。`rustfmt --edition 2021 --check src/common.rs`通过；根Rust `cargo check --lib`因本机缺少`cmake`停止于可选音频依赖`libsamplerate-sys`，关闭默认音频特性后又因本机缺少Homebrew `libyuv`停止于`scrap`构建脚本，均未进入本次逻辑的编译报错。全仓`cargo fmt --check`还会命中仓库既有格式差异，未批量格式化无关文件。
+
 ## 六十五、2026-08-01 PAD物理鼠标右键原生兼容（PAD 1.4.46+123）
 
 - 远控协议和被控端原本已支持`right`按下/抬起；问题位于Android输入入口。部分PAD会把物理鼠标右键上报为原生`ACTION_BUTTON_PRESS/RELEASE + BUTTON_SECONDARY`，或转换成鼠标来源的`KEYCODE_BACK`，未必生成Flutter现有监听依赖的`PointerDownEvent(buttons=2)`，因此切换触摸/鼠标输入模式都不能恢复。

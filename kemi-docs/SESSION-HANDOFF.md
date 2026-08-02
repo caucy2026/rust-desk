@@ -2,8 +2,8 @@
 
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
-> 当前基线日期：2026-08-01
-> 当前Flutter源码与Android release候选：`1.4.46+123`；用户已真机确认外接物理鼠标右键能够传到远端，同时保留`+122`传输记录长期持久化；Mac包：`1.4.46+110`；Windows/Linux客户端：`1.4.46`
+> 当前基线日期：2026-08-02
+> 当前全端源码候选：`1.4.48`，Android/PAD为`1.4.48+124`；全端主页显示实际运行包版本，自建服务器下客户端UDP打洞默认开启。`BIN`内各平台包仍以包内版本和哈希为准，未重新构建验收前不得把旧包改名冒充`1.4.48`。
 > 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
@@ -69,8 +69,9 @@
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
 - Android 首页“客户端”是临时局域网安装包分发页：进入页启动、离开页或销毁 App 关闭 HTTP 服务；只允许白名单下载路由。PAD 与下载设备必须同一 Wi-Fi；当前 APK 可直接分发，其他平台包只有经过核验并在构建 APK 前放入 `assets/client-dist` 时才显示。详见 `client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.46、Cargo.lock rustdesk=1.4.46、flutter/pubspec.yaml=1.4.46+123；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键已在1.4.46+123真机确认；Mac为1.4.46+110，Windows/Linux为1.4.46。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`appimage/AppImageBuilder-*.yml`、`res/rpm*.spec` 与 `res/PKGBUILD` 均为 `1.4.46`。
+- 当前源码版本必须一致：Cargo.toml=1.4.48、Cargo.lock rustdesk=1.4.48、flutter/pubspec.yaml=1.4.48+124；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`res/rpm*.spec` 与 `res/PKGBUILD` 当前均为 `1.4.48`；生成安装包后必须读取包内版本复核，不能只看文件名。
+- UDP打洞是否发起由客户端决定：空的`enable-udp-punch`默认解释为开启，明确保存`N`才关闭；自建服务器不得再触发客户端默认关闭。服务端只负责UDP协调并保证`21116/UDP`可达，不存在额外的“默认开启客户端UDP打洞”服务端开关。
 
 工作方式：
 - 先查当前代码和官方/原项目源码，不猜实现。
@@ -462,15 +463,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.46"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.46"` |
-| `flutter/pubspec.yaml` | `version: 1.4.46+106` |
+| `Cargo.toml` | `version = "1.4.48"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.48"` |
+| `flutter/pubspec.yaml` | `version: 1.4.48+125` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.46
-versionCode=106
+versionName=1.4.48
+versionCode=125
 ```
 
 ### 9.2 首页版本号
@@ -481,6 +482,19 @@ versionCode=106
 - 版本来源：`PackageInfo.fromPlatform().version`
 
 必须读取 APK 的 PackageInfo。不要改回 `bind.mainGetVersion()`，因为当前预编译 Rust `.so` 可能返回旧版本 `1.4.9`，会出现 APK 是 1.4.21、首页却显示 1.4.9 的假象。
+
+### 9.4 当前自建服务器固定配置
+
+```text
+ID服务器：kemi-chat.newlinksz.com
+服务器IP：119.96.24.110
+公钥：gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=
+```
+
+- Flutter启动入口在`initGlobalFFI()`之后调用`_applyKemiServerConfig()`：先写公钥，再写服务器；这条路径让现成已验证Rust核心无需重编也能生成MAC/PAD候选。
+- `libs/hbb_common/src/config.rs`同时保存产品默认服务器和公钥，保证以后全量重编的四端核心默认一致。
+- MAC实测到`119.96.24.110:21116`建立长连接，`21117`可达。开源服务端没有`21114`账户API，相关拒绝日志不得误判成hbbs/hbbr离线。
+- 服务器私钥不得写入客户端或Git；服务器公钥变化属于重大迁移，必须先核对`/var/lib/kemi-rustdesk-server/id_ed25519.pub`，再统一更新四端。
 
 ### 9.3 Android 包
 

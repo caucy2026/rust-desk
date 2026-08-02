@@ -129,10 +129,32 @@ Future<void> initEnv(String appType) async {
   // for convenience, use global FFI on mobile platform
   // focus on multi-ffi on desktop first
   await initGlobalFFI();
+  await _applyKemiServerConfig();
   // await Firebase.initializeApp();
   _registerEventHandler();
   // Update the system theme.
   updateSystemWindowTheme();
+}
+
+const _kemiRendezvousServer = 'kemi-chat.newlinksz.com';
+const _kemiServerPublicKey = 'gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=';
+
+/// Keep every KEMI client on the company-hosted RustDesk server.
+///
+/// The key is written first. Updating the server afterwards restarts Android's
+/// rendezvous mediator, so an upgraded installation cannot reconnect with a
+/// stale key. Desktop starts its service after [initEnv] returns.
+Future<void> _applyKemiServerConfig() async {
+  final oldServer = await bind.mainGetOption(key: 'custom-rendezvous-server');
+  final oldKey = await bind.mainGetOption(key: 'key');
+  if (oldServer == _kemiRendezvousServer && oldKey == _kemiServerPublicKey) {
+    return;
+  }
+  await bind.mainSetOption(key: 'key', value: _kemiServerPublicKey);
+  await bind.mainSetOption(
+    key: 'custom-rendezvous-server',
+    value: _kemiRendezvousServer,
+  );
 }
 
 void runMainApp(bool startService) async {

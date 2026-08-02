@@ -31,6 +31,8 @@ class KeyboardProxyActivity : Activity() {
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_TARGET_DISPLAY_ID = "target_display_id"
         private const val IME_RETRY_DELAY_MS = 350L
+        private const val IME_LOSS_CLASSIFY_DELAY_MS = 120L
+        private const val IME_RESTORE_DELAY_MS = 80L
         private const val MAX_IME_REQUEST_ATTEMPTS = 16
         private const val FINISH_AFTER_HIDE_TIMEOUT_MS = 2_000L
         private const val DUPLICATE_COMMIT_WINDOW_MS = 250L
@@ -82,6 +84,23 @@ class KeyboardProxyActivity : Activity() {
     private var closeRequested = false
     private var releaseRequested = false
     private val finishAfterHideTimeout = Runnable { completeHide() }
+    private val classifyImeHidden = Runnable {
+        if (!active || closeRequested || releaseRequested ||
+            !::editText.isInitialized || lastLoggedImeVisible != false
+        ) {
+            return@Runnable
+        }
+        if (!editText.hasWindowFocus()) {
+            Log.i(
+                TAG,
+                "Restore IME after external focus loss display=${display?.displayId} request=$requestId"
+            )
+            restoreImeAfterExternalFocusLoss()
+        } else {
+            Log.i(TAG, "Confirmed user IME hide request=$requestId")
+            KeyboardProxyManager.onImeVisibilityChanged(requestId, false)
+        }
+    }
     private val applyParkedWindowFlags = Runnable {
         if (!active && !closeRequested && !isFinishing && !isDestroyed) {
             window.addFlags(
@@ -154,6 +173,24 @@ class KeyboardProxyActivity : Activity() {
             "forward_commit_text src=$source len=${committed.length} request=$requestId"
         )
         KeyboardProxyManager.commitText(requestId, sessionId, committed)
+    }
+
+    private fun remoteKeyName(keyCode: Int): String? = when (keyCode) {
+        in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z ->
+            "VK_${('A'.code + keyCode - KeyEvent.KEYCODE_A).toChar()}"
+        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 ->
+            "VK_${keyCode - KeyEvent.KEYCODE_0}"
+        KeyEvent.KEYCODE_SPACE -> "VK_SPACE"
+        KeyEvent.KEYCODE_TAB -> "VK_TAB"
+        KeyEvent.KEYCODE_ENTER -> "VK_RETURN"
+        KeyEvent.KEYCODE_DEL -> "VK_BACK"
+        KeyEvent.KEYCODE_FORWARD_DEL -> "VK_DELETE"
+        KeyEvent.KEYCODE_ESCAPE -> "VK_ESCAPE"
+        KeyEvent.KEYCODE_DPAD_LEFT -> "VK_LEFT"
+        KeyEvent.KEYCODE_DPAD_RIGHT -> "VK_RIGHT"
+        KeyEvent.KEYCODE_DPAD_UP -> "VK_UP"
+        KeyEvent.KEYCODE_DPAD_DOWN -> "VK_DOWN"
+        else -> null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -271,6 +308,26 @@ class KeyboardProxyActivity : Activity() {
                     }
 
                     override fun sendKeyEvent(event: KeyEvent?): Boolean {
+                        if (event != null && event.action == KeyEvent.ACTION_DOWN &&
+                            (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed)
+                        ) {
+                            remoteKeyName(event.keyCode)?.let { key ->
+                                Log.i(
+                                    TAG,
+                                    "forward_shortcut key=$key meta=${event.metaState} request=$requestId"
+                                )
+                                KeyboardProxyManager.sendKey(
+                                    requestId,
+                                    sessionId,
+                                    key,
+                                    alt = event.isAltPressed,
+                                    ctrl = event.isCtrlPressed,
+                                    shift = event.isShiftPressed,
+                                    command = event.isMetaPressed
+                                )
+                                return true
+                            }
+                        }
                         if (event != null &&
                             event.action == KeyEvent.ACTION_DOWN &&
                             event.keyCode == KeyEvent.KEYCODE_DEL
@@ -374,6 +431,7 @@ class KeyboardProxyActivity : Activity() {
         )
         requestTaskFocus("activate")
         editText.removeCallbacks(requestIme)
+        editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
         editText.isFocusable = true
         editText.isFocusableInTouchMode = true
@@ -412,6 +470,7 @@ class KeyboardProxyActivity : Activity() {
         }
         view.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
             if (hasFocus && active && !closeRequested && ::editText.isInitialized) {
+                editText.removeCallbacks(classifyImeHidden)
                 editText.removeCallbacks(requestIme)
                 editText.post(requestIme)
             }
@@ -428,6 +487,7 @@ class KeyboardProxyActivity : Activity() {
         imeShowAccepted = false
         if (!::editText.isInitialized) return
         editText.removeCallbacks(requestIme)
+        editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
         window.decorView.removeCallbacks(applyParkedWindowFlags)
         val lostWindowFocus = !editText.hasWindowFocus()
@@ -471,14 +531,42 @@ class KeyboardProxyActivity : Activity() {
             )
             return
         }
-        if (visible) editText.removeCallbacks(requestIme)
-        KeyboardProxyManager.onImeVisibilityChanged(requestId, visible)
+        if (visible) {
+            editText.removeCallbacks(classifyImeHidden)
+            editText.removeCallbacks(requestIme)
+            KeyboardProxyManager.onImeVisibilityChanged(requestId, true)
+        } else if (active && !closeRequested) {
+            // On this dual-screen Android build, clicking the remote display temporarily
+            // removes focus from the IME host on the other display. Insets report hidden
+            // before the window-focus callback arrives, so classify the cause after one
+            // short grace period. A focused host means the user pressed the IME's own
+            // hide control; a non-focused host means mouse/display focus stole the IME.
+            editText.removeCallbacks(classifyImeHidden)
+            editText.postDelayed(classifyImeHidden, IME_LOSS_CLASSIFY_DELAY_MS)
+        } else {
+            KeyboardProxyManager.onImeVisibilityChanged(requestId, false)
+        }
         if (!visible && closeRequested) completeHide()
+    }
+
+    private fun restoreImeAfterExternalFocusLoss() {
+        if (!active || closeRequested || releaseRequested || !::editText.isInitialized) return
+        imeRequestAttempts = 0
+        imeShowAccepted = false
+        requestTaskFocus("external_focus_loss")
+        editText.isFocusable = true
+        editText.isFocusableInTouchMode = true
+        editText.requestFocus()
+        window.decorView.requestFocus()
+        ViewCompat.requestApplyInsets(window.decorView)
+        editText.removeCallbacks(requestIme)
+        editText.postDelayed(requestIme, IME_RESTORE_DELAY_MS)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && active && !closeRequested && ::editText.isInitialized) {
+            editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(requestIme)
             editText.post(requestIme)
         }
@@ -490,6 +578,7 @@ class KeyboardProxyActivity : Activity() {
         closeRequested = true
         if (::editText.isInitialized) {
             editText.removeCallbacks(requestIme)
+            editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(finishAfterHideTimeout)
             val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             inputMethodManager.hideSoftInputFromWindow(editText.windowToken, 0)
@@ -539,6 +628,7 @@ class KeyboardProxyActivity : Activity() {
     override fun onDestroy() {
         if (::editText.isInitialized) {
             editText.removeCallbacks(requestIme)
+            editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(finishAfterHideTimeout)
         }
         window.decorView.removeCallbacks(applyParkedWindowFlags)

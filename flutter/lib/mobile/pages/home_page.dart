@@ -170,8 +170,26 @@ class HomePageState extends State<HomePage> {
         ],
       );
     }
-    final versionText = _appVersion.isEmpty ? '' : ' v$_appVersion';
-    return Text('$kKemiPadAppTitle$versionText');
+    final titleColor = Theme.of(context).appBarTheme.titleTextStyle?.color ??
+        Theme.of(context).colorScheme.onSurface;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(kKemiPadAppTitle),
+        if (_appVersion.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 6, top: 3),
+            child: Text(
+              'v$_appVersion',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                color: titleColor.withOpacity(0.6),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 }
 

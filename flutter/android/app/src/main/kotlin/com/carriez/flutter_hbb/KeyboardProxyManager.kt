@@ -205,11 +205,27 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun sendKey(activityRequestId: Long, activitySessionId: String, key: String) {
+    fun sendKey(
+        activityRequestId: Long,
+        activitySessionId: String,
+        key: String,
+        alt: Boolean = false,
+        ctrl: Boolean = false,
+        shift: Boolean = false,
+        command: Boolean = false
+    ) {
         if (activityRequestId != requestId || activitySessionId != sessionId || state != "visible") return
         channel?.invokeMethod(
             "keyboard_proxy_key",
-            mapOf("requestId" to requestId, "sessionId" to sessionId, "key" to key)
+            mapOf(
+                "requestId" to requestId,
+                "sessionId" to sessionId,
+                "key" to key,
+                "alt" to alt,
+                "ctrl" to ctrl,
+                "shift" to shift,
+                "command" to command
+            )
         )
     }
 

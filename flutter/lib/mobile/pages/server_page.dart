@@ -843,7 +843,15 @@ void androidChannelInit() {
             if (keyboardProxyController.acceptsInput(
                 arguments, currentSessionId)) {
               final key = arguments["key"] as String? ?? "";
-              if (key.isNotEmpty) gFFI.inputModel.inputKey(key);
+              if (key.isNotEmpty) {
+                gFFI.inputModel.inputKeyWithModifiers(
+                  key,
+                  alt: arguments["alt"] as bool? ?? false,
+                  ctrl: arguments["ctrl"] as bool? ?? false,
+                  shift: arguments["shift"] as bool? ?? false,
+                  command: arguments["command"] as bool? ?? false,
+                );
+              }
             }
             break;
           }

@@ -36,7 +36,9 @@ class SettingsPage extends StatefulWidget implements PageShape {
   State<SettingsPage> createState() => _SettingsState();
 }
 
-const url = 'https://rustdesk.com/';
+const _kemiWebsiteUrl = 'https://www.newlink-sz.com/';
+const _kemiWebsiteLabel = 'newlink-sz.com';
+const _kemiDefaultIdServer = 'kemi-chat.newlinksz.com';
 
 enum KeepScreenOn {
   never,
@@ -102,6 +104,12 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
   var _isUsingPublicServer = false;
   var _allowAskForNoteAtEndOfConnection = false;
   var _preventSleepWhileConnected = true;
+
+  String get _currentIdServer {
+    final server =
+        bind.mainGetOptionSync(key: 'custom-rendezvous-server').trim();
+    return server.isEmpty ? _kemiDefaultIdServer : server;
+  }
 
   _SettingsState() {
     _enableAbr = option2bool(
@@ -715,6 +723,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           if (!disabledSettings && !_hideNetwork && !_hideServer)
             SettingsTile(
                 title: Text(translate('ID/Relay Server')),
+                description: Text(_currentIdServer),
                 leading: Icon(Icons.cloud),
                 onPressed: (context) {
                   showServerSettings(gFFI.dialogManager, (callback) async {
@@ -955,17 +964,24 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
           tiles: [
             SettingsTile(
                 onPressed: (context) async {
-                  await launchUrl(Uri.parse(url));
+                  await launchUrl(Uri.parse(_kemiWebsiteUrl));
                 },
                 title: Text(translate("Version: ") + version),
                 value: Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text('rustdesk.com',
+                  child: Text(_kemiWebsiteLabel,
                       style: TextStyle(
                         decoration: TextDecoration.underline,
                       )),
                 ),
                 leading: Icon(Icons.info)),
+            SettingsTile(
+                title: Text(translate('ID Server')),
+                value: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SelectableText(_currentIdServer),
+                ),
+                leading: Icon(Icons.dns_outlined)),
             SettingsTile(
                 title: Text(translate("Build Date")),
                 value: Padding(
@@ -1098,12 +1114,11 @@ void showAbout(OverlayDialogManager dialogManager) {
         Text('Version: $version'),
         InkWell(
             onTap: () async {
-              const url = 'https://rustdesk.com/';
-              await launchUrl(Uri.parse(url));
+              await launchUrl(Uri.parse(_kemiWebsiteUrl));
             },
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('rustdesk.com',
+              child: Text(_kemiWebsiteLabel,
                   style: TextStyle(
                     decoration: TextDecoration.underline,
                   )),

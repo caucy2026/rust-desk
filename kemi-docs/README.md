@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD开发版本为 **1.4.46+123**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.48**，PAD构建号为 **1.4.48+125**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ### 核心定制功能
 
@@ -23,6 +23,8 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `PAD 1.4.48+125` | 设置首页和关于区域直接显示当前ID服务器；关于页网站改为`newlink-sz.com`；开源服务端`21114`账户API缺失明确视为正常能力边界 |
+| `1.4.48 / PAD 1.4.48+124` | Windows、macOS、Linux和PAD主页显示实际运行包版本；新客户端默认启用UDP打洞；MAC/PAD已固定使用`kemi-chat.newlinksz.com`及当前服务器公钥，MAC实测与`21116`建立长连接 |
 | `1.4.46+123` | PAD外接鼠标右键增加Android原生兜底，兼容`BUTTON_SECONDARY`和鼠标来源`KEYCODE_BACK`；仅当前远控页所在屏幕响应，离页不影响PAD系统右键行为 |
 | `1.4.46+122` | PAD文件传输新增持久化传输记录、目录归组、同路径去重、“再次传输”和源/目标失效提示；记录页固定显示“返回文件”与返回说明；改为发送前落盘，并取消自动数量淘汰，用户不删除就跨进程、跨开机长期保留 |
 | `Windows 1.4.46 / 0594554b4` | Windows首次启动和macOS一致，默认直接显示“主页/设置”，不再依赖点击密码编辑；focused云端候选构建中，验收前不替换稳定EXE |
