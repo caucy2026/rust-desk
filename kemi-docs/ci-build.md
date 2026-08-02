@@ -518,38 +518,29 @@ flutter/android/app/src/main/assets/client-dist/
 候选源码提交：
 
 ```text
-4e30063b9a0b293eca18a355264fbbe6852be84e
-```
-
-交付代码与文档提交：
-
-```text
-fe058d6fc91ca0866b6d713141e99074473f7a9a
+a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5
 ```
 
 focused run：
 
 ```text
-30590581209
+30731531135
+https://github.com/caucy2026/rust-desk/actions/runs/30731531135
 ```
 
 结果：
 
 - default bridge：成功；
 - TopMostWindow x64：成功；
-- Windows x64：成功，artifact `8778930483`；
-- Linux x86_64主构建：成功，DEB artifact `8778766717`；
-- Linux AppImage首次汇总因同名`mv`和root所有者权限问题未上传，非源码编译失败；
-- 独立复用DEB的补包run `30593128802`成功，AppImage artifact `8779097294`；
-- 正确候选prerelease为`kemi-client-4e30063b9a0b293eca18a355264fbbe6852be84e`，tag已核验指向源码`4e30063b9`，Windows/Linux和两份校验元数据的GitHub digest与本地一致；
-- Windows/Linux最终文件均已导入PAD `1.4.46+105`，从PAD真实HTTP下载的哈希与源文件一致；
+- Windows x64：成功，artifact `8828441239`，最终EXE为22,642,176字节；
+- Linux x86_64主构建和AppImage：成功，DEB artifact `8828415442`、最终AppImage artifact `8828435424`；
+- 汇总manifest：成功，artifact `8828443404`；
+- 候选prerelease为`kemi-client-a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`，包含Windows、Linux、manifest和SHA256SUMS；
+- Windows SHA-256为`ba5e6dd0ede56f369c7096aa8aea6b5b98598c8c7388591a15f3eff91c9358cb`；Linux SHA-256为`66affa2de063f94fa50422dc8e4ee02d63ae2a9290c274dd4e4b347b97a89d4a`；
+- checkout后应用`.github/patches/kemi_hbb_common_server.diff`，使云端新clone的子模块也使用KEMI服务器与公钥；补丁失败会在依赖安装前停止，不允许静默编出公共RustDesk默认配置；
 - Windows目标机与Linux目标机的GUI启动、远控和文件传输仍待对应系统实机验收。
 
-本次为保留已成功的Windows job，没有在其运行中推送AppImage命令修复；先让旧run完成，再用
-独立补包分支复用DEB，避免重编两端。永久修复合入`master`后，若自动触发同版本冗余run，
-应在确认源码commit和现有制品均已完成后主动取消，并在记录中说明，不把取消run误报为交付失败。
-本轮最终备份推送触发的focused run `30595250999`和CI `30595250723`均按此规则取消，二者head
-SHA都是`fe058d6fc`；已成功的候选run和补包run未被取消或覆盖。
+上一批`4e30063b9 / 30590581209`及其AppImage补包run属于`1.4.46`历史批次，只用于追溯，不能继续作为当前`BIN/release`来源。
 
 ## 18. KEMI 汇报模板
 

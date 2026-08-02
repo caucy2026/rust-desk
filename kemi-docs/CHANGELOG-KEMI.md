@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 六十九、2026-08-02 新服务器四端重编译与PAD自动更新验证（全端 1.4.48 / build 125）
+
+- 本批次冻结源码为`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`，远端`backup/master`已核对同哈希。四端统一使用ID服务器`kemi-chat.newlinksz.com`、IP`119.96.24.110`和公钥`gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=`。Flutter启动仍先写公钥再写服务器；云端新clone在checkout后应用受版本控制的`.github/patches/kemi_hbb_common_server.diff`，解决KEMI默认值此前只存在于本机dirty子模块、Windows/Linux云构建可能退回公共RustDesk默认服务器的风险。
+- macOS完成Rust核心和Flutter App全量本地重编译，补齐AOM、FFmpeg、libvpx、libyuv、Opus等arm64依赖后，`cargo build --locked --features flutter --release`及`flutter build macos --release --no-pub`成功。App为`1.4.48 (125)`、三个主二进制均为arm64，固定本地测试证书深层签名通过；App内Rust动态库逐字检出服务器和公钥。安装到`/Applications/KEMI-远程桌面.app`后进程实际建立`192.168.3.51 → 119.96.24.110:21116 ESTABLISHED`连接，本地配置回读地址与公钥一致。`KEMI-macOS.zip`为25,922,525字节，SHA-256为`2bc730e72f54db28226e4da6bace5d0defe70af302136cb8e338ae708c755e12`；该包是固定本地测试签名、未Apple公证，不得冒充正式外发Developer ID包。
+- GitHub focused run `30731531135`在同一候选提交上一次成功完成default bridge、TopMostWindow x64、Windows x64、Linux x86_64、AppImage和最终manifest；候选prerelease为`kemi-client-a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`。Windows EXE为22,642,176字节、PE32+ x86-64，SHA-256为`ba5e6dd0ede56f369c7096aa8aea6b5b98598c8c7388591a15f3eff91c9358cb`；Linux AppImage为77,494,776字节、ELF x86-64且`AI 02`魔数正确，SHA-256为`66affa2de063f94fa50422dc8e4ee02d63ae2a9290c274dd4e4b347b97a89d4a`。两者均通过云端SHA清单回读，但真实Windows/Linux机器的GUI启动、远控和文件传输仍待对应系统验收。
+- PAD继续使用已安装的`1.4.48+125`固定签名Release：系统回读`versionCode=125`；APK Flutter AOT库检出同一服务器和公钥，v1/v2签名有效，固定证书SHA-256为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。APK为26,539,559字节，SHA-256为`5f7eb1315ad411fe9d0d5382c64bd575281a874982b9fa056cbd88092120755f`。
+- PAD“客户端”页真机验证：进入页面立即解析Newlink六个固定HTTPS接口，日志在约0.2秒内取得四个平台CDN地址并生成四目标manifest。为排除“只读已有缓存”，临时移走旧云端Windows缓存后重新进入页面，程序自动重新下载22,637,056字节文件并恢复绿色就绪；新文件与备份SHA-256均为`9cc13f6780a39388d590b2f7dc575b1e42712da630f7ae801947d4465867d6ad`，测试备份随后清理。`JobScheduler`真机回读确认任务每6小时、仅非计费网络、设备空闲、重启后保留；页面代码进入即刷新、保持页面时每5分钟刷新，离页只关闭HTTP服务，不取消已经开始的同步。
+- 上述PAD测试命中的是Newlink云端当前仍在发布的旧`1.4.46`清单，证明自动解析、下载、校验和恢复流程有效；本次`1.4.48`六文件只有用户按顺序上传到`Common`项目后才会被已安装PAD发现。上传前不能宣称PAD已经下载到本批次；上传后应最后覆盖`release-manifest`，再由开发流程回读六个固定接口并验证PAD缓存与局域网HTTP下载哈希。
+- `/Users/newlink/kemi/RustDesk/BIN/release`已严格整理为六个固定文件：`KEMI-PAD.apk`、`KEMI-macOS.zip`、`KEMI-Windows.exe`、`KEMI-Linux.AppImage`、`SHA256SUMS.txt`和`release-manifest.json`。清单批次为`1.4.48+125`并绑定上述候选commit/run；四个SHA-256逐项校验、清单大小核对和六文件数量检查全部通过。`BIN/`根目录另存四端带真实版本号的不可变归档，用户只需上传`release/`中的六个固定名称。
+
 ## 六十八、2026-08-02 PAD服务器可见性与公司官网（PAD 1.4.48+125）
 
 - 当前服务端是开源`hbbs/hbbr 1.1.16`，负责ID注册、发现、UDP打洞协商和中继，不包含RustDesk Pro账户/API服务；因此`21114`未监听属于部署能力边界，不是`hbbs`或`hbbr`漏启动。客户端实际远控链路仍以`21116`和`21117`为准。

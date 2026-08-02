@@ -13,7 +13,7 @@
         ↓
 BIN/release/（无版本号、固定文件名的云盘上传区）
         ↓ 上传后回读校验
-国内云盘直链（主源，地址待用户提供）
+Newlink国内云盘固定HTTPS接口（主源，动态解析CDN地址）
         ↓ 失败时回退
 GitHub caucy2026/common-data Release（备用源）
         ↓ 最后发布 stable manifest
@@ -34,18 +34,16 @@ PAD 局域网 HTTP 服务
 
 ## 2. 四端版本、归档名和云盘固定名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.46`。当前最新PAD为`1.4.46+119`；macOS最新已验收制品为`1.4.46+110`；Windows/Linux产物元数据为`1.4.46`，来自已验收的`+110`四端批次。不同平台构建号尚未齐平时必须在清单里如实记录，不得为了“看起来一致”重命名旧字节冒充新构建。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.48`。当前发布候选绑定源码`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`：PAD为`1.4.48+125`，macOS为`1.4.48 (125)`，Windows/Linux包版本为`1.4.48`。Windows/Linux由focused run `30731531135`生成，macOS/PAD在本机全量构建或固定签名构建。不同平台构建号尚未齐平时必须在清单里如实记录，不得为了“看起来一致”重命名旧字节冒充新构建。
 
-`BIN/`根目录中最后一个四端构建号齐平的GitHub stable批次为：
+`BIN/`根目录中当前批次的版本化归档为：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.46+110-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.46+110.zip
-├── KEMI-远程桌面-Windows-x64-1.4.46.exe
-├── KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage
-├── KEMI-client-manifest-1.4.46+110.json
-└── KEMI-client-SHA256SUMS-1.4.46+110.txt
+├── KEMI-远程桌面-PAD-1.4.48+125-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.48+125.zip
+├── KEMI-远程桌面-Windows-x64-1.4.48.exe
+└── KEMI-远程桌面-Linux-x86_64-1.4.48.AppImage
 ```
 
 上述`BIN/`根目录归档名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -114,10 +112,10 @@ BIN/release/
 
 | 平台 | 版本来源 | 当前`BIN/release/`内容 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.46`、`versionCode=119`，清单写 `1.4.46+119` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.46`、`CFBundleVersion=110` |
-| Windows x64 | EXE 元数据 | 产品版本 `1.4.46`，清单记录来自`1.4.46+110`批次 |
-| Linux x86_64 | 构建源码和文件名 | 产品版本 `1.4.46`，清单记录来自`1.4.46+110`批次 |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.48`、`versionCode=125`，清单写 `1.4.48+125` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.48`、`CFBundleVersion=125` |
+| Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.48`，绑定源码`a5ff428b5`与run `30731531135` |
+| Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.48`，绑定源码`a5ff428b5`与run `30731531135` |
 
 ## 3. common-data 仓库结构
 

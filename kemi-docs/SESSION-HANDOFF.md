@@ -3,21 +3,13 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-08-02
-> 当前全端源码候选：`1.4.48`，Android/PAD为`1.4.48+124`；全端主页显示实际运行包版本，自建服务器下客户端UDP打洞默认开启。`BIN`内各平台包仍以包内版本和哈希为准，未重新构建验收前不得把旧包改名冒充`1.4.48`。
+> 当前全端源码候选：`1.4.48`，Android/PAD为`1.4.48+125`；全端主页显示实际运行包版本，自建服务器下客户端UDP打洞默认开启。`BIN`内各平台包仍以包内版本和哈希为准，未重新构建验收前不得把旧包改名冒充`1.4.48`。
 > 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
-当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN` 已包含：
+当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。当前批次来自候选提交`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`：PAD为`1.4.48+125`，macOS为`1.4.48 (125)`，Windows/Linux为`1.4.48`。`BIN/`根目录另存同字节、带版本号的不可变归档；历史文件不代表当前发布。
 
-- `KEMI-远程桌面.app` 与 `KEMI-远程桌面-macOS-arm64-1.4.46+104.zip`；
-- `KEMI-远程桌面-PAD-1.4.44+102-debug.apk`；
-- `KEMI-远程桌面-PAD-1.4.46+104-release.apk`；
-- `KEMI-远程桌面-PAD-1.4.46+105-release.apk`（历史交付）；
-- `KEMI-远程桌面-PAD-1.4.46+106-release.apk`；
-- `KEMI-远程桌面-Windows-x64-1.4.46.exe`；
-- `KEMI-远程桌面-Linux-x86_64-1.4.46.AppImage`；
-- Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行
-  `flutter build windows` 或自行升级工具链。
+Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行`flutter build windows`或自行升级工具链。
 
 ---
 
@@ -40,10 +32,7 @@
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前Flutter源码与Android PAD已进入`1.4.46+106`交付候选，Android applicationId为
-`com.newlinksz.kemi.remote`；PAD内置Mac `1.4.46+104`、Windows/Linux `1.4.46`客户端。文件传输并行浮窗的
-功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用
-`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交。
+当前Flutter源码与Android PAD为`1.4.48+125`，Android applicationId为`com.newlinksz.kemi.remote`。PAD不把四端客户端递归打进APK，而是在空闲任务或进入“客户端”页时按固定Newlink接口下载、校验并缓存；当前四端发布候选绑定`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`。文件传输并行浮窗的功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -68,8 +57,8 @@
 - 文件传输页必须保留“记录”入口。记录按方向、源目录、目标目录归组，同组完整源路径去重；记录必须在发送任务分发前持久化，不能依赖完成回调才创建。记录页右上角必须明确显示“返回文件”，列表顶部保留返回提示；“再次传输”前必须实时校验源文件和目标目录，缺失时在原记录行显示错误。完整规格见`kemi-docs/file-transfer-history.md`。
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
-- Android 首页“客户端”是临时局域网安装包分发页：进入页启动、离开页或销毁 App 关闭 HTTP 服务；只允许白名单下载路由。PAD 与下载设备必须同一 Wi-Fi；当前 APK 可直接分发，其他平台包只有经过核验并在构建 APK 前放入 `assets/client-dist` 时才显示。详见 `client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.48、Cargo.lock rustdesk=1.4.48、flutter/pubspec.yaml=1.4.48+124；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
+- Android 首页“客户端”是临时局域网安装包分发页：进入页立即解析Newlink固定接口并启动HTTP服务，离开页或销毁App关闭HTTP服务；只允许白名单下载路由。PAD与下载设备必须同一Wi-Fi；四端文件只有完成大小、SHA-256和接口MD5校验后才显示为可下载，不再在构建APK前塞入`assets/client-dist`。详见`client-distribution.md`。
+- 当前源码版本必须一致：Cargo.toml=1.4.48、Cargo.lock rustdesk=1.4.48、flutter/pubspec.yaml=1.4.48+125；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
 - Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`res/rpm*.spec` 与 `res/PKGBUILD` 当前均为 `1.4.48`；生成安装包后必须读取包内版本复核，不能只看文件名。
 - UDP打洞是否发起由客户端决定：空的`enable-udp-punch`默认解释为开启，明确保存`N`才关闭；自建服务器不得再触发客户端默认关闭。服务端只负责UDP协调并保证`21116/UDP`可达，不存在额外的“默认开启客户端UDP打洞”服务端开关。
 
@@ -80,7 +69,7 @@
 - 当前可用 Flutter SDK 是 /Users/newlink/flutter/bin，命令前执行 export PATH=/Users/newlink/flutter/bin:$PATH。
 - 默认跨平台 CI 仍以 Flutter 3.24.5 为基线；仓库 `extended_text` 必须保持精确 `14.0.0`。3.22 bridge 与 3.44 Windows ARM bridge 的临时改动只能在 `.github` 补丁中处理，详见 `kemi-docs/ci-build.md`。
 - Debug APK 输出为 flutter/build/app/outputs/flutter-apk/app-debug.apk。
-- 当前设备为 192.168.1.10:5555，安装后必须用 dumpsys package 核对 versionName/versionCode/lastUpdateTime。
+- 当前主要设备为`192.168.3.46:5555`；设备IP可能随Wi-Fi变化，先以`adb devices -l`确认，安装后必须用`dumpsys package`核对versionName/versionCode/lastUpdateTime。
 - 不要因为 release AOT 的 x64 gen_snapshot 在 Apple Silicon 上需要 Rosetta，就误判整个项目不能编译；本项目已验证 flutter build apk --debug 可直接成功。
 - 提交前更新 kemi-docs/CHANGELOG-KEMI.md。
 - GitHub备份使用本仓`backup`远端。准备生成下一轮客户端的候选提交才推`master`；上一次
@@ -493,6 +482,7 @@ ID服务器：kemi-chat.newlinksz.com
 
 - Flutter启动入口在`initGlobalFFI()`之后调用`_applyKemiServerConfig()`：先写公钥，再写服务器；这条路径让现成已验证Rust核心无需重编也能生成MAC/PAD候选。
 - `libs/hbb_common/src/config.rs`同时保存产品默认服务器和公钥，保证以后全量重编的四端核心默认一致。
+- `libs/hbb_common`是上游子模块，KEMI默认值不能只停留在本机dirty子模块。云端构建在checkout后必须应用受版本控制的`.github/patches/kemi_hbb_common_server.diff`；本地全量构建仍直接使用当前子模块源码。候选`a5ff428b5`的Windows/Linux focused run已验证这两条路径一致。
 - MAC实测到`119.96.24.110:21116`建立长连接，`21117`可达。开源服务端没有`21114`账户API，相关拒绝日志不得误判成hbbs/hbbr离线。
 - 服务器私钥不得写入客户端或Git；服务器公钥变化属于重大迁移，必须先核对`/var/lib/kemi-rustdesk-server/id_ed25519.pub`，再统一更新四端。
 
