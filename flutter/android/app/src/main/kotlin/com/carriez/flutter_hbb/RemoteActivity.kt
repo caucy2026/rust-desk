@@ -232,6 +232,19 @@ class RemoteActivity : FlutterActivity() {
                     KeyboardProxyManager.release()
                     result.success(true)
                 }
+                "launch_file_transfer_on_opposite_display" -> {
+                    val args = call.arguments as? Map<*, *>
+                    result.success(
+                        FileTransferActivity.launchOnOppositeDisplay(
+                            this@RemoteActivity,
+                            args?.get("peer_id") as? String ?: "",
+                            args?.get("password") as? String,
+                            args?.get("is_shared_password") as? Boolean,
+                            args?.get("force_relay") as? Boolean ?: false,
+                            args?.get("conn_token") as? String
+                        )
+                    )
+                }
                 else -> {
                     // 其他 mChannel 调用在 RemoteActivity 中无需处理
                     result.notImplemented()

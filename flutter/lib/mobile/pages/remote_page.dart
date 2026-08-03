@@ -246,8 +246,26 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       // Reuse the current connection token for the parallel transfer session.
       final token = connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
 
-      // FileManagerPage owns a separate file-transfer session, so this
-      // remote desktop session keeps decoding video behind the overlay.
+      if (isAndroid) {
+        final launchResult = await gFFI.invokeMethod(
+          'launch_file_transfer_on_opposite_display',
+          {
+            'peer_id': id,
+            'password': widget.password,
+            'is_shared_password': widget.isSharedPassword,
+            'force_relay': widget.forceRelay ?? false,
+            'conn_token': token,
+          },
+        );
+        if (launchResult is Map && launchResult['accepted'] == true) {
+          debugPrint(
+              'File transfer opened on display ${launchResult['targetDisplayId']}');
+          return;
+        }
+      }
+
+      // Single-display fallback. FileManagerPage owns a separate transfer
+      // session, so the remote desktop keeps decoding behind the overlay.
       await showGeneralDialog(
         context: context,
         barrierDismissible: false,
@@ -277,7 +295,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      debugPrint('Transfer file overlay failed: $e');
+      debugPrint('Transfer file launch failed: $e');
       showToast(translate('Failed'));
     } finally {
       _handoffToFileTransfer = false;

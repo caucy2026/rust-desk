@@ -26,6 +26,7 @@ import 'package:window_manager/window_manager.dart';
 import 'common.dart';
 import 'consts.dart';
 import 'mobile/pages/home_page.dart';
+import 'mobile/pages/file_manager_page.dart';
 import 'mobile/pages/remote_page.dart';
 import 'mobile/pages/server_page.dart';
 import 'mobile/widgets/deploy_dialog.dart';
@@ -219,6 +220,128 @@ void runMobileApp() async {
   stateGlobal.essentialDataLoaded.value = true;
   gFFI.userModel.refreshCurrentUser();
   await initUniLinks();
+}
+
+/// Dedicated Dart entrypoint for [FileTransferActivity]. It deliberately does
+/// not render HomePage: the Android window is transparent and only the existing
+/// 60% file-transfer card is painted on the display opposite the remote view.
+@pragma('vm:entry-point')
+Future<void> crossDisplayFileTransferMain() async {
+  earlyAssert();
+  WidgetsFlutterBinding.ensureInitialized();
+  kBootArgs = <String>[];
+  await initEnv(kAppTypeMain);
+  if (isAndroid) androidChannelInit();
+  runApp(const _CrossDisplayFileTransferApp());
+}
+
+class _CrossDisplayFileTransferApp extends StatefulWidget {
+  const _CrossDisplayFileTransferApp();
+
+  @override
+  State<_CrossDisplayFileTransferApp> createState() =>
+      _CrossDisplayFileTransferAppState();
+}
+
+class _CrossDisplayFileTransferAppState
+    extends State<_CrossDisplayFileTransferApp> {
+  static const _channel = MethodChannel('fileTransferChannel');
+  Map<String, dynamic>? _params;
+  String? _loadError;
+  bool _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadParams();
+  }
+
+  Future<void> _loadParams() async {
+    try {
+      final raw = await _channel.invokeMethod('get_file_transfer_params');
+      final params = Map<String, dynamic>.from(raw as Map);
+      if ((params['peer_id'] as String? ?? '').isEmpty) {
+        throw StateError('Missing peer id');
+      }
+      if (!mounted) return;
+      setState(() => _params = params);
+    } catch (error) {
+      debugPrint('[CrossDisplayFileTransfer] load params failed: $error');
+      if (!mounted) return;
+      setState(() => _loadError = error.toString());
+    }
+  }
+
+  Future<void> _finishActivity() async {
+    if (_closing) return;
+    _closing = true;
+    try {
+      await _channel.invokeMethod('finish_activity');
+    } catch (error) {
+      debugPrint('[CrossDisplayFileTransfer] finish failed: $error');
+      _closing = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final params = _params;
+    Widget home;
+    if (_loadError != null) {
+      home = Material(
+        color: Colors.transparent,
+        child: Center(
+          child: FilledButton(
+            onPressed: _finishActivity,
+            child: Text(translate('Close')),
+          ),
+        ),
+      );
+    } else if (params == null) {
+      home = const Material(
+        color: Colors.transparent,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else {
+      final connToken = params['conn_token'] as String?;
+      home = FileManagerPage(
+        id: params['peer_id'] as String,
+        password: (params['password'] as String?)?.isNotEmpty == true
+            ? params['password'] as String
+            : null,
+        isSharedPassword: params['is_shared_password'] as bool?,
+        forceRelay: params['force_relay'] as bool? ?? false,
+        connToken: connToken?.isNotEmpty == true ? connToken : null,
+        isOverlay: true,
+        onOverlayClose: _finishActivity,
+      );
+    }
+
+    return GetMaterialApp(
+      navigatorKey: globalKey,
+      debugShowCheckedModeBanner: false,
+      color: Colors.transparent,
+      theme: MyTheme.lightTheme,
+      darkTheme: MyTheme.darkTheme,
+      themeMode: MyTheme.currentThemeMode(),
+      home: home,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: supportedLocales,
+      navigatorObservers: [BotToastNavigatorObserver()],
+      builder: (context, child) => AccessibilityListener(
+        child: MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(1.0),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
 }
 
 /// 双屏模式: 监听 "remoteChannel" 的 init_params，

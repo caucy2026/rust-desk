@@ -113,6 +113,17 @@
             android:theme="@style/KeyboardProxyTheme"
             android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 
+        <!-- Independent transparent host for the opposite-display file-transfer card. -->
+        <activity
+            android:name=".FileTransferActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode|navigation"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleInstance"
+            android:theme="@style/KeyboardProxyTheme"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".MainService"
             android:enabled="true"
