@@ -2,13 +2,17 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
-## 七十一、2026-08-03 副屏键盘与远控鼠标并行操作（PAD 1.4.48+130）
+## 七十一、2026-08-03 跨屏键盘与物理鼠标最终闭环（PAD 1.4.48+137）
 
-- 已完成此前只做一半的“键盘打开后，远控屏鼠标操作不能自动关闭键盘”。真机日志确认：鼠标点击远控画面后，Android 会把全局 IME 焦点从键盘所在显示临时切回远控显示；但双屏 ROM 上键盘代理的 `hasWindowFocus()` 仍可能保持 `true`。旧代码仅凭窗口焦点判断隐藏原因，因此在 120ms 后错误发布 `user_hidden`，并非 Flutter 键盘按钮或远端输入协议主动关闭。
-- `MainActivity`与`RemoteActivity`现在只记录来自`InputDevice.SOURCE_MOUSE`且发生在当前远控源显示的事件；`KeyboardProxyManager`将事件时间与当前 request/source display 绑定。IME 隐藏分类命中该时间窗时，代理恢复原有 task 与输入法，不进入`closing/hidden`；触摸事件和另一显示的事件不会伪造该判据。
-- 恢复过程增加进行中门禁：一次鼠标切焦只允许发起一次恢复，直到 IME 重新真实可见，避免同一轮 insets 连续变化导致重复`moveTaskToFront/showSoftInput`。HOME/任务切换不再仅凭`onUserLeaveHint()`立即释放，而是在键盘代理 Activity 真正`onStop()`后确认；键盘栏按钮的`close_requested`仍是独立明确关闭通道。
-- 正确真机`192.168.3.63:5555`覆盖安装后回读`versionName=1.4.48 / versionCode=130`。远控位于 Display 0、键盘位于 Display 2；两次相隔约5秒的鼠标单击（并覆盖移动、滚轮）都仅各触发一次`sourceMouse=true`恢复，最终均为`mCurTokenDisplayId=2 / mInputShown=true`，没有`user_hidden/closing/hidden`。随后点击键盘按钮得到`close_requested`与`mInputShown=false`，再次点击进入 request 3 并恢复`mInputShown=true`。
-- 固定签名Release为24,115,743字节，SHA-256为`4c043fcfff3c413e21260f338310a4153d9477aafa00bcfc2ba4790f45d07b3e`；仅含`arm64-v8a`，zipalign通过，v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。完整原理和回归门禁见`kemi-docs/cross-display-keyboard.md`第20节。
+- 最终需求是：软键盘显示在远控画面对面屏幕后，用户在远控画面使用物理鼠标左键、移动和右键都不能关闭或闪动键盘；只有键盘按钮、输入法收起键、HOME、会话结束等明确动作可以关闭。`+130`只在IME已经隐藏后延迟恢复，避免了永久关闭，却仍会出现一次肉眼可见的“隐藏→重开”；因此原先把`+130`写成闭环通过是不准确的，本节以`+137`结论取代。
+- 根因分为两层：厂商Android 12双屏系统在另一显示收到鼠标点击时会临时撤销IME host焦点；而Insets约20～40ms内已进入隐藏动画，旧代码到120ms后才根据鼠标时间戳恢复，逻辑状态虽然仍是`visible`，画面仍然会闪。最终方案不再等待隐藏发生，而是在物理左键手势开始时提前保持键盘代理task、EditText焦点与现有输入连接。
+- `MainActivity`和`RemoteActivity`在事件进入Flutter前识别当前源显示的`SOURCE_MOUSE`。PAD实测和ADB注入进一步证明部分`ACTION_DOWN`的`buttonState/actionButton`均为0，因此`+137`将“`ACTION_DOWN`且未明确标记为secondary”视为主键按下；`ACTION_BUTTON_PRESS + BUTTON_PRIMARY`继续按标准路径识别。事件必须同时满足Manager处于`opening/visible`且显示ID等于`sourceDisplayId`，另一显示和触摸事件不会启动保护。
+- `KeyboardProxyActivity`只在左键手势期间启用短时IME守护：按下后最多650ms、每48ms维持既有task和焦点；收到抬起后缩短为180ms。守护仅调用`showSoftInput()`保持当前输入连接，不调用`restartInput()`，避免破坏中文组合态。退出、隐藏、停放和销毁都会移除Runnable，防止跨会话残留。
+- 右键保持完全独立。PAD右键可能以`MotionEvent.BUTTON_SECONDARY`上报，也可能被系统转换为鼠标来源的`KEYCODE_BACK`；两条路径都由`PhysicalMouseRightButtonForwarder`转成远端`right down/up`。一旦识别secondary，立即取消左键守护；避免`+134`中对所有鼠标事件反复`moveTaskToFront()`打断右键抬起，造成远端长期停留在按下状态。
+- 调试版本结论：`+130`延迟恢复但仍闪；`+131/+132`仅调整窗口/焦点标志未解决系统IME隐藏；`+133/+134`扩大主动抢焦范围，其中`+134`引入右键卡住回归；`+135`撤销全事件抢焦并恢复右键完整down/up，但左键仍隐藏后恢复；`+136`实现按键选择性守护并通过实体鼠标初测；`+137`补齐无按钮位的主键DOWN兼容，作为最终验收版本。
+- 真机`192.168.3.63:5555`分别覆盖了远控在Display 0、键盘在Display 2，以及远控在Display 2、键盘在Display 0的方向。最终日志中左键产生`onPointDownImage`且IME在`visible`后不再出现`IME insets visible=false`；右键连续产生完整的`on_physical_mouse_button right down/up`，用户现场确认左键不影响键盘、右键功能正常，输入提交和退格仍可继续使用。
+- 同批UI细节：桌面主页和PAD共享屏幕页的“一次性密码”后增加小字“（推荐使用固定密码）”；Windows/桌面连接页移除“如果需要更快连接速度，可以选择自建服务器”；PAD客户端下载弹窗根据实际状态显示“新智联云盘”或“GitHub备用源”，不再把Newlink HTTPS下载误写成GitHub。
+- 本地源码冻结提交为`a601b988e57e117c6e2761ff217877749f6276d3`。`+137`固定签名APK为24,115,046字节，SHA-256为`15675062daa80fb9fbbca8a017c7775ad524009f329178172fdbbe6e41d1a36f`，仅含`arm64-v8a`，v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。版本化归档为`BIN/KEMI-远程桌面-PAD-1.4.48+137-release.apk`，固定上传文件为`BIN/release/KEMI-PAD.apk`；清单批次明确标记`1.4.48+137-pad-hotfix`，其他三端仍保留各自现有版本。
 
 ## 七十、2026-08-03 服务器状态、会话收尾、Mac 设置保护与账户入口收敛（候选 1.4.48+129）
 

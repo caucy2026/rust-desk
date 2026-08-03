@@ -959,7 +959,7 @@ Future<dynamic> invokeMethod(String method, [dynamic arguments]) async { ... }
 
 后续修改跨屏键盘时，至少重复“首次打开→输入法收起→再次打开”10轮，并额外覆盖一次“HOME→副屏再打开”。只验证第一次弹出不能证明复用路径正确。
 
-## 20. 远控鼠标操作与副屏键盘共存（2026-08-03，PAD +130）
+## 20. 远控鼠标操作与跨屏键盘共存（2026-08-03，PAD +137）
 
 ### 20.1 已证实的根因
 
@@ -971,7 +971,75 @@ IME hidden + host hasWindowFocus == 用户主动收起
 
 `1.4.48+129`真机日志明确出现`IME insets visible=false ... windowFocus=true`，紧接着被分类为`Confirmed user IME hide`和`state=closing reason=user_hidden`。系统确实切走了输入法，但最终关闭是客户端误判造成的。
 
-### 20.2 修复后的判定链
+### 20.2 为什么`+130`仍会闪
+
+`+130`增加了源显示鼠标时间戳和120ms隐藏原因分类。它能在鼠标导致IME失焦时避免发布`user_hidden`，随后调用`moveTaskToFront()`和`showSoftInput()`恢复，因此解决了“点击后键盘永久关闭”。但这个方案发生在系统已经开始隐藏动画之后：
+
+```text
+鼠标按下
+  └─ 20～40ms：IME Insets=false，键盘开始消失
+       └─ 120ms：客户端确认最近有鼠标事件
+            └─ 重新聚焦并显示IME
+```
+
+最终状态仍是`visible`不等于视觉连续。只要日志出现一次`IME insets visible=false`，用户就会看到键盘闪一下。因此`+130`只能作为原因分类和失败恢复兜底，不能作为最终体验方案。
+
+### 20.3 最终的主键手势前置守护
+
+源Activity在把事件交给Flutter前完成分类：
+
+```text
+SOURCE_MOUSE事件
+  ├─ secondary：BUTTON_SECONDARY / secondary actionButton
+  │    └─ 立即取消IME守护，交给右键转发器
+  └─ primary down：
+       ├─ ACTION_DOWN 且不是secondary
+       └─ ACTION_BUTTON_PRESS + BUTTON_PRIMARY
+            └─ Manager校验状态和sourceDisplayId
+                 └─ KeyboardProxyActivity提前保持IME
+```
+
+不能只用`buttonState & BUTTON_PRIMARY`判断左键。当前PAD和ADB测试均观察到合法鼠标`ACTION_DOWN`的`buttonState=0 / actionButton=0`；如果漏掉，保护不会启动，仍会回到`+130`的隐藏后恢复。最终规则是：鼠标`ACTION_DOWN`只要没有明确标记为secondary，就按主键按下处理。
+
+Activity的保护窗口遵循以下参数和边界：
+
+- 主键按下：保护截止时间为当前时间加650ms，并立即执行一次。
+- 保护期间：每48ms维持代理task、EditText焦点和当前IME显示。
+- 主键抬起/取消：若保护仍有效，将尾部窗口缩短为180ms，覆盖系统在UP之后到达的焦点切换。
+- secondary：立即把截止时间清零并移除保护Runnable。
+- `activate/parkForReuse/hideIme/onDestroy`：全部清零并移除Runnable，不允许跨request残留。
+- 保持过程只调用`showSoftInput()`，不调用`restartInput()`；已有中文拼音组合和InputConnection不会被重建。
+
+延迟分类仍保留为异常兜底，鼠标时间窗为2200ms；它不再承担正常左键路径，正常验收日志不应出现`IME insets visible=false`。
+
+### 20.4 右键为何必须与左键守护隔离
+
+PAD物理鼠标右键有两类输入：
+
+1. `MotionEvent.ACTION_DOWN/BUTTON_PRESS + BUTTON_SECONDARY`；
+2. Android把右键解释为鼠标来源的`KEYCODE_BACK`。
+
+`PhysicalMouseRightButtonForwarder`把两类输入统一转成远端`right down/right up`。`+134`曾在所有鼠标事件上高频移动键盘task，右键down与up之间发生焦点切换，up可能无法回到源Activity，远端就会一直保持右键按下并表现为卡住。最终实现一旦识别secondary，先取消IME保护再发送右键；右键down/up期间不做任何键盘task抢焦。
+
+回归判断必须同时满足：
+
+- 每个右键down后都能观察到对应up；
+- 右键过程中没有`primary_mouse_guard`持续输出；
+- Flutter收到`on_physical_mouse_button`的`down/up`各一次；
+- 远端没有停留在右键按下状态。
+
+### 20.5 版本演进与结论
+
+| 构建号 | 处理方式 | 现场结论 |
+|---|---|---|
+| `+130` | 鼠标时间戳 + 120ms隐藏后恢复 | 不再永久关闭，但肉眼可见闪烁 |
+| `+131/+132` | 调整窗口和焦点标志 | 未阻止厂商系统撤销IME焦点 |
+| `+133/+134` | 扩大主动task抢焦范围 | 仍不稳定；`+134`破坏右键up，出现卡住 |
+| `+135` | 撤销全事件抢焦 | 右键恢复，左键仍是隐藏后重开 |
+| `+136` | 只在主键手势期间前置守护 | 实体鼠标通过；发现无按钮位DOWN兼容缺口 |
+| `+137` | 未标secondary的鼠标DOWN也视为主键 | 最终真机验收版本 |
+
+### 20.6 延迟恢复兜底与明确关闭
 
 ```text
 远控源显示收到 SOURCE_MOUSE
@@ -982,30 +1050,29 @@ IME hidden + host hasWindowFocus == 用户主动收起
                 │
 IME随后报告隐藏 ─┴─ 120ms分类
         │
-        ├─ 最近1秒有当前request的源显示鼠标事件 → 恢复IME，状态保持visible
+        ├─ 最近2.2秒有当前request的源显示鼠标事件 → 恢复IME，状态保持visible
         ├─ 代理窗口真实失焦                         → 恢复IME
         └─ 两者都不是                              → 用户主动收起，正常close
 ```
 
-主、副屏两个远控 Activity 都在`dispatchTouchEvent`和`dispatchGenericMotionEvent`入口记录事件，但只接受 Android 原生`InputDevice.SOURCE_MOUSE`。记录早于物理鼠标右键兼容层消费事件，因此左键、右键、移动和滚轮都能覆盖；显示 ID 不匹配、代理已隐藏或普通触摸不会刷新时间。
+主、副屏两个远控 Activity 都在`dispatchTouchEvent`和`dispatchGenericMotionEvent`入口记录事件，但只接受 Android 原生`InputDevice.SOURCE_MOUSE`。记录早于物理鼠标右键兼容层消费事件，因此左键、右键、移动和滚轮都能作为异常失焦的恢复证据；显示 ID 不匹配、代理已隐藏或普通触摸不会刷新时间。正常左键由20.3的前置守护处理，本段只在系统仍然强制隐藏IME时兜底。
 
 恢复中使用`restoreImeInProgress`做单飞门禁。开始恢复后，后续`visible=false`只更新日志，不重复移动 task；只有输入法重新真实可见，或用户/生命周期明确关闭时才清除门禁。
-
-### 20.3 明确关闭仍保持独立
 
 - 用户再次点击远控栏“键盘”：Flutter直接发`keyboard_proxy_close(requestId)`，不经过隐藏原因猜测。
 - 输入法自身返回/收起且没有源显示鼠标事件：仍按`user_hidden`关闭。
 - HOME或任务切换：`onUserLeaveHint()`只标记待确认；代理 Activity 真正进入`onStop()`后才按`home_pressed`或`keyboard_host_stopped`释放。跨屏鼠标焦点变化如果没有停止 Activity，就不能冒充 HOME。
 - 远控页面退出、会话销毁和目标显示移除：继续走原有 release 通道，不受鼠标保持逻辑影响。
 
-### 20.4 真机闭环与后续门禁
+### 20.7 真机闭环与后续门禁
 
-设备`192.168.3.63:5555`，PAD`1.4.48+130`：
+设备`192.168.3.63:5555`，PAD`1.4.48+137`：
 
-1. 打开键盘后回读`mCurTokenDisplayId=2`、`mInputShown=true`。
-2. Display 0执行鼠标单击、移动、滚轮；日志一次命中`sourceMouse=true`，IME恢复后仍在Display 2。
-3. 约5秒后再次鼠标单击，产生第二次独立恢复；最终仍为`mInputShown=true`，状态始终没有发布`closing/hidden`。
-4. 点击远控栏键盘按钮，状态按`close_requested → hidden`且`mInputShown=false`。
-5. 再次点击，复用同一代理task进入新request并恢复`mInputShown=true`。
+1. 覆盖安装后系统回读`versionName=1.4.48 / versionCode=137`，固定签名不变。
+2. 覆盖远控Display 0→键盘Display 2，以及远控Display 2→键盘Display 0两个方向。
+3. 左键产生`onPointDownImage PointerDeviceKind.mouse`，保护日志为`primary_mouse_guard`；IME在进入`visible`后没有再产生`IME insets visible=false`，因此不存在隐藏帧和视觉闪烁。
+4. 多次实体右键均观察到`on_physical_mouse_button right down`和`right up`完整成对，没有卡住。
+5. 左右键测试后继续使用键盘输入、退格，`keyboard_proxy_commit_text`和`keyboard_proxy_key VK_BACK`仍正常，说明保护没有破坏InputConnection。
+6. 用户现场确认“左键不影响键盘，右键功能正常”。
 
-以后修改跨屏键盘、物理鼠标或 Activity 生命周期时，必须同时验证“鼠标不关闭”和“用户按钮仍能关闭/重开”。只看画面或只看`hasWindowFocus()`都不能作为通过依据，必须同时读取Manager状态、IME token display和`mInputShown`。
+以后修改跨屏键盘、物理鼠标或Activity生命周期时，必须同时验证“左键不闪”“右键down/up完整”“键盘按钮仍能关闭/重开”“HOME后可重新打开”。只看最终状态、只看画面或只看`hasWindowFocus()`都不能作为通过依据；正常左键路径中出现任何一次`IME insets visible=false`都应判为回归。
