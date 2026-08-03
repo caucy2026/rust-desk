@@ -463,7 +463,26 @@ class MainActivity : FlutterActivity() {
 
     private fun noteKeyboardProxyMouseEvent(event: MotionEvent) {
         if (event.source and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE) {
-            KeyboardProxyManager.onSourceMouseEvent(display?.displayId ?: Display.DEFAULT_DISPLAY)
+            val action = event.actionMasked
+            val actionButton = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                event.actionButton
+            } else {
+                0
+            }
+            val secondary = event.buttonState and MotionEvent.BUTTON_SECONDARY != 0 ||
+                actionButton == MotionEvent.BUTTON_SECONDARY
+            val primaryDown =
+                (action == MotionEvent.ACTION_DOWN && !secondary) ||
+                    (action == MotionEvent.ACTION_BUTTON_PRESS &&
+                        actionButton == MotionEvent.BUTTON_PRIMARY)
+            KeyboardProxyManager.onSourceMouseEvent(
+                display?.displayId ?: Display.DEFAULT_DISPLAY,
+                primaryDown = primaryDown,
+                pointerUp = action == MotionEvent.ACTION_UP ||
+                    action == MotionEvent.ACTION_BUTTON_RELEASE ||
+                    action == MotionEvent.ACTION_CANCEL,
+                secondary = secondary
+            )
         }
     }
 
@@ -473,6 +492,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun forwardPhysicalMouseRightButton(type: String) {
+        KeyboardProxyManager.onSourceSecondaryMouseEvent(
+            display?.displayId ?: Display.DEFAULT_DISPLAY
+        )
         Log.i(logTag, "[PhysicalMouse] right $type on display ${display?.displayId}")
         flutterMethodChannel?.invokeMethod(
             "on_physical_mouse_button",

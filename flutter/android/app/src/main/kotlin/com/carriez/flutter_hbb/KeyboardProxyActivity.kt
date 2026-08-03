@@ -33,7 +33,10 @@ class KeyboardProxyActivity : Activity() {
         private const val IME_RETRY_DELAY_MS = 350L
         private const val IME_LOSS_CLASSIFY_DELAY_MS = 120L
         private const val IME_RESTORE_DELAY_MS = 80L
-        private const val SOURCE_MOUSE_GRACE_MS = 1_000L
+        private const val SOURCE_MOUSE_GRACE_MS = 2_200L
+        private const val PRIMARY_MOUSE_GUARD_INTERVAL_MS = 48L
+        private const val PRIMARY_MOUSE_GUARD_MAX_MS = 650L
+        private const val PRIMARY_MOUSE_GUARD_AFTER_UP_MS = 180L
         private const val MAX_IME_REQUEST_ATTEMPTS = 16
         private const val FINISH_AFTER_HIDE_TIMEOUT_MS = 2_000L
         private const val DUPLICATE_COMMIT_WINDOW_MS = 250L
@@ -86,7 +89,20 @@ class KeyboardProxyActivity : Activity() {
     private var releaseRequested = false
     private var userLeavePending = false
     private var restoreImeInProgress = false
+    private var primaryMouseGuardUntilMs = 0L
     private val finishAfterHideTimeout = Runnable { completeHide() }
+    private val protectImeDuringPrimaryMouse = object : Runnable {
+        override fun run() {
+            if (!active || closeRequested || releaseRequested ||
+                !::editText.isInitialized ||
+                SystemClock.elapsedRealtime() > primaryMouseGuardUntilMs
+            ) {
+                return
+            }
+            keepImeStableDuringPrimaryMouse()
+            editText.postDelayed(this, PRIMARY_MOUSE_GUARD_INTERVAL_MS)
+        }
+    }
     private val classifyImeHidden = Runnable {
         if (!active || closeRequested || releaseRequested ||
             !::editText.isInitialized || lastLoggedImeVisible != false
@@ -429,6 +445,7 @@ class KeyboardProxyActivity : Activity() {
         releaseRequested = false
         userLeavePending = false
         restoreImeInProgress = false
+        primaryMouseGuardUntilMs = 0L
         imeRequestAttempts = 0
         imeShowAccepted = false
         lastForwardedText = ""
@@ -443,12 +460,61 @@ class KeyboardProxyActivity : Activity() {
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
+        editText.removeCallbacks(protectImeDuringPrimaryMouse)
         editText.isFocusable = true
         editText.isFocusableInTouchMode = true
         editText.requestFocus()
         window.decorView.requestFocus()
         ViewCompat.requestApplyInsets(window.decorView)
         editText.post(requestIme)
+    }
+
+    /**
+     * Keep the cross-display IME host in front only while a physical primary-button
+     * gesture is being dispatched on the source display. Android otherwise moves
+     * focus away from this Activity and starts hiding the IME before the delayed
+     * visibility callback can classify the loss.
+     *
+     * Secondary-button events cancel the guard immediately. This is important for
+     * devices that expose the right mouse button through both MotionEvent and
+     * KeyEvent: moving the keyboard task during that down/up pair can swallow its up.
+     */
+    fun onSourceMouseGesture(primaryDown: Boolean, pointerUp: Boolean, secondary: Boolean) {
+        if (!::editText.isInitialized) return
+        if (secondary) {
+            primaryMouseGuardUntilMs = 0L
+            editText.removeCallbacks(protectImeDuringPrimaryMouse)
+            return
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (primaryDown) {
+            primaryMouseGuardUntilMs = now + PRIMARY_MOUSE_GUARD_MAX_MS
+            editText.removeCallbacks(protectImeDuringPrimaryMouse)
+            // This method is called before the source Activity dispatches ACTION_DOWN.
+            // Reassert the keyboard task now so Android never starts its hide animation.
+            keepImeStableDuringPrimaryMouse()
+            editText.postDelayed(
+                protectImeDuringPrimaryMouse,
+                PRIMARY_MOUSE_GUARD_INTERVAL_MS
+            )
+        } else if (pointerUp && primaryMouseGuardUntilMs > now) {
+            primaryMouseGuardUntilMs = now + PRIMARY_MOUSE_GUARD_AFTER_UP_MS
+            editText.removeCallbacks(protectImeDuringPrimaryMouse)
+            editText.post(protectImeDuringPrimaryMouse)
+        }
+    }
+
+    private fun keepImeStableDuringPrimaryMouse() {
+        if (!active || closeRequested || releaseRequested || !::editText.isInitialized) return
+        requestTaskFocus("primary_mouse_guard")
+        editText.isFocusable = true
+        editText.isFocusableInTouchMode = true
+        if (!editText.isFocused) editText.requestFocus()
+        val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        if (inputMethodManager.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)) {
+            imeShowAccepted = true
+        }
+        ViewCompat.requestApplyInsets(window.decorView)
     }
 
     private fun requestTaskFocus(reason: String) {
@@ -496,10 +562,12 @@ class KeyboardProxyActivity : Activity() {
         restoreImeInProgress = false
         imeRequestAttempts = 0
         imeShowAccepted = false
+        primaryMouseGuardUntilMs = 0L
         if (!::editText.isInitialized) return
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
+        editText.removeCallbacks(protectImeDuringPrimaryMouse)
         window.decorView.removeCallbacks(applyParkedWindowFlags)
         val lostWindowFocus = !editText.hasWindowFocus()
         editText.clearFocus()
@@ -593,10 +661,12 @@ class KeyboardProxyActivity : Activity() {
         active = false
         closeRequested = true
         restoreImeInProgress = false
+        primaryMouseGuardUntilMs = 0L
         if (::editText.isInitialized) {
             editText.removeCallbacks(requestIme)
             editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(finishAfterHideTimeout)
+            editText.removeCallbacks(protectImeDuringPrimaryMouse)
             val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             inputMethodManager.hideSoftInputFromWindow(editText.windowToken, 0)
             editText.clearFocus()
@@ -658,6 +728,7 @@ class KeyboardProxyActivity : Activity() {
             editText.removeCallbacks(requestIme)
             editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(finishAfterHideTimeout)
+            editText.removeCallbacks(protectImeDuringPrimaryMouse)
         }
         window.decorView.removeCallbacks(applyParkedWindowFlags)
         KeyboardProxyManager.onActivityDestroyed(this, finishReason)

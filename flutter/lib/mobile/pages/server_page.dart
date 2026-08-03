@@ -342,7 +342,20 @@ class ServerInfo extends StatelessWidget {
               Text(
                 translate('One-time Password'),
                 style: textStyleHeading,
-              )
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  '（推荐使用固定密码）',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textStyleHeading.copyWith(
+                    fontSize: 10,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ),
             ]),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               Text(

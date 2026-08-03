@@ -183,9 +183,23 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun onSourceMouseEvent(displayId: Int) {
+    fun onSourceMouseEvent(
+        displayId: Int,
+        primaryDown: Boolean,
+        pointerUp: Boolean,
+        secondary: Boolean
+    ) {
         if ((state == "opening" || state == "visible") && displayId == sourceDisplayId) {
             lastSourceMouseEventAtMs = SystemClock.elapsedRealtime()
+            proxyActivity.get()?.onSourceMouseGesture(primaryDown, pointerUp, secondary)
+        }
+    }
+
+    @Synchronized
+    fun onSourceSecondaryMouseEvent(displayId: Int) {
+        if ((state == "opening" || state == "visible") && displayId == sourceDisplayId) {
+            lastSourceMouseEventAtMs = SystemClock.elapsedRealtime()
+            proxyActivity.get()?.onSourceMouseGesture(false, false, true)
         }
     }
 

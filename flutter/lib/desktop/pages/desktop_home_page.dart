@@ -317,11 +317,26 @@ class _DesktopHomePageState extends State<DesktopHomePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AutoSizeText(
-                    translate("One-time Password"),
-                    style: TextStyle(
-                        fontSize: 14, color: textColor?.withOpacity(0.5)),
-                    maxLines: 1,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: AutoSizeText(
+                          translate("One-time Password"),
+                          style: TextStyle(
+                              fontSize: 14, color: textColor?.withOpacity(0.5)),
+                          maxLines: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '（推荐使用固定密码）',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: textColor?.withOpacity(0.38),
+                        ),
+                      ),
+                    ],
                   ),
                   Row(
                     children: [
@@ -499,9 +514,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
               : "要允许远程查看和控制本机，请在 macOS 中授权 KEMI-远程桌面使用屏幕录制和辅助功能。",
           allPermissionsGranted ? "权限配置" : "去授权", () async {
         await _showMacPermissionGuideDialog(foreground: true);
-      },
-          help: '查看说明',
-          link: translate("doc_mac_permission"));
+      }, help: '查看说明', link: translate("doc_mac_permission"));
       //// Disable microphone configuration for macOS. We will request the permission when needed.
       // else if ((await osxCanRecordAudio() !=
       //     PermissionAuthorizeType.authorized)) {

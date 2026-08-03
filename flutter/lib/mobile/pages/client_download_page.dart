@@ -98,11 +98,10 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder:
-          (_) => _DownloadProgressDialog(
-            id: id,
-            platform: item['platform']?.toString() ?? '客户端',
-          ),
+      builder: (_) => _DownloadProgressDialog(
+        id: id,
+        platform: item['platform']?.toString() ?? '客户端',
+      ),
     );
     await _refreshStatus();
   }
@@ -156,10 +155,9 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         _status!['wifiNamePermissionGranted'] == true;
     final packages = (_status!['packages'] as List? ?? const []);
     final addresses = (_status!['addresses'] as List? ?? const []);
-    final metadata =
-        _status!['metadata'] is Map
-            ? _status!['metadata'] as Map
-            : const <dynamic, dynamic>{};
+    final metadata = _status!['metadata'] is Map
+        ? _status!['metadata'] as Map
+        : const <dynamic, dynamic>{};
     final metadataSource = metadata['source']?.toString() ?? 'cached';
     final metadataMessage = metadata['message']?.toString() ?? '';
     return ListView(
@@ -182,8 +180,8 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                     Text(
                       '客户端下载服务已开启',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                   ],
                 ),
@@ -201,9 +199,9 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                             style: Theme.of(
                               context,
                             ).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                         ] else if (!wifiNamePermissionGranted) ...[
                           const SizedBox(height: 3),
@@ -228,21 +226,20 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                         _AddressBox(url: url, onCopy: () => _copyUrl(url)),
                       ],
                     );
-                    final qr =
-                        url.isEmpty
-                            ? const SizedBox.shrink()
-                            : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                QrImageView(
-                                  data: url,
-                                  size: 152,
-                                  backgroundColor: Colors.white,
-                                ),
-                                const SizedBox(height: 6),
-                                const Text('扫码打开（与输入网址二选一）'),
-                              ],
-                            );
+                    final qr = url.isEmpty
+                        ? const SizedBox.shrink()
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              QrImageView(
+                                data: url,
+                                size: 152,
+                                backgroundColor: Colors.white,
+                              ),
+                              const SizedBox(height: 6),
+                              const Text('扫码打开（与输入网址二选一）'),
+                            ],
+                          );
                     if (constraints.maxWidth < 700 || url.isEmpty) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,19 +268,18 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                 if (addresses.length > 1)
                   ExpansionTile(
                     title: const Text('其他可用地址'),
-                    children:
-                        addresses
-                            .map(
-                              (address) => ListTile(
-                                dense: true,
-                                title: Text(address.toString()),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.copy_outlined),
-                                  onPressed: () => _copyUrl(address.toString()),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                    children: addresses
+                        .map(
+                          (address) => ListTile(
+                            dense: true,
+                            title: Text(address.toString()),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.copy_outlined),
+                              onPressed: () => _copyUrl(address.toString()),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
               ],
             ),
@@ -312,16 +308,15 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   metadataSource == 'newlink_https'
                       ? '已解析 Newlink HTTPS 最新地址；PAD 校验成功后才对外提供。'
                       : metadataSource == 'github_fallback'
-                      ? '云盘暂不可用，当前使用 GitHub 备用源。'
-                      : metadataMessage.isNotEmpty
-                      ? metadataMessage
-                      : '正在解析云端实时地址……',
+                          ? '云盘暂不可用，当前使用 GitHub 备用源。'
+                          : metadataMessage.isNotEmpty
+                              ? metadataMessage
+                              : '正在解析云端实时地址……',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color:
-                        metadataSource == 'newlink_https'
+                        color: metadataSource == 'newlink_https'
                             ? Colors.green.shade700
                             : Theme.of(context).colorScheme.secondary,
-                  ),
+                      ),
                 ),
                 const SizedBox(height: 12),
                 if (packages.isEmpty)
@@ -330,10 +325,9 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   ...packages.map(
                     (item) => _PackageRow(
                       item: item is Map ? item : const <String, dynamic>{},
-                      onTap:
-                          () => _downloadPackage(
-                            item is Map ? item : const <String, dynamic>{},
-                          ),
+                      onTap: () => _downloadPackage(
+                        item is Map ? item : const <String, dynamic>{},
+                      ),
                     ),
                   ),
               ],
@@ -361,28 +355,28 @@ class _AddressBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(9),
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: SelectableText(
-            url,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 16),
-          ),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(9),
         ),
-        IconButton(
-          tooltip: '复制网址',
-          icon: const Icon(Icons.copy_outlined),
-          onPressed: onCopy,
+        child: Row(
+          children: [
+            Expanded(
+              child: SelectableText(
+                url,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 16),
+              ),
+            ),
+            IconButton(
+              tooltip: '复制网址',
+              icon: const Icon(Icons.copy_outlined),
+              onPressed: onCopy,
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _PackageRow extends StatelessWidget {
@@ -413,33 +407,30 @@ class _PackageRow extends StatelessWidget {
           Text([detail, if (version.isNotEmpty) '版本 $version'].join(' · ')),
         ],
       ),
-      trailing:
-          available
-              ? const Icon(Icons.check_circle_outline, color: Colors.green)
-              : downloading
+      trailing: available
+          ? const Icon(Icons.check_circle_outline, color: Colors.green)
+          : downloading
               ? _CircularDownloadProgress(
-                value: state == 'verifying' ? null : progress,
-                label:
-                    state == 'verifying'
-                        ? '校验'
-                        : '${((progress ?? 0) * 100).floor()}%',
-              )
+                  value: state == 'verifying' ? null : progress,
+                  label: state == 'verifying'
+                      ? '校验'
+                      : '${((progress ?? 0) * 100).floor()}%',
+                )
               : const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('点击下载'),
-                  SizedBox(width: 3),
-                  Icon(Icons.download_outlined),
-                ],
-              ),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('点击下载'),
+                    SizedBox(width: 3),
+                    Icon(Icons.download_outlined),
+                  ],
+                ),
     );
   }
 
   Widget _platformIcon(BuildContext context, String platform, bool available) {
-    final color =
-        available
-            ? Theme.of(context).colorScheme.primary
-            : Theme.of(context).disabledColor;
+    final color = available
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).disabledColor;
     final normalized = platform.toLowerCase();
     if (normalized.contains('macos')) {
       return Icon(Icons.apple, size: 28, color: color);
@@ -448,8 +439,8 @@ class _PackageRow extends StatelessWidget {
         normalized.contains('android') || normalized.contains('pad')
             ? 'assets/android.svg'
             : normalized.contains('linux')
-            ? 'assets/linux.svg'
-            : null;
+                ? 'assets/linux.svg'
+                : null;
     if (asset != null) {
       return SvgPicture.asset(
         asset,
@@ -470,26 +461,26 @@ class _CircularDownloadProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 42,
-    height: 42,
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        SizedBox(
-          width: 38,
-          height: 38,
-          child: CircularProgressIndicator(value: value, strokeWidth: 3),
+        width: 42,
+        height: 42,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 38,
+              height: 38,
+              child: CircularProgressIndicator(value: value, strokeWidth: 3),
+            ),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontSize: label.length > 3 ? 9 : 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
         ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            fontSize: label.length > 3 ? 9 : 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 }
 
 class _DownloadProgressDialog extends StatefulWidget {
@@ -508,6 +499,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
   Map<dynamic, dynamic> _item = const {};
   String? _error;
   var _done = false;
+  var _metadataSource = 'newlink_https';
 
   @override
   void initState() {
@@ -544,13 +536,17 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
     final status = await gFFI.invokeMethod('client_distribution_status');
     if (!mounted || status is! Map) return;
     final packages = status['packages'] as List? ?? const [];
+    final metadata = status['metadata'];
     final item = packages.cast<dynamic>().firstWhere(
-      (item) => item is Map && item['id'] == widget.id,
-      orElse: () => const <String, dynamic>{},
-    );
+          (item) => item is Map && item['id'] == widget.id,
+          orElse: () => const <String, dynamic>{},
+        );
     if (item is! Map) return;
     setState(() {
       _item = item;
+      if (metadata is Map) {
+        _metadataSource = metadata['source']?.toString() ?? _metadataSource;
+      }
       _error = item['state'] == 'error' ? item['message']?.toString() : null;
       _done = item['available'] == true;
     });
@@ -569,6 +565,8 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
     final progress = total > 0 ? (downloaded / total).clamp(0.0, 1.0) : null;
     final percent =
         progress == null ? '' : ' ${(progress * 100).toStringAsFixed(0)}%';
+    final sourceLabel =
+        _metadataSource == 'github_fallback' ? 'GitHub 备用源' : '新智联云盘';
     return AlertDialog(
       title: Text('准备 ${widget.platform} 客户端'),
       content: SizedBox(
@@ -578,30 +576,29 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
           children: [
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
-              child:
-                  _done
-                      ? const Icon(
-                        Icons.check_circle,
-                        key: ValueKey('done'),
-                        color: Colors.green,
-                        size: 54,
-                      )
-                      : SizedBox(
-                        key: const ValueKey('progress'),
-                        width: 54,
-                        height: 54,
-                        child: CircularProgressIndicator(
-                          value: state == 'verifying' ? null : progress,
-                        ),
+              child: _done
+                  ? const Icon(
+                      Icons.check_circle,
+                      key: ValueKey('done'),
+                      color: Colors.green,
+                      size: 54,
+                    )
+                  : SizedBox(
+                      key: const ValueKey('progress'),
+                      width: 54,
+                      height: 54,
+                      child: CircularProgressIndicator(
+                        value: state == 'verifying' ? null : progress,
                       ),
+                    ),
             ),
             const SizedBox(height: 16),
             Text(
               _done
                   ? '下载并校验完成'
                   : state == 'verifying'
-                  ? '正在校验文件…'
-                  : '正在从 GitHub 下载$percent',
+                      ? '正在校验文件…'
+                      : '正在从$sourceLabel下载$percent',
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -634,26 +631,26 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_outlined, size: 46),
-          const SizedBox(height: 14),
-          const Text('无法启动客户端下载服务'),
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Text(error!, textAlign: TextAlign.center),
-          ],
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('重试'),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_outlined, size: 46),
+              const SizedBox(height: 14),
+              const Text('无法启动客户端下载服务'),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!, textAlign: TextAlign.center),
+              ],
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重试'),
+              ),
+            ],
           ),
-        ],
-      ),
-    ),
-  );
+        ),
+      );
 }
