@@ -2,6 +2,14 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十一、2026-08-03 副屏键盘与远控鼠标并行操作（PAD 1.4.48+130）
+
+- 已完成此前只做一半的“键盘打开后，远控屏鼠标操作不能自动关闭键盘”。真机日志确认：鼠标点击远控画面后，Android 会把全局 IME 焦点从键盘所在显示临时切回远控显示；但双屏 ROM 上键盘代理的 `hasWindowFocus()` 仍可能保持 `true`。旧代码仅凭窗口焦点判断隐藏原因，因此在 120ms 后错误发布 `user_hidden`，并非 Flutter 键盘按钮或远端输入协议主动关闭。
+- `MainActivity`与`RemoteActivity`现在只记录来自`InputDevice.SOURCE_MOUSE`且发生在当前远控源显示的事件；`KeyboardProxyManager`将事件时间与当前 request/source display 绑定。IME 隐藏分类命中该时间窗时，代理恢复原有 task 与输入法，不进入`closing/hidden`；触摸事件和另一显示的事件不会伪造该判据。
+- 恢复过程增加进行中门禁：一次鼠标切焦只允许发起一次恢复，直到 IME 重新真实可见，避免同一轮 insets 连续变化导致重复`moveTaskToFront/showSoftInput`。HOME/任务切换不再仅凭`onUserLeaveHint()`立即释放，而是在键盘代理 Activity 真正`onStop()`后确认；键盘栏按钮的`close_requested`仍是独立明确关闭通道。
+- 正确真机`192.168.3.63:5555`覆盖安装后回读`versionName=1.4.48 / versionCode=130`。远控位于 Display 0、键盘位于 Display 2；两次相隔约5秒的鼠标单击（并覆盖移动、滚轮）都仅各触发一次`sourceMouse=true`恢复，最终均为`mCurTokenDisplayId=2 / mInputShown=true`，没有`user_hidden/closing/hidden`。随后点击键盘按钮得到`close_requested`与`mInputShown=false`，再次点击进入 request 3 并恢复`mInputShown=true`。
+- 固定签名Release为24,115,743字节，SHA-256为`4c043fcfff3c413e21260f338310a4153d9477aafa00bcfc2ba4790f45d07b3e`；仅含`arm64-v8a`，zipalign通过，v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。完整原理和回归门禁见`kemi-docs/cross-display-keyboard.md`第20节。
+
 ## 七十、2026-08-03 服务器状态、会话收尾、Mac 设置保护与账户入口收敛（候选 1.4.48+129）
 
 - KEMI 后端使用开源 `hbbs/hbbr 1.1.16`，不提供 Pro 账户和 `21114` API。此前账户 UI 依赖运行时 `disable-account`，桌面首帧若早于硬配置加载会偶发显示“登录”。四端共用的 Flutter FFI 入口现固定报告账户功能禁用，Mac、Windows、Linux、PAD 的账户页、登录按钮和依赖账户的备注入口保持一致隐藏；不删除远控目标系统的 OS 账号/密码输入功能。

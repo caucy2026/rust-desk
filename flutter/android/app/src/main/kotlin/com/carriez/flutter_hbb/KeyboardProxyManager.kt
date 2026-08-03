@@ -5,6 +5,7 @@ import android.content.Context
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Display
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -31,6 +32,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private var proxyActivity = WeakReference<KeyboardProxyActivity>(null)
     private var displayManager: DisplayManager? = null
     private var preparingRequestId = 0L
+    private var lastSourceMouseEventAtMs = 0L
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
@@ -115,6 +117,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         targetDisplayId = targetId
         channel = methodChannel
         state = "opening"
+        lastSourceMouseEventAtMs = 0L
         displayManager = manager
         manager.registerDisplayListener(this, mainHandler)
         publishState("open_requested")
@@ -177,6 +180,21 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         } else if (!visible && state == "visible") {
             close("user_hidden", activityRequestId)
         }
+    }
+
+    @Synchronized
+    fun onSourceMouseEvent(displayId: Int) {
+        if ((state == "opening" || state == "visible") && displayId == sourceDisplayId) {
+            lastSourceMouseEventAtMs = SystemClock.elapsedRealtime()
+        }
+    }
+
+    @Synchronized
+    fun hadRecentSourceMouseEvent(activityRequestId: Long, withinMs: Long): Boolean {
+        if (activityRequestId != requestId || state == "hidden" || lastSourceMouseEventAtMs == 0L) {
+            return false
+        }
+        return SystemClock.elapsedRealtime() - lastSourceMouseEventAtMs <= withinMs
     }
 
     @Synchronized
@@ -280,6 +298,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         state = "hidden"
         publishState(reason)
         sessionId = ""
+        lastSourceMouseEventAtMs = 0L
         if (keepPreparedActivity) {
             preparingRequestId = 0L
         } else {

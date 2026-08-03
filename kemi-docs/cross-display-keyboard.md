@@ -958,3 +958,54 @@ Future<dynamic> invokeMethod(String method, [dynamic arguments]) async { ... }
 - 共15次打开，没有 `Refuse IME on unexpected display`、`display_mismatch`或 task 迁移到 Display 2。
 
 后续修改跨屏键盘时，至少重复“首次打开→输入法收起→再次打开”10轮，并额外覆盖一次“HOME→副屏再打开”。只验证第一次弹出不能证明复用路径正确。
+
+## 20. 远控鼠标操作与副屏键盘共存（2026-08-03，PAD +130）
+
+### 20.1 已证实的根因
+
+当键盘位于 Display 2、远控画面位于 Display 0 时，鼠标点击远控画面会让厂商 Android 12 把全局 IME token 临时切到 Display 0。输入法先报告`visible=false`，但 Display 2 上的代理 Activity 仍可能同时报告`hasWindowFocus=true`。因此下面的旧判据不成立：
+
+```text
+IME hidden + host hasWindowFocus == 用户主动收起
+```
+
+`1.4.48+129`真机日志明确出现`IME insets visible=false ... windowFocus=true`，紧接着被分类为`Confirmed user IME hide`和`state=closing reason=user_hidden`。系统确实切走了输入法，但最终关闭是客户端误判造成的。
+
+### 20.2 修复后的判定链
+
+```text
+远控源显示收到 SOURCE_MOUSE
+        │
+        ├─ Manager状态为 opening/visible？
+        ├─ event display == sourceDisplayId？
+        └─ 记录 elapsedRealtime
+                │
+IME随后报告隐藏 ─┴─ 120ms分类
+        │
+        ├─ 最近1秒有当前request的源显示鼠标事件 → 恢复IME，状态保持visible
+        ├─ 代理窗口真实失焦                         → 恢复IME
+        └─ 两者都不是                              → 用户主动收起，正常close
+```
+
+主、副屏两个远控 Activity 都在`dispatchTouchEvent`和`dispatchGenericMotionEvent`入口记录事件，但只接受 Android 原生`InputDevice.SOURCE_MOUSE`。记录早于物理鼠标右键兼容层消费事件，因此左键、右键、移动和滚轮都能覆盖；显示 ID 不匹配、代理已隐藏或普通触摸不会刷新时间。
+
+恢复中使用`restoreImeInProgress`做单飞门禁。开始恢复后，后续`visible=false`只更新日志，不重复移动 task；只有输入法重新真实可见，或用户/生命周期明确关闭时才清除门禁。
+
+### 20.3 明确关闭仍保持独立
+
+- 用户再次点击远控栏“键盘”：Flutter直接发`keyboard_proxy_close(requestId)`，不经过隐藏原因猜测。
+- 输入法自身返回/收起且没有源显示鼠标事件：仍按`user_hidden`关闭。
+- HOME或任务切换：`onUserLeaveHint()`只标记待确认；代理 Activity 真正进入`onStop()`后才按`home_pressed`或`keyboard_host_stopped`释放。跨屏鼠标焦点变化如果没有停止 Activity，就不能冒充 HOME。
+- 远控页面退出、会话销毁和目标显示移除：继续走原有 release 通道，不受鼠标保持逻辑影响。
+
+### 20.4 真机闭环与后续门禁
+
+设备`192.168.3.63:5555`，PAD`1.4.48+130`：
+
+1. 打开键盘后回读`mCurTokenDisplayId=2`、`mInputShown=true`。
+2. Display 0执行鼠标单击、移动、滚轮；日志一次命中`sourceMouse=true`，IME恢复后仍在Display 2。
+3. 约5秒后再次鼠标单击，产生第二次独立恢复；最终仍为`mInputShown=true`，状态始终没有发布`closing/hidden`。
+4. 点击远控栏键盘按钮，状态按`close_requested → hidden`且`mInputShown=false`。
+5. 再次点击，复用同一代理task进入新request并恢复`mInputShown=true`。
+
+以后修改跨屏键盘、物理鼠标或 Activity 生命周期时，必须同时验证“鼠标不关闭”和“用户按钮仍能关闭/重开”。只看画面或只看`hasWindowFocus()`都不能作为通过依据，必须同时读取Manager状态、IME token display和`mInputShown`。

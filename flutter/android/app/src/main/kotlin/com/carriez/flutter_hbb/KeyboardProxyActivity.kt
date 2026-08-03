@@ -33,6 +33,7 @@ class KeyboardProxyActivity : Activity() {
         private const val IME_RETRY_DELAY_MS = 350L
         private const val IME_LOSS_CLASSIFY_DELAY_MS = 120L
         private const val IME_RESTORE_DELAY_MS = 80L
+        private const val SOURCE_MOUSE_GRACE_MS = 1_000L
         private const val MAX_IME_REQUEST_ATTEMPTS = 16
         private const val FINISH_AFTER_HIDE_TIMEOUT_MS = 2_000L
         private const val DUPLICATE_COMMIT_WINDOW_MS = 250L
@@ -83,6 +84,8 @@ class KeyboardProxyActivity : Activity() {
     private var active = false
     private var closeRequested = false
     private var releaseRequested = false
+    private var userLeavePending = false
+    private var restoreImeInProgress = false
     private val finishAfterHideTimeout = Runnable { completeHide() }
     private val classifyImeHidden = Runnable {
         if (!active || closeRequested || releaseRequested ||
@@ -90,10 +93,15 @@ class KeyboardProxyActivity : Activity() {
         ) {
             return@Runnable
         }
-        if (!editText.hasWindowFocus()) {
+        val recentSourceMouse = KeyboardProxyManager.hadRecentSourceMouseEvent(
+            requestId,
+            SOURCE_MOUSE_GRACE_MS
+        )
+        if (!editText.hasWindowFocus() || recentSourceMouse) {
             Log.i(
                 TAG,
-                "Restore IME after external focus loss display=${display?.displayId} request=$requestId"
+                "Restore IME after external focus loss display=${display?.displayId} " +
+                    "windowFocus=${editText.hasWindowFocus()} sourceMouse=$recentSourceMouse request=$requestId"
             )
             restoreImeAfterExternalFocusLoss()
         } else {
@@ -419,6 +427,8 @@ class KeyboardProxyActivity : Activity() {
         active = true
         closeRequested = false
         releaseRequested = false
+        userLeavePending = false
+        restoreImeInProgress = false
         imeRequestAttempts = 0
         imeShowAccepted = false
         lastForwardedText = ""
@@ -483,6 +493,7 @@ class KeyboardProxyActivity : Activity() {
         active = false
         closeRequested = false
         releaseRequested = false
+        restoreImeInProgress = false
         imeRequestAttempts = 0
         imeShowAccepted = false
         if (!::editText.isInitialized) return
@@ -534,15 +545,18 @@ class KeyboardProxyActivity : Activity() {
         if (visible) {
             editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(requestIme)
+            restoreImeInProgress = false
             KeyboardProxyManager.onImeVisibilityChanged(requestId, true)
         } else if (active && !closeRequested) {
             // On this dual-screen Android build, clicking the remote display temporarily
             // removes focus from the IME host on the other display. Insets report hidden
             // before the window-focus callback arrives, so classify the cause after one
-            // short grace period. A focused host means the user pressed the IME's own
-            // hide control; a non-focused host means mouse/display focus stole the IME.
-            editText.removeCallbacks(classifyImeHidden)
-            editText.postDelayed(classifyImeHidden, IME_LOSS_CLASSIFY_DELAY_MS)
+            // short grace period. The source Activity's real mouse-event timestamp is
+            // authoritative because a per-display host can still report window focus.
+            if (!restoreImeInProgress) {
+                editText.removeCallbacks(classifyImeHidden)
+                editText.postDelayed(classifyImeHidden, IME_LOSS_CLASSIFY_DELAY_MS)
+            }
         } else {
             KeyboardProxyManager.onImeVisibilityChanged(requestId, false)
         }
@@ -551,6 +565,7 @@ class KeyboardProxyActivity : Activity() {
 
     private fun restoreImeAfterExternalFocusLoss() {
         if (!active || closeRequested || releaseRequested || !::editText.isInitialized) return
+        restoreImeInProgress = true
         imeRequestAttempts = 0
         imeShowAccepted = false
         requestTaskFocus("external_focus_loss")
@@ -566,6 +581,7 @@ class KeyboardProxyActivity : Activity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && active && !closeRequested && ::editText.isInitialized) {
+            userLeavePending = false
             editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(requestIme)
             editText.post(requestIme)
@@ -576,6 +592,7 @@ class KeyboardProxyActivity : Activity() {
         finishReason = reason
         active = false
         closeRequested = true
+        restoreImeInProgress = false
         if (::editText.isInitialized) {
             editText.removeCallbacks(requestIme)
             editText.removeCallbacks(classifyImeHidden)
@@ -619,9 +636,20 @@ class KeyboardProxyActivity : Activity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!releaseRequested) {
-            Log.i(TAG, "HOME/user leave: release keyboard proxy task=$taskId request=$requestId")
-            KeyboardProxyManager.release("home_pressed")
+        if (active && !closeRequested && !releaseRequested) {
+            // A pointer event on another display may produce this callback even though
+            // this per-display Activity remains resumed. Confirm HOME from onStop().
+            userLeavePending = true
+            Log.i(TAG, "User leave pending task=$taskId request=$requestId")
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (active && !closeRequested && !releaseRequested) {
+            val reason = if (userLeavePending) "home_pressed" else "keyboard_host_stopped"
+            Log.i(TAG, "Keyboard host stopped: release reason=$reason task=$taskId request=$requestId")
+            KeyboardProxyManager.release(reason)
         }
     }
 

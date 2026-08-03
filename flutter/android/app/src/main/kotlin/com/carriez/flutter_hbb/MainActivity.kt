@@ -29,6 +29,7 @@ import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
@@ -449,13 +450,21 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        noteKeyboardProxyMouseEvent(event)
         if (physicalMouseRightButton.handleMotionEvent(event)) return true
         return super.dispatchTouchEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        noteKeyboardProxyMouseEvent(event)
         if (physicalMouseRightButton.handleMotionEvent(event)) return true
         return super.dispatchGenericMotionEvent(event)
+    }
+
+    private fun noteKeyboardProxyMouseEvent(event: MotionEvent) {
+        if (event.source and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE) {
+            KeyboardProxyManager.onSourceMouseEvent(display?.displayId ?: Display.DEFAULT_DISPLAY)
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
