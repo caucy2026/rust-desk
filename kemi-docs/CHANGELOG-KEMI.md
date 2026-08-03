@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十二、2026-08-03 文件传输窗口跨屏独立显示（PAD 1.4.48+138）
+
+- 原实现从远控页调用 `showGeneralDialog`，文件传输浮窗属于当前远控 Activity 的 Flutter 路由，因此只能覆盖在远控画面上；Flutter 单个 Activity 无法把同一路由绘制到另一块物理屏幕，这就是此前“文件窗口叠在当前屏”的根本原因。
+- 双屏 Android 现在由当前远控 Activity 请求原生 `FileTransferActivity`，并通过 `ActivityOptions.launchDisplayId` 启动到对面屏：远控位于 Display 0 时文件传输去当前开启的副屏，远控位于副屏时文件传输回 Display 0。目标屏不存在或系统拒绝跨屏启动时，保留原 60% 同屏浮窗作为单屏兼容路径。
+- `FileTransferActivity` 使用独立 FlutterEngine 和专用入口 `crossDisplayFileTransferMain`，但复用现有 `FileManagerPage` 界面、传输记录和目录逻辑；文件传输建立独立 UUID/FFI 会话，远控视频 Session 不关闭、不重连，两个窗口的生命周期互不覆盖。
+- 关闭跨屏文件窗口时严格按“停止任务回调 → 关闭 FileModel → 关闭文件 FFI → 结束 Activity”执行，并用状态位阻止 `dispose` 重复关闭。打开前先释放跨屏键盘代理，避免键盘窗口、文件窗口争夺对面屏焦点。
+- 真机 `192.168.3.63:5555` 双向验证通过：Display 0 远控可将文件窗口打开到 Display 2，Display 2 远控也可将文件窗口打开到 Display 0；Activity 状态和两屏截图确认没有叠加。实测浏览 Mac 远端目录并下载文件成功，关闭后日志出现独立文件模型 `closed`，副屏 `MainActivity` 仍保持 RESUMED、远程画面继续显示。
+- 版本升级为 `1.4.48+138`，源码冻结提交为 `9c251b1dc5a5b8c614b68492fc608ddaca3122b6`。固定签名 Release APK 为 24,121,777 字节，SHA-256 为 `dad1908b6b8ca90081d7a0be95729628eb543382b2dca3e5df60ea4c6b4c0e87`；包名 `com.newlinksz.kemi.remote`、仅 `arm64-v8a`，v1/v2 签名有效，固定证书 SHA-256 保持 `8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+
 ## 七十一、2026-08-03 跨屏键盘与物理鼠标最终闭环（PAD 1.4.48+137）
 
 - 最终需求是：软键盘显示在远控画面对面屏幕后，用户在远控画面使用物理鼠标左键、移动和右键都不能关闭或闪动键盘；只有键盘按钮、输入法收起键、HOME、会话结束等明确动作可以关闭。`+130`只在IME已经隐藏后延迟恢复，避免了永久关闭，却仍会出现一次肉眼可见的“隐藏→重开”；因此原先把`+130`写成闭环通过是不准确的，本节以`+137`结论取代。
