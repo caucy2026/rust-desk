@@ -2,7 +2,7 @@
 
 > 快照日期：2026-08-03
 >
-> 云端基线：`backup/master = 8b5debdaceccebcbf4d6913e155cec03b82d44c5`
+> 源码候选与云端基线：`backup/master = eef2e0c0222c0701c3fea6137907d933c8da8921`
 >
 > 候选版本：`1.4.48+129`
 >
@@ -69,15 +69,15 @@
 
 | 风险 | 必须完成的验证 | 当前状态 |
 |---|---|---|
-| KEMI 服务器/公钥在四端一致 | 二进制检索域名与公钥；运行时配置回读 | Mac/PAD 二进制已逐字检出，Windows/Linux 待同 commit 云端产物 |
+| KEMI 服务器/公钥在四端一致 | 二进制检索域名与公钥；运行时配置回读 | Mac/PAD 二进制已逐字检出；Windows/Linux由同commit focused workflow应用受控服务器patch并构建成功，真实系统运行时回读仍待跨平台验收 |
 | Mac/PAD 登录 UI 消失 | 首页、设置页检查无账户 tab/登录按钮 | Mac `1.4.48 (129)` 首页实测只保留“主页/设置”；共用 FFI 固定禁用账户，待 Windows/Linux 包启动复核 |
 | PAD 双屏断开不残留连接 | 连接、断开、立即重连；Mac 日志无旧 connection count | 待 build 129 真机验证 |
 | Mac 设置蒙层不锁死本机 | 远端进入设置、本地鼠标解除；远端鼠标仍不可修改 | 待 build 129 双端验证 |
 | PAD 状态条不误导 | 服务器断网显示离线；服务器在线显示就绪；文档注明绿色不等于视频已建立 | `192.168.43.11` 实测从橙色探测切到绿色“服务器已连接”；断网路径待测 |
 | libvpx 绑定一致 | Mac 建立视频并持续出帧，无 ABI mismatch | Mac/PAD `+129` 实际连接已出首帧，无 ABI mismatch；持续会话仍需发布后抽测 |
 | Android native 库完整 | `readelf`/APK 构建无 sodium 未解析符号，固定签名不变 | arm64 Rust Release 与 APK 构建通过；无 sodium 未解析符号；证书 SHA-256 仍为 `8546d03e…1871a2` |
-| Windows/Linux 与同一源码对应 | focused run 绑定唯一 commit，下载 artifact 后核对 manifest/SHA | 待候选提交与云端构建 |
-| release 六文件不混批 | 四端齐备后才重写 manifest/SHA，`release-manifest` 最后上传 | 待四端齐备 |
+| Windows/Linux 与同一源码对应 | focused run 绑定唯一 commit，下载 artifact 后核对 manifest/SHA | run `30795669077`成功；manifest绑定`eef2e0c02`，Windows SHA `ab1c63e…e24f`，Linux SHA `dfa36bd…cfc2` |
+| release 六文件不混批 | 四端齐备后才重写 manifest/SHA，`release-manifest` 最后上传 | 四端同批次文件、SHA清单和manifest已整体生成；等待用户按顺序上传，manifest必须最后 |
 
 ## 5. 已执行的构建与静态检查
 
@@ -86,7 +86,7 @@
 - Android arm64 Rust Release、固定签名 APK：通过；包内版本 `1.4.48+129`、包名 `com.newlinksz.kemi.remote`、v1/v2 签名有效。
 - macOS arm64 Rust Release、Flutter App、固定本地证书深度签名：通过；包内版本 `1.4.48 (129)`，主程序、`service`、Rust dylib 均为 arm64。
 - Mac/PAD 实际连通：PAD 状态条变绿并成功取得 Mac 首帧；断开导航边界在 review 中进一步改为直接操作根 Navigator，最终包需再做断开重连抽测。
-- GitHub Actions 推送前检查：上一 focused run `30731531135` 已成功结束，当前没有进行中任务，不会因新提交取消旧构建。
+- GitHub Actions：focused run `30795669077`已成功完成bridge、Windows x64、Linux x86_64、AppImage和最终manifest；发布tag为`kemi-client-eef2e0c0222c0701c3fea6137907d933c8da8921`。
 
 ## 6. 提交与发布规则
 

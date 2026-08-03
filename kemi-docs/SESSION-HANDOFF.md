@@ -3,11 +3,11 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-08-03
-> 当前全端源码候选：`1.4.48+129`；本地未提交项和风险门禁见`LOCAL-CHANGE-REVIEW.md`。四端新包尚未全部齐备，`BIN/release`稳定清单仍为`1.4.48+125`，不得混批。
+> 当前全端发布批次：`1.4.48+129`，源码`eef2e0c0222c0701c3fea6137907d933c8da8921`；风险门禁见`LOCAL-CHANGE-REVIEW.md`。`BIN/release`六文件已按同一批次对齐，等待Newlink云盘人工上传和回读验收。
 > 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
-当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。现有稳定批次来自候选提交`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`：PAD为`1.4.48+125`，macOS为`1.4.48 (125)`，Windows/Linux为`1.4.48`。正在准备的`+129`必须在同一候选commit四端齐备后一次性更新，不能先替换其中一部分。
+当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。当前批次来自候选提交`eef2e0c0222c0701c3fea6137907d933c8da8921`：PAD为`1.4.48+129`，macOS为`1.4.48 (129)`，Windows/Linux产品版本为`1.4.48`并由focused run `30795669077`生成。六项必须按客户端、SHA清单、manifest的顺序整体上传，禁止只覆盖其中一部分。
 
 Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行`flutter build windows`或自行升级工具链。
 
@@ -58,7 +58,7 @@ Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`�
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
 - Android 首页“客户端”是临时局域网安装包分发页：进入页立即解析Newlink固定接口并启动HTTP服务，离开页或销毁App关闭HTTP服务；只允许白名单下载路由。PAD与下载设备必须同一Wi-Fi；四端文件只有完成大小、SHA-256和接口MD5校验后才显示为可下载，不再在构建APK前塞入`assets/client-dist`。详见`client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.48、Cargo.lock rustdesk=1.4.48、flutter/pubspec.yaml=1.4.48+125；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
+- 当前源码版本必须一致：Cargo.toml=1.4.48、Cargo.lock rustdesk=1.4.48、flutter/pubspec.yaml=1.4.48+129；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
 - Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`res/rpm*.spec` 与 `res/PKGBUILD` 当前均为 `1.4.48`；生成安装包后必须读取包内版本复核，不能只看文件名。
 - UDP打洞是否发起由客户端决定：空的`enable-udp-punch`默认解释为开启，明确保存`N`才关闭；自建服务器不得再触发客户端默认关闭。服务端只负责UDP协调并保证`21116/UDP`可达，不存在额外的“默认开启客户端UDP打洞”服务端开关。
 
@@ -454,13 +454,13 @@ _homeDir = '$storageDir/Download';
 |---|---|
 | `Cargo.toml` | `version = "1.4.48"` |
 | `Cargo.lock` 的 rustdesk package | `version = "1.4.48"` |
-| `flutter/pubspec.yaml` | `version: 1.4.48+125` |
+| `flutter/pubspec.yaml` | `version: 1.4.48+129` |
 
 Android 最终应显示：
 
 ```text
 versionName=1.4.48
-versionCode=125
+versionCode=129
 ```
 
 ### 9.2 首页版本号
@@ -482,7 +482,7 @@ ID服务器：kemi-chat.newlinksz.com
 
 - Flutter启动入口在`initGlobalFFI()`之后调用`_applyKemiServerConfig()`：先写公钥，再写服务器；这条路径让现成已验证Rust核心无需重编也能生成MAC/PAD候选。
 - `libs/hbb_common/src/config.rs`同时保存产品默认服务器和公钥，保证以后全量重编的四端核心默认一致。
-- `libs/hbb_common`是上游子模块，KEMI默认值不能只停留在本机dirty子模块。云端构建在checkout后必须应用受版本控制的`.github/patches/kemi_hbb_common_server.diff`；本地全量构建仍直接使用当前子模块源码。候选`a5ff428b5`的Windows/Linux focused run已验证这两条路径一致。
+- `libs/hbb_common`是上游子模块，KEMI默认值不能只停留在本机dirty子模块。云端构建在checkout后必须应用受版本控制的`.github/patches/kemi_hbb_common_server.diff`；本地全量构建仍直接使用当前子模块源码。候选`eef2e0c02`的Windows/Linux focused run `30795669077`已验证这两条路径一致。
 - MAC实测到`119.96.24.110:21116`建立长连接，`21117`可达。开源服务端没有`21114`账户API，相关拒绝日志不得误判成hbbs/hbbr离线。
 - 服务器私钥不得写入客户端或Git；服务器公钥变化属于重大迁移，必须先核对`/var/lib/kemi-rustdesk-server/id_ed25519.pub`，再统一更新四端。
 

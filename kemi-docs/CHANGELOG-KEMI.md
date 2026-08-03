@@ -12,7 +12,9 @@
 - 2026-08-03 一次“服务器绿色但无画面”并非服务器故障：磁盘 App 在 11:56 被覆盖，10:26 启动的旧进程仍在运行，CoreGraphics 采集流持续返回 null。12:08 完整退出旧进程并启动新 App 后，PAD 连续两次断开重连均正常出画面。Mac 部署流程新增硬性要求：先结束旧进程，再替换 App、校验签名并启动，禁止运行中覆盖。
 - Review 剔除了仅由本机 CocoaPods 版本差异造成的 `Podfile.lock` checksum 噪声，并补齐副屏通道为空时的异常清理。完整 18 个源码项、子模块默认服务器改动、风险等级和发布门禁见 `kemi-docs/LOCAL-CHANGE-REVIEW.md`。
 - 真机首帧与断开复核还发现异步 `sessionClose` 等待期间不应继续复用旧 route context；移动端确认断开现直接通过根 Navigator 返回首 route，避免 native 会话已经关闭但主屏仍停在最后一帧工具栏。主屏转发副屏虚拟键时同步保留 `down/up`，不再把按下和释放各转换成一次完整按键。
-- 候选构建号提升到 `1.4.48+129`。当前 `BIN/release` 仍是上一批 `+125`，四端新包未齐备前不得改写稳定 manifest；Windows/Linux 必须绑定本批次唯一 commit 走 focused workflow，Mac/PAD本地构建也必须记录同一 commit 和 SHA-256。
+- 候选构建号提升到 `1.4.48+129`并冻结源码为`eef2e0c0222c0701c3fea6137907d933c8da8921`；该提交已推送`backup/master`。PAD固定签名Release为24,115,306字节，SHA-256为`0f64c0b58160e061f22bc7e11aab1ef1bd7c9a6fbb41b9d5d6c892d2ded1c6d3`；macOS arm64 ZIP为25,936,352字节，SHA-256为`f8a2b9b78cd957ad6380e7e71658ba6d69668bc35701bdc2e4a26847a5a614f6`，解包后固定本地证书深层签名和`1.4.48 (129)`版本均通过。
+- GitHub focused run `30795669077`在同一源码上一次通过bridge、Windows x64、Linux x86_64、AppImage与最终manifest，发布tag为`kemi-client-eef2e0c0222c0701c3fea6137907d933c8da8921`。Windows EXE为22,641,152字节、PE32+ x86-64，SHA-256为`ab1c63e193f706605152218523d3ac331cd1d0e3200869bb89472746f3cae24f`；Linux AppImage为82,979,320字节、x86-64 AppImage v2，SHA-256为`dfa36bd8ad8369b0239228e8c7746bb04bd8157f9d3884187af53b86a744cfc2`。真实Windows/Linux机器上的GUI、远控与文件传输仍属于发布后跨平台验收，不把云端编译成功等同于功能实机通过。
+- `BIN/release`六个固定文件已整体对齐到该批次并重新生成SHA清单和manifest；用户只需登录Newlink云端`Common`项目，依次覆盖PAD、macOS、Windows、Linux、`SHA256SUMS`，最后覆盖`release-manifest`。上传前客户端不会看到本批次；上传后必须回读六个固定HTTPS接口并验证PAD自动同步与局域网HTTP下载哈希。
 
 ## 六十九、2026-08-02 新服务器四端重编译与PAD自动更新验证（全端 1.4.48 / build 125）
 
