@@ -276,6 +276,7 @@ class RemoteActivity : FlutterActivity() {
         physicalMouseRightButton.setActive(false)
         flutterMethodChannel = null
         KeyboardProxyManager.release("activity_destroyed")
+        SessionState.notifyConnectionState(false, null)
         SessionState.reset()
         super.onDestroy()
     }

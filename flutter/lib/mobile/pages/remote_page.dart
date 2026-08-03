@@ -190,6 +190,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     inputModel.keyboardInputAllowed = true;
     if (!_handoffToFileTransfer) {
       await gFFI.close();
+      if (isAndroid) {
+        // In a secondary-display Flutter engine, notify the main Activity and
+        // finish RemoteActivity after the native session has been closed. The
+        // same calls are harmless MissingPlugin operations in MainActivity.
+        try {
+          const remoteChannel = MethodChannel('remoteChannel');
+          await remoteChannel.invokeMethod('notify_session_closed');
+          await remoteChannel.invokeMethod('finish_activity');
+        } catch (_) {}
+      }
     }
     _timer?.cancel();
     _iosKeyboardWorkaroundTimer?.cancel();

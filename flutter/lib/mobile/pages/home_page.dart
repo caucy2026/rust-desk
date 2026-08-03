@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../../common.dart';
 import '../../common/widgets/chat_page.dart';
+import '../../consts.dart';
 import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'connection_page.dart';
@@ -99,31 +100,87 @@ class HomePageState extends State<HomePage> {
             title: appTitle(),
             actions: _pages.elementAt(_selectedIndex).appBarActions,
           ),
-          bottomNavigationBar: BottomNavigationBar(
-            key: navigationBarKey,
-            items: _pages
-                .map((page) =>
-                    BottomNavigationBarItem(icon: page.icon, label: page.title))
-                .toList(),
-            currentIndex: _selectedIndex,
-            type: BottomNavigationBarType.fixed,
-            selectedItemColor: MyTheme.accent, //
-            unselectedItemColor: MyTheme.darkGray,
-            onTap: (index) => setState(() {
-              // close chat overlay when go chat page
-              if (_selectedIndex != index) {
-                _selectedIndex = index;
-                if (isChatPageCurrentTab) {
-                  gFFI.chatModel.hideChatIconOverlay();
-                  gFFI.chatModel.hideChatWindowOverlay();
-                  gFFI.chatModel.mobileClearClientUnread(
-                      gFFI.chatModel.currentKey.connId);
+          bottomNavigationBar: AnimatedBuilder(
+            animation: gFFI.serverModel,
+            builder: (context, child) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildServerStatus(gFFI.serverModel.connectStatus),
+                child!,
+              ],
+            ),
+            child: BottomNavigationBar(
+              key: navigationBarKey,
+              items: _pages
+                  .map((page) => BottomNavigationBarItem(
+                      icon: page.icon, label: page.title))
+                  .toList(),
+              currentIndex: _selectedIndex,
+              type: BottomNavigationBarType.fixed,
+              selectedItemColor: MyTheme.accent,
+              unselectedItemColor: MyTheme.darkGray,
+              onTap: (index) => setState(() {
+                // close chat overlay when go chat page
+                if (_selectedIndex != index) {
+                  _selectedIndex = index;
+                  if (isChatPageCurrentTab) {
+                    gFFI.chatModel.hideChatIconOverlay();
+                    gFFI.chatModel.hideChatWindowOverlay();
+                    gFFI.chatModel.mobileClearClientUnread(
+                        gFFI.chatModel.currentKey.connId);
+                  }
                 }
-              }
-            }),
+              }),
+            ),
           ),
           body: _pages.elementAt(_selectedIndex),
         ));
+  }
+
+  Widget _buildServerStatus(int status) {
+    final Color color;
+    final String message;
+    if (status > 0) {
+      color = const Color.fromARGB(255, 50, 190, 166);
+      message = translate('server_ready_status');
+    } else if (status == 0) {
+      color = kColorWarn;
+      message = translate('server_connecting_status');
+    } else {
+      color = const Color.fromARGB(255, 224, 79, 95);
+      message = translate('server_offline_status');
+    }
+    final foreground =
+        Theme.of(context).colorScheme.onSurface.withOpacity(0.72);
+    return Container(
+      height: 24,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: foreground.withOpacity(0.12), width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: foreground),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget appTitle() {

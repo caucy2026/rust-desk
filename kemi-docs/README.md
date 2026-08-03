@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.48**，PAD构建号为 **1.4.48+125**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.48**，当前候选构建号为 **1.4.48+129**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端 `+129` 尚未全部验收前，`BIN/release` 的 `+125` 稳定清单仍只代表上一批次。
 
 ### 核心定制功能
 
@@ -89,6 +89,7 @@ kemi-docs/
 ├── SESSION-HANDOFF.md           ← 跨会话接续手册、完整架构与构建部署流程
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
+├── LOCAL-CHANGE-REVIEW.md       ← 当前候选逐文件改动、风险与发布门禁
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
 ├── macos-local-build.md          ← Mac 同事从 GitHub 本地编译 Release App
 ├── android-release-signing.md    ← Android正式包名、固定签名、构建与迁移

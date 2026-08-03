@@ -402,8 +402,17 @@ class MainActivity : FlutterActivity() {
                 }
                 "close_remote" -> {
                     // 关闭副屏 RemoteActivity
-                    SessionState.remoteMethodChannel?.invokeMethod("finish_activity", null)
-                    SessionState.reset()
+                    val remoteChannel = SessionState.remoteMethodChannel
+                    if (remoteChannel != null) {
+                        // RemoteActivity resets SessionState only after Flutter
+                        // has closed the Rust peer and finish() reaches onDestroy.
+                        remoteChannel.invokeMethod("finish_activity", null)
+                    } else {
+                        // The secondary Activity may already have been destroyed.
+                        // Do not leave a stale connected/sessionId snapshot behind.
+                        SessionState.notifyConnectionState(false, null)
+                        SessionState.reset()
+                    }
                     result.success(true)
                 }
                 "keyboard_proxy_open" -> {

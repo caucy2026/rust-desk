@@ -2131,6 +2131,25 @@ pub mod sessions {
         s
     }
 
+    /// Remove the complete peer owning a mobile UI session.
+    ///
+    /// Android can have a main Flutter engine and a secondary-display engine
+    /// alive during Activity recreation. Both may attach a UI handler to the
+    /// same peer. A user-visible Disconnect action must tear down the peer and
+    /// its socket, rather than leaving an unreachable handler behind.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    pub fn remove_peer_by_session_id(id: &SessionID) -> Option<FlutterSession> {
+        let peer_key = SESSIONS.read().unwrap().iter().find_map(|(key, s)| {
+            s.ui_handler
+                .session_handlers
+                .read()
+                .unwrap()
+                .contains_key(id)
+                .then(|| key.clone())
+        })?;
+        SESSIONS.write().unwrap().remove(&peer_key)
+    }
+
     /// Check if removing a session by session_id would result in removing the entire peer.
     ///
     /// Returns:

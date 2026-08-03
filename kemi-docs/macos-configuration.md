@@ -2,6 +2,22 @@
 
 > 适用版本：`1.4.46+104`。本文件是 macOS 远程查看/控制、固定测试签名和交付核验的唯一操作说明；历史试验过程见 `CHANGELOG-KEMI.md`。
 
+## 0. KEMI 无账户后端与安全安装顺序
+
+KEMI 当前连接的是开源 `hbbs/hbbr`，没有 Pro 账户 API。Flutter 四端的账户能力入口固定为禁用，因此 Mac 设置中不得出现“账户”页或“登录”按钮。这里的账户登录与远控连接时填写对方 ID、密码，以及远端系统的 OS 账号/密码是不同功能，后两者保留。
+
+若新包再次出现账户登录入口，先检查运行的进程是否真的是刚安装的二进制，再检查 `src/flutter_ffi.rs::is_disable_account()`；不要通过伪造 21114 API 或临时本地选项掩盖问题。
+
+macOS 测试包安装顺序固定为：
+
+1. 断开全部远程会话；
+2. 完整退出 KEMI 主进程和 `--cm` 子进程；
+3. 确认旧进程已不存在后再替换 `/Applications/KEMI-远程桌面.app`；
+4. 执行深层代码签名校验并回读包版本；
+5. 启动新 App，再进行 PAD 连接和首帧验证。
+
+禁止在旧进程运行时直接覆盖 App。2026-08-03 实测这种操作会出现运行进程与磁盘 Mach-O/Framework 不一致，最终让 `CGDisplayStreamCreateWithDispatchQueue` 持续返回 null；服务器和权限均显示正常也无法出画面，完整重启新 App 才恢复。
+
 ## 1. 当前已核验配置
 
 最新归档副本：`/Users/newlink/kemi/RustDesk/BIN/KEMI-远程桌面.app`。本轮只更新PAD内置下载包，`/Applications/KEMI-远程桌面.app`仍为`1.4.44+102`，需要本机回归时再单独替换。

@@ -209,6 +209,9 @@ void runMobileApp() async {
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   // Render immediately — splash handles its own animation + timing.
   runApp(App());
+  if (isAndroid) {
+    _initDualScreenRemoteListener();
+  }
 
   // Background: non-blocking cache load + network.
   draggablePositions.load();
@@ -220,6 +223,70 @@ void runMobileApp() async {
 
 /// 双屏模式: 监听 "remoteChannel" 的 init_params，
 /// 如果是副屏 RemoteActivity，直接显示 RemotePage。
+bool _dualScreenRemoteRouteActive = false;
+bool _dualScreenRemoteClosing = false;
+
+void _openDualScreenRemote(
+  String peerId, {
+  String? password,
+  bool forceRelay = false,
+}) {
+  if (peerId.isEmpty || _dualScreenRemoteRouteActive) return;
+  final navigator = globalKey.currentState;
+  if (navigator == null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openDualScreenRemote(
+        peerId,
+        password: password,
+        forceRelay: forceRelay,
+      );
+    });
+    return;
+  }
+
+  _dualScreenRemoteRouteActive = true;
+  // Keep the named root route. Mobile closeConnection() returns to "/";
+  // deleting it made a secondary-display RemotePage impossible to pop and
+  // left its Rust session alive after the UI appeared to disconnect.
+  unawaited(navigator
+      .push(MaterialPageRoute(
+        settings: const RouteSettings(name: '/dual-screen-remote'),
+        builder: (_) => RemotePage(
+          id: peerId,
+          password: password?.isNotEmpty == true ? password : null,
+          forceRelay: forceRelay,
+        ),
+      ))
+      .whenComplete(() => _dualScreenRemoteRouteActive = false));
+}
+
+Future<void> _closeDualScreenRemoteAndFinish() async {
+  if (_dualScreenRemoteClosing) return;
+  _dualScreenRemoteClosing = true;
+  const remoteChannel = MethodChannel('remoteChannel');
+  try {
+    await bind
+        .sessionClose(sessionId: gFFI.sessionId)
+        .timeout(const Duration(seconds: 2));
+  } catch (e) {
+    debugPrint('[DualScreen] sessionClose before finish failed: $e');
+  }
+  try {
+    await remoteChannel.invokeMethod('notify_session_closed');
+  } catch (_) {}
+  globalKey.currentState?.popUntil(ModalRoute.withName('/'));
+  await Future<void>.delayed(Duration.zero);
+  try {
+    // This call goes back to RemoteActivity's native handler and finishes the
+    // secondary-display Activity only after the Rust peer has been removed.
+    await remoteChannel.invokeMethod('finish_activity');
+  } catch (e) {
+    debugPrint('[DualScreen] finish_activity failed: $e');
+  } finally {
+    _dualScreenRemoteClosing = false;
+  }
+}
+
 void _initDualScreenRemoteListener() {
   try {
     const remoteChannel = MethodChannel('remoteChannel');
@@ -230,17 +297,12 @@ void _initDualScreenRemoteListener() {
           final password = call.arguments['password'] as String?;
           final forceRelay = call.arguments['force_relay'] as bool? ?? false;
           if (peerId.isNotEmpty) {
-            debugPrint('[DualScreen] RemoteActivity init_params: peerId=$peerId');
-            // 直接导航到 RemotePage，替换整个导航栈
-            globalKey.currentState?.pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (_) => RemotePage(
-                  id: peerId,
-                  password: password?.isNotEmpty == true ? password : null,
-                  forceRelay: forceRelay,
-                ),
-              ),
-              (_) => false, // 清除所有之前的页面
+            debugPrint(
+                '[DualScreen] RemoteActivity init_params: peerId=$peerId');
+            _openDualScreenRemote(
+              peerId,
+              password: password,
+              forceRelay: forceRelay,
             );
           }
           break;
@@ -249,8 +311,7 @@ void _initDualScreenRemoteListener() {
           final text = call.arguments['text'] as String? ?? '';
           if (text.isNotEmpty && gFFI.sessionId.toString().isNotEmpty) {
             try {
-              bind.sessionInputString(
-                  sessionId: gFFI.sessionId, value: text);
+              bind.sessionInputString(sessionId: gFFI.sessionId, value: text);
             } catch (e) {
               debugPrint('[DualScreen] sessionInputString error: $e');
             }
@@ -262,7 +323,10 @@ void _initDualScreenRemoteListener() {
           final down = call.arguments['down'] as bool? ?? true;
           if (key.isNotEmpty) {
             try {
-              gFFI.inputModel.inputKey(key);
+              // The main-screen keyboard forwards a down event and a matching
+              // up event. Preserve that state instead of turning both into
+              // independent full key presses.
+              gFFI.inputModel.inputKey(key, down: down, press: false);
             } catch (e) {
               debugPrint('[DualScreen] inputKey error: $e');
             }
@@ -270,7 +334,7 @@ void _initDualScreenRemoteListener() {
           break;
         case 'finish_activity':
           // 主屏请求关闭副屏
-          _finishRemoteActivity();
+          unawaited(_closeDualScreenRemoteAndFinish());
           break;
         default:
           break;
@@ -283,17 +347,10 @@ void _initDualScreenRemoteListener() {
         final peerId = params['peer_id'] as String? ?? '';
         if (peerId.isNotEmpty) {
           debugPrint('[DualScreen] get_connection_params: peerId=$peerId');
-          globalKey.currentState?.pushAndRemoveUntil(
-            MaterialPageRoute(
-              builder: (_) => RemotePage(
-                id: peerId,
-                password: (params['password'] as String?)?.isNotEmpty == true
-                    ? params['password'] as String
-                    : null,
-                forceRelay: params['force_relay'] as bool? ?? false,
-              ),
-            ),
-            (_) => false,
+          _openDualScreenRemote(
+            peerId,
+            password: params['password'] as String?,
+            forceRelay: params['force_relay'] as bool? ?? false,
           );
         }
       }
@@ -303,17 +360,6 @@ void _initDualScreenRemoteListener() {
     });
   } catch (e) {
     debugPrint('[DualScreen] _initDualScreenRemoteListener error: $e');
-  }
-}
-
-/// 关闭 RemoteActivity
-void _finishRemoteActivity() {
-  try {
-    const remoteChannel = MethodChannel('remoteChannel');
-    // 通知 Kotlin 层关闭 Activity
-    globalKey.currentState?.popUntil((route) => route.isFirst);
-  } catch (e) {
-    debugPrint('[DualScreen] finishRemoteActivity error: $e');
   }
 }
 

@@ -704,10 +704,26 @@ String formatDurationToTime(Duration duration) {
 closeConnection({String? id}) {
   if (isAndroid || isIOS) {
     () async {
+      // Tear down the native session before changing routes. Waiting for a
+      // RemotePage.dispose() is not reliable on multi-display Android: an
+      // Activity can be removed or its engine suspended before async dispose
+      // reaches sessionClose, leaving a live TCP connection on the peer.
+      try {
+        await bind
+            .sessionClose(sessionId: gFFI.sessionId)
+            .timeout(const Duration(seconds: 2));
+      } catch (e) {
+        debugPrint('[closeConnection] sessionClose failed: $e');
+      }
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
           overlays: SystemUiOverlay.values);
       gFFI.chatModel.hideChatOverlay();
-      Navigator.popUntil(globalKey.currentContext!, ModalRoute.withName("/"));
+      // The close callback can outlive the dialog/route BuildContext while
+      // sessionClose waits for the native peer. Drive the root Navigator
+      // directly and pop to its first route; looking it up again from
+      // globalKey.currentContext can leave a stale RemotePage on multi-display
+      // Android even though the native session has already closed.
+      globalKey.currentState?.popUntil((route) => route.isFirst);
       stateGlobal.isInMainPage = true;
     }();
   } else {
@@ -1090,11 +1106,11 @@ class CustomAlertDialog extends StatelessWidget {
       if (!scopeNode.hasFocus) scopeNode.requestFocus();
     });
     bool tabTapped = false;
-  if (isAndroid) {
-    gFFI.invokeMethod("enable_soft_keyboard", true);
-    // 双屏键盘: 标记当前焦点请求，native 层检查是否需要代理到主屏
-    gFFI.invokeMethod("request_text_focus", true);
-  }
+    if (isAndroid) {
+      gFFI.invokeMethod("enable_soft_keyboard", true);
+      // 双屏键盘: 标记当前焦点请求，native 层检查是否需要代理到主屏
+      gFFI.invokeMethod("request_text_focus", true);
+    }
     return FocusScope(
       node: scopeNode,
       autofocus: true,
@@ -3209,14 +3225,9 @@ Future<void> shouldBeBlocked(RxBool block, WhetherUseRemoteBlock? use) async {
   }
   var time0 = DateTime.now().millisecondsSinceEpoch;
   await bind.mainCheckMouseTime();
-  Timer(const Duration(milliseconds: 120), () async {
-    var d = time0 - await bind.mainGetMouseTime();
-    if (d < 120) {
-      block.value = true;
-    } else {
-      block.value = false;
-    }
-  });
+  await Future.delayed(const Duration(milliseconds: 120));
+  var d = time0 - await bind.mainGetMouseTime();
+  block.value = d < 120;
 }
 
 typedef WhetherUseRemoteBlock = Future<bool> Function();
@@ -3224,23 +3235,64 @@ Widget buildRemoteBlock(
     {required Widget child,
     required RxBool block,
     required bool mask,
+    String? maskMessage,
     WhetherUseRemoteBlock? use}) {
-  return Obx(() => MouseRegion(
-        onEnter: (_) async {
-          await shouldBeBlocked(block, use);
-        },
-        onExit: (event) => block.value = false,
-        child: Stack(children: [
-          // scope block tab
-          preventMouseKeyBuilder(child: child, block: block.value),
-          // mask block click, cm not block click and still use check_click_time to avoid block local click
-          if (mask)
-            Offstage(
-                offstage: !block.value,
-                child: Container(
-                  color: Colors.black.withOpacity(0.5),
-                )),
-        ]),
+  // Remote and local input share the same system cursor on desktop. Checking
+  // only onEnter means the cursor can already be inside this full-page region
+  // when the mask appears, leaving no event that lets a physical local mouse
+  // reclaim control. Re-check throttled hover/down events as well: remote input
+  // refreshes the Rust-side remote-mouse timestamp and remains blocked; local
+  // physical input does not, so it clears the mask after the IPC round-trip.
+  var checkingInputOrigin = false;
+  Future<void> refreshInputOrigin() async {
+    if (checkingInputOrigin) return;
+    checkingInputOrigin = true;
+    try {
+      await shouldBeBlocked(block, use);
+    } finally {
+      checkingInputOrigin = false;
+    }
+  }
+
+  return Obx(() => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => refreshInputOrigin(),
+        child: MouseRegion(
+          onEnter: (_) => refreshInputOrigin(),
+          onHover: (_) => refreshInputOrigin(),
+          onExit: (event) => block.value = false,
+          child: Stack(children: [
+            // scope block tab
+            preventMouseKeyBuilder(child: child, block: block.value),
+            // mask block click, cm not block click and still use check_click_time to avoid block local click
+            if (mask)
+              Offstage(
+                  offstage: !block.value,
+                  child: Container(
+                    color: Colors.black.withOpacity(0.5),
+                    alignment: Alignment.center,
+                    child: maskMessage == null
+                        ? null
+                        : Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 18, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.24),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              maskMessage,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.86),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                  )),
+          ]),
+        ),
       ));
 }
 

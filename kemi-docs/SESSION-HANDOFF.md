@@ -2,12 +2,12 @@
 
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
-> 当前基线日期：2026-08-02
-> 当前全端源码候选：`1.4.48`，Android/PAD为`1.4.48+125`；全端主页显示实际运行包版本，自建服务器下客户端UDP打洞默认开启。`BIN`内各平台包仍以包内版本和哈希为准，未重新构建验收前不得把旧包改名冒充`1.4.48`。
+> 当前基线日期：2026-08-03
+> 当前全端源码候选：`1.4.48+129`；本地未提交项和风险门禁见`LOCAL-CHANGE-REVIEW.md`。四端新包尚未全部齐备，`BIN/release`稳定清单仍为`1.4.48+125`，不得混批。
 > 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
-当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。当前批次来自候选提交`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`：PAD为`1.4.48+125`，macOS为`1.4.48 (125)`，Windows/Linux为`1.4.48`。`BIN/`根目录另存同字节、带版本号的不可变归档；历史文件不代表当前发布。
+当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。现有稳定批次来自候选提交`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`：PAD为`1.4.48+125`，macOS为`1.4.48 (125)`，Windows/Linux为`1.4.48`。正在准备的`+129`必须在同一候选commit四端齐备后一次性更新，不能先替换其中一部分。
 
 Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行`flutter build windows`或自行升级工具链。
 
@@ -32,7 +32,7 @@ Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`�
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前Flutter源码与Android PAD为`1.4.48+125`，Android applicationId为`com.newlinksz.kemi.remote`。PAD不把四端客户端递归打进APK，而是在空闲任务或进入“客户端”页时按固定Newlink接口下载、校验并缓存；当前四端发布候选绑定`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`。文件传输并行浮窗的功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交。
+当前Flutter源码候选为`1.4.48+129`，Android applicationId为`com.newlinksz.kemi.remote`。KEMI使用无账户的开源hbbs/hbbr，四端不得显示账户页或登录按钮。PAD不把四端客户端递归打进APK，而是在空闲任务或进入“客户端”页时按固定Newlink接口下载、校验并缓存；`+129`四端必须绑定即将形成的同一候选commit。文件传输并行浮窗的功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。

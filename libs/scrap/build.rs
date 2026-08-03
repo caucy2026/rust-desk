@@ -170,9 +170,14 @@ fn gen_vcpkg_package(package: &str, ffi_header: &str, generated: &str, regex: &s
     let out_dir = Path::new(&out_dir);
 
     let ffi_header = src_dir.join("src").join("bindings").join(ffi_header);
-    println!("rerun-if-changed={}", ffi_header.display());
+    // These must be Cargo directives. Without the `cargo:` prefix Cargo keeps
+    // reusing bindings generated from an older vcpkg header even after the
+    // static library is rebuilt. For libvpx that can pass a stale encoder ABI
+    // number to a newer library and every incoming video session then fails
+    // with VPX_CODEC_ABI_MISMATCH.
+    println!("cargo:rerun-if-changed={}", ffi_header.display());
     for dir in &includes {
-        println!("rerun-if-changed={}", dir.display());
+        println!("cargo:rerun-if-changed={}", dir.display());
     }
 
     let ffi_rs = out_dir.join(generated);

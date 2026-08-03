@@ -21,6 +21,8 @@ use hbb_common::{
     rendezvous_proto::ConnType,
     ResultType,
 };
+#[cfg(target_os = "android")]
+use std::sync::atomic::AtomicI64;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -35,6 +37,27 @@ pub type SessionID = uuid::Uuid;
 
 lazy_static::lazy_static! {
     static ref TEXTURE_RENDER_KEY: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+}
+
+#[cfg(target_os = "android")]
+static LAST_RENDEZVOUS_STATUS_PROBE: AtomicI64 = AtomicI64::new(0);
+
+#[cfg(target_os = "android")]
+fn refresh_rendezvous_status_if_due(force: bool) {
+    const PROBE_INTERVAL_MS: i64 = 10_000;
+    let now = hbb_common::get_time();
+    let last = LAST_RENDEZVOUS_STATUS_PROBE.load(Ordering::SeqCst);
+    if !force && now.saturating_sub(last) < PROBE_INTERVAL_MS {
+        return;
+    }
+    if force
+        || LAST_RENDEZVOUS_STATUS_PROBE
+            .compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    {
+        LAST_RENDEZVOUS_STATUS_PROBE.store(now, Ordering::SeqCst);
+        crate::common::test_rendezvous_server();
+    }
 }
 
 fn initialize(app_dir: &str, custom_client_config: &str) {
@@ -63,7 +86,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
         hbb_common::init_log(false, "");
         #[cfg(feature = "mediacodec")]
         scrap::mediacodec::check_mediacodec();
-        crate::common::test_rendezvous_server();
+        refresh_rendezvous_status_if_due(true);
         crate::common::test_nat_type();
     }
     #[cfg(target_os = "ios")]
@@ -261,7 +284,18 @@ pub fn will_session_close_close_session(session_id: SessionID) -> SyncReturn<boo
 }
 
 pub fn session_close(session_id: SessionID) {
-    if let Some(session) = sessions::remove_session_by_session_id(&session_id) {
+    // A mobile app may briefly own more than one Flutter engine/session handler
+    // for the same peer while an Android secondary-display Activity is being
+    // recreated or a no-first-frame reconnect is in progress. Explicitly
+    // closing on mobile means closing that peer, not merely one UI handler;
+    // otherwise the last handler keeps the TCP connection alive after the page
+    // has returned home.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let removed = sessions::remove_peer_by_session_id(&session_id);
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let removed = sessions::remove_session_by_session_id(&session_id);
+
+    if let Some(session) = removed {
         // `release_remote_keys` is not required for mobile platforms in common cases.
         // But we still call it to make the code more stable.
         #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -1130,6 +1164,8 @@ pub fn main_get_connect_status() -> String {
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
+        #[cfg(target_os = "android")]
+        refresh_rendezvous_status_if_due(false);
         let mut state = hbb_common::config::get_online_state();
         if state > 0 {
             state = 1;
@@ -2485,7 +2521,11 @@ pub fn is_disable_ab() -> SyncReturn<bool> {
 }
 
 pub fn is_disable_account() -> SyncReturn<bool> {
-    SyncReturn(config::is_disable_account())
+    // KEMI uses the open-source hbbs/hbbr deployment without the Pro account
+    // API. Keep account UI disabled deterministically on every Flutter target
+    // instead of depending on a runtime custom-client setting that may not be
+    // loaded yet while the desktop tabs are first built.
+    SyncReturn(true)
 }
 
 pub fn is_disable_group_panel() -> SyncReturn<bool> {

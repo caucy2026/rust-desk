@@ -739,7 +739,7 @@ pub async fn get_nat_type(ms_timeout: u64) -> i32 {
 #[tokio::main(flavor = "current_thread")]
 async fn test_rendezvous_server_() {
     let servers = Config::get_rendezvous_servers();
-    if servers.len() <= 1 {
+    if servers.is_empty() {
         return;
     }
     let mut futs = Vec::new();
@@ -761,6 +761,13 @@ async fn test_rendezvous_server_() {
         }));
     }
     join_all(futs).await;
+    // Desktop uses this helper only to choose the fastest server and obtains
+    // its online state from the long-running rendezvous mediator. Mobile can
+    // run without the screen-sharing service/mediator, so retain the TCP probe
+    // result there for `main_get_connect_status()` instead of leaving the UI
+    // permanently at the initial "connecting" state. This must also probe a
+    // single custom server (the normal KEMI deployment), not only server lists.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Config::reset_online();
 }
 

@@ -2,6 +2,18 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十、2026-08-03 服务器状态、会话收尾、Mac 设置保护与账户入口收敛（候选 1.4.48+129）
+
+- KEMI 后端使用开源 `hbbs/hbbr 1.1.16`，不提供 Pro 账户和 `21114` API。此前账户 UI 依赖运行时 `disable-account`，桌面首帧若早于硬配置加载会偶发显示“登录”。四端共用的 Flutter FFI 入口现固定报告账户功能禁用，Mac、Windows、Linux、PAD 的账户页、登录按钮和依赖账户的备注入口保持一致隐藏；不删除远控目标系统的 OS 账号/密码输入功能。
+- PAD 首页五个 tab 的底部导航上方新增 24px 状态条。单个自建服务器也会进行 TCP 探测，Android 最多每 10 秒刷新一次并保留移动端结果；绿色表示 ID 服务器可达、可以发起或接收连接，不代表视频首帧已经成功，视频异常仍按会话和 Mac 采集日志诊断。
+- 双屏断开顺序调整为“关闭完整 Rust peer/socket → 通知原生断开 → 退出 Flutter route → `RemoteActivity.onDestroy` reset”。移动端显式断开按 session 找到并移除完整 peer，解决 UI 已回主页但旧 TCP 会话仍存活；主屏在副屏 MethodChannel 已异常丢失时新增状态清理兜底，避免下一次连接继承旧 sessionId。
+- Mac 设置页不再仅凭可能延迟归零的 `videoConnCount` 永久覆盖黑色蒙层。远端输入时显示“远程会话进行中，远端不可修改本机设置”；鼠标进入、移动或按下会重新判断输入来源，因此远端仍不能修改，本机物理鼠标可以解除。等待 120ms 的检查改为真正 await，避免异步 Timer 在页面生命周期外回写状态。
+- macOS 视频构建修复 Cargo 重建指令缺少 `cargo:` 前缀导致 libvpx 头文件更新后继续使用旧 ABI 绑定的问题；Android arm64 脚本固定使用 NDK `llvm-ar/llvm-ranlib`，避免 macOS `/usr/bin/ar` 生成空 libsodium archive。移动端不再解析桌面专用 `portable-pty`。
+- 2026-08-03 一次“服务器绿色但无画面”并非服务器故障：磁盘 App 在 11:56 被覆盖，10:26 启动的旧进程仍在运行，CoreGraphics 采集流持续返回 null。12:08 完整退出旧进程并启动新 App 后，PAD 连续两次断开重连均正常出画面。Mac 部署流程新增硬性要求：先结束旧进程，再替换 App、校验签名并启动，禁止运行中覆盖。
+- Review 剔除了仅由本机 CocoaPods 版本差异造成的 `Podfile.lock` checksum 噪声，并补齐副屏通道为空时的异常清理。完整 18 个源码项、子模块默认服务器改动、风险等级和发布门禁见 `kemi-docs/LOCAL-CHANGE-REVIEW.md`。
+- 真机首帧与断开复核还发现异步 `sessionClose` 等待期间不应继续复用旧 route context；移动端确认断开现直接通过根 Navigator 返回首 route，避免 native 会话已经关闭但主屏仍停在最后一帧工具栏。主屏转发副屏虚拟键时同步保留 `down/up`，不再把按下和释放各转换成一次完整按键。
+- 候选构建号提升到 `1.4.48+129`。当前 `BIN/release` 仍是上一批 `+125`，四端新包未齐备前不得改写稳定 manifest；Windows/Linux 必须绑定本批次唯一 commit 走 focused workflow，Mac/PAD本地构建也必须记录同一 commit 和 SHA-256。
+
 ## 六十九、2026-08-02 新服务器四端重编译与PAD自动更新验证（全端 1.4.48 / build 125）
 
 - 本批次冻结源码为`a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`，远端`backup/master`已核对同哈希。四端统一使用ID服务器`kemi-chat.newlinksz.com`、IP`119.96.24.110`和公钥`gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=`。Flutter启动仍先写公钥再写服务器；云端新clone在checkout后应用受版本控制的`.github/patches/kemi_hbb_common_server.diff`，解决KEMI默认值此前只存在于本机dirty子模块、Windows/Linux云构建可能退回公共RustDesk默认服务器的风险。

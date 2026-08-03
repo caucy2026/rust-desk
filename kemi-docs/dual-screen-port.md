@@ -3,6 +3,23 @@
 > 跨屏软键盘的最新需求、状态机和重构方案见
 > [KEMI 跨屏软键盘需求与设计](cross-display-keyboard.md)。键盘行为若与本文旧说明冲突，以该设计文档为准。
 
+## 远控断开与 Activity 收尾顺序
+
+副屏远控不能先销毁 `RemoteActivity` 再等待 Flutter `dispose` 关闭连接，因为副屏 engine 可能已经挂起，最终留下不可见的 Rust peer 和 TCP socket。当前固定顺序为：
+
+```text
+用户断开
+  → sessionClose 移除该移动端 peer
+  → gFFI.close / 远端 socket 结束
+  → notify_session_closed
+  → Flutter route 回到根页面
+  → finish_activity
+  → RemoteActivity.onDestroy
+  → SessionState.reset
+```
+
+主屏 `close_remote` 不得在正常路径提前 reset，否则会丢失副屏 MethodChannel，使 Flutter 来不及关闭 peer。只有发现副屏通道已经为空时，主屏才执行残留状态清理兜底。
+
 ## 2026-07-27 当日更新索引
 
 - 跨屏键盘今天的完整调试过程、失败尝试、日志时间线、最终结论与遗留项，统一记录在 [cross-display-keyboard.md](cross-display-keyboard.md) 的第 15、16 节。

@@ -2,6 +2,12 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
+## 当前候选批次：1.4.48+129
+
+本批次要求 PAD、macOS、Windows x64 和 Linux x86_64 使用同一候选 commit，并统一包含：KEMI服务器与固定公钥、无账户 UI、服务器状态语义及本批次已 review 的会话修复。`BIN/release` 当前六文件在四端新包齐备前仍属于 `1.4.48+125` 稳定批次，禁止只用新 Mac/PAD 覆盖其中两项后仍沿用旧 manifest。
+
+更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
+
 ## 1. 需求结论
 
 四个平台客户端统一按下面的链路管理：
