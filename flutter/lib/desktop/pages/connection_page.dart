@@ -36,6 +36,18 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   final RxInt _remoteConnectionCount = 0.obs;
   final RxInt _screenCaptureCount = 0.obs;
   final RxInt _screenCaptureFrameCount = 0.obs;
+  final RxDouble _resourceCpuPercent = 0.0.obs;
+  final RxInt _resourceMemoryBytes = 0.obs;
+  final RxInt _resourceProcessCount = 0.obs;
+  final RxDouble _resourceMainCpuPercent = 0.0.obs;
+  final RxInt _resourceMainMemoryBytes = 0.obs;
+  final RxDouble _resourceServerCpuPercent = 0.0.obs;
+  final RxInt _resourceServerMemoryBytes = 0.obs;
+  final RxBool _resourceSessionActive = false.obs;
+  final RxInt _resourceSessionSeconds = 0.obs;
+  final RxDouble _resourceSessionCpuAveragePercent = 0.0.obs;
+  final RxDouble _resourceSessionCpuPeakPercent = 0.0.obs;
+  final RxInt _resourceSessionMemoryPeakBytes = 0.obs;
   Timer? _updateTimer;
 
   double get em => 14.0;
@@ -118,6 +130,15 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
                 ? '正在抓屏，当前抓屏会话已成功抓取 ${_screenCaptureFrameCount.value} 次画面。\n\n这里统计的是内部采集器成功取得有效画面的次数，不是屏幕数量。\n\n如果“连接”已经变灰但“抓屏”仍为绿色，说明远程断开后的采集尚未释放，应视为异常。'
                 : '当前没有屏幕采集循环。\n\n绿色：本机正在抓取屏幕画面。\n灰色：本机没有抓取屏幕。',
           ),
+          _buildStatusIndicator(
+            label:
+                '资源 CPU ${_formatCpu(_resourceCpuPercent.value)} · ${_formatMemory(_resourceMemoryBytes.value)}',
+            color: _resourceSessionActive.value
+                ? const Color.fromARGB(255, 50, 190, 166)
+                : Colors.grey.shade400,
+            tooltip: 'KEMI实时CPU和内存占用',
+            onTap: _showResourceDetails,
+          ),
           // stop
           if (!isIncomingOnly) startServiceWidget(),
           // KEMI ships with the company rendezvous/relay configuration, so the
@@ -146,26 +167,28 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     required String label,
     required Color color,
     required String tooltip,
-    required String details,
+    String? details,
+    VoidCallback? onTap,
     double marginLeft = 7,
   }) {
     return Tooltip(
       message: tooltip,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text('$label状态'),
-            content: Text(details),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('知道了'),
-              ),
-            ],
-          ),
-        ),
+        onTap: onTap ??
+            () => showDialog<void>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: Text('$label状态'),
+                    content: Text(details ?? ''),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('知道了'),
+                      ),
+                    ],
+                  ),
+                ),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
@@ -187,6 +210,85 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
         ),
       ),
     ).marginOnly(left: marginLeft);
+  }
+
+  String _formatCpu(double value) {
+    return '${value.toStringAsFixed(value < 10 ? 1 : 0)}%';
+  }
+
+  String _formatMemory(int bytes) {
+    final mib = bytes / (1024 * 1024);
+    if (mib >= 1024) {
+      return '${(mib / 1024).toStringAsFixed(1)} GB';
+    }
+    return '${mib.toStringAsFixed(mib < 10 ? 1 : 0)} MB';
+  }
+
+  String _formatDuration(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final remainSeconds = seconds % 60;
+    if (hours > 0) {
+      return '$hours小时${minutes.toString().padLeft(2, '0')}分';
+    }
+    if (minutes > 0) {
+      return '$minutes分${remainSeconds.toString().padLeft(2, '0')}秒';
+    }
+    return '$remainSeconds秒';
+  }
+
+  void _showResourceDetails() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('资源状态'),
+        content: Obx(
+          () => SizedBox(
+            width: 390,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'KEMI总占用',
+                  style: Theme.of(dialogContext).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    'CPU：${_formatCpu(_resourceCpuPercent.value)}\n内存：${_formatMemory(_resourceMemoryBytes.value)}\n相关进程：${_resourceProcessCount.value} 个'),
+                const SizedBox(height: 14),
+                Text(
+                  '进程构成',
+                  style: Theme.of(dialogContext).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    '主界面与辅助进程：CPU ${_formatCpu(_resourceMainCpuPercent.value)}，内存 ${_formatMemory(_resourceMainMemoryBytes.value)}\n远程服务进程：CPU ${_formatCpu(_resourceServerCpuPercent.value)}，内存 ${_formatMemory(_resourceServerMemoryBytes.value)}'),
+                const SizedBox(height: 14),
+                Text(
+                  _resourceSessionActive.value ? '当前远程会话' : '最近一次远程会话',
+                  style: Theme.of(dialogContext).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                    '状态：${_resourceSessionActive.value ? '正在监控' : '已结束'}\n持续时间：${_formatDuration(_resourceSessionSeconds.value)}\n平均CPU：${_formatCpu(_resourceSessionCpuAveragePercent.value)}\n峰值CPU：${_formatCpu(_resourceSessionCpuPeakPercent.value)}\n峰值内存：${_formatMemory(_resourceSessionMemoryPeakBytes.value)}'),
+                const SizedBox(height: 12),
+                Text(
+                  'CPU 100%表示占满一个逻辑核心，多线程时可能超过100%。远程会话期间每5秒写入一次程序日志，便于排查长时间运行问题。',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
   }
 
   updateStatus() async {
@@ -213,6 +315,28 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     try {
       _screenCaptureFrameCount.value =
           status['screen_capture_frame_count'] as int;
+    } catch (_) {}
+    try {
+      _resourceCpuPercent.value =
+          (status['resource_cpu_percent'] as num).toDouble();
+      _resourceMemoryBytes.value = status['resource_memory_bytes'] as int;
+      _resourceProcessCount.value = status['resource_process_count'] as int;
+      _resourceMainCpuPercent.value =
+          (status['resource_main_cpu_percent'] as num).toDouble();
+      _resourceMainMemoryBytes.value =
+          status['resource_main_memory_bytes'] as int;
+      _resourceServerCpuPercent.value =
+          (status['resource_server_cpu_percent'] as num).toDouble();
+      _resourceServerMemoryBytes.value =
+          status['resource_server_memory_bytes'] as int;
+      _resourceSessionActive.value = status['resource_session_active'] as bool;
+      _resourceSessionSeconds.value = status['resource_session_seconds'] as int;
+      _resourceSessionCpuAveragePercent.value =
+          (status['resource_session_cpu_average_percent'] as num).toDouble();
+      _resourceSessionCpuPeakPercent.value =
+          (status['resource_session_cpu_peak_percent'] as num).toDouble();
+      _resourceSessionMemoryPeakBytes.value =
+          status['resource_session_memory_peak_bytes'] as int;
     } catch (_) {}
   }
 }

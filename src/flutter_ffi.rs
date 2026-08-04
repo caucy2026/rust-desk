@@ -32,11 +32,189 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use std::{path::Path, sync::Mutex, time::Instant};
 
 pub type SessionID = uuid::Uuid;
 
 lazy_static::lazy_static! {
     static ref TEXTURE_RENDER_KEY: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Default)]
+struct AppResourceSnapshot {
+    cpu_percent: f64,
+    memory_bytes: u64,
+    process_count: usize,
+    main_cpu_percent: f64,
+    main_memory_bytes: u64,
+    server_cpu_percent: f64,
+    server_memory_bytes: u64,
+    session_active: bool,
+    session_seconds: u64,
+    session_cpu_average_percent: f64,
+    session_cpu_peak_percent: f64,
+    session_memory_peak_bytes: u64,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+struct AppResourceSampler {
+    system: hbb_common::sysinfo::System,
+    current_exe: PathBuf,
+    service_exe: PathBuf,
+    session_active: bool,
+    session_started_at: Option<Instant>,
+    session_seconds: u64,
+    session_cpu_sum: f64,
+    session_sample_count: u64,
+    session_cpu_average_percent: f64,
+    session_cpu_peak_percent: f64,
+    session_memory_peak_bytes: u64,
+    last_log_at: Instant,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl AppResourceSampler {
+    fn new() -> Self {
+        let current_exe = std::env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .unwrap_or_default();
+        let service_exe = current_exe
+            .parent()
+            .map(|parent| parent.join("service"))
+            .and_then(|path| std::fs::canonicalize(path).ok())
+            .unwrap_or_default();
+        Self {
+            system: hbb_common::sysinfo::System::new_all(),
+            current_exe,
+            service_exe,
+            session_active: false,
+            session_started_at: None,
+            session_seconds: 0,
+            session_cpu_sum: 0.0,
+            session_sample_count: 0,
+            session_cpu_average_percent: 0.0,
+            session_cpu_peak_percent: 0.0,
+            session_memory_peak_bytes: 0,
+            last_log_at: Instant::now(),
+        }
+    }
+
+    fn is_same_executable(path: &Path, expected: &Path) -> bool {
+        if expected.as_os_str().is_empty() {
+            return false;
+        }
+        if path.file_name() != expected.file_name() {
+            return false;
+        }
+        path == expected
+            || std::fs::canonicalize(path)
+                .map(|path| path == expected)
+                .unwrap_or(false)
+    }
+
+    fn sample(&mut self, session_should_be_active: bool) -> AppResourceSnapshot {
+        use hbb_common::sysinfo::ProcessRefreshKind;
+
+        self.system
+            .refresh_processes_specifics(ProcessRefreshKind::new().with_cpu());
+
+        let mut snapshot = AppResourceSnapshot::default();
+        for process in self.system.processes().values() {
+            let is_main_executable =
+                Self::is_same_executable(process.exe(), self.current_exe.as_path());
+            let is_service_executable =
+                Self::is_same_executable(process.exe(), self.service_exe.as_path());
+            if !is_main_executable && !is_service_executable {
+                continue;
+            }
+            let cpu = process.cpu_usage() as f64;
+            let memory = process.memory();
+            let is_server = is_service_executable
+                || process.cmd().iter().skip(1).any(|arg| arg == "--server");
+            snapshot.cpu_percent += cpu;
+            snapshot.memory_bytes = snapshot.memory_bytes.saturating_add(memory);
+            snapshot.process_count += 1;
+            if is_server {
+                snapshot.server_cpu_percent += cpu;
+                snapshot.server_memory_bytes = snapshot.server_memory_bytes.saturating_add(memory);
+            } else {
+                snapshot.main_cpu_percent += cpu;
+                snapshot.main_memory_bytes = snapshot.main_memory_bytes.saturating_add(memory);
+            }
+        }
+
+        if session_should_be_active && !self.session_active {
+            self.session_active = true;
+            self.session_started_at = Some(Instant::now());
+            self.session_seconds = 0;
+            self.session_cpu_sum = 0.0;
+            self.session_sample_count = 0;
+            self.session_cpu_average_percent = 0.0;
+            self.session_cpu_peak_percent = 0.0;
+            self.session_memory_peak_bytes = 0;
+            self.last_log_at = Instant::now();
+            log::info!(
+                "[resource-monitor] session started, processes={}",
+                snapshot.process_count
+            );
+        } else if !session_should_be_active && self.session_active {
+            self.session_active = false;
+            self.session_seconds = self
+                .session_started_at
+                .map(|started| started.elapsed().as_secs())
+                .unwrap_or(self.session_seconds);
+            log::info!(
+                "[resource-monitor] session stopped, duration={}s, cpu_avg={:.1}%, cpu_peak={:.1}%, memory_peak={} bytes",
+                self.session_seconds,
+                self.session_cpu_average_percent,
+                self.session_cpu_peak_percent,
+                self.session_memory_peak_bytes
+            );
+        }
+
+        if self.session_active {
+            self.session_seconds = self
+                .session_started_at
+                .map(|started| started.elapsed().as_secs())
+                .unwrap_or_default();
+            self.session_cpu_sum += snapshot.cpu_percent;
+            self.session_sample_count = self.session_sample_count.saturating_add(1);
+            self.session_cpu_average_percent =
+                self.session_cpu_sum / self.session_sample_count as f64;
+            self.session_cpu_peak_percent = self.session_cpu_peak_percent.max(snapshot.cpu_percent);
+            self.session_memory_peak_bytes =
+                self.session_memory_peak_bytes.max(snapshot.memory_bytes);
+            if self.last_log_at.elapsed() >= Duration::from_secs(5) {
+                log::info!(
+                    "[resource-monitor] active=true, duration={}s, processes={}, cpu={:.1}%, memory={} bytes, main_cpu={:.1}%, main_memory={} bytes, server_cpu={:.1}%, server_memory={} bytes",
+                    self.session_seconds,
+                    snapshot.process_count,
+                    snapshot.cpu_percent,
+                    snapshot.memory_bytes,
+                    snapshot.main_cpu_percent,
+                    snapshot.main_memory_bytes,
+                    snapshot.server_cpu_percent,
+                    snapshot.server_memory_bytes
+                );
+                self.last_log_at = Instant::now();
+            }
+        }
+
+        snapshot.session_active = self.session_active;
+        snapshot.session_seconds = self.session_seconds;
+        snapshot.session_cpu_average_percent = self.session_cpu_average_percent;
+        snapshot.session_cpu_peak_percent = self.session_cpu_peak_percent;
+        snapshot.session_memory_peak_bytes = self.session_memory_peak_bytes;
+        snapshot
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+lazy_static::lazy_static! {
+    static ref APP_RESOURCE_SAMPLER: Mutex<AppResourceSampler> =
+        Mutex::new(AppResourceSampler::new());
 }
 
 #[cfg(target_os = "android")]
@@ -1160,7 +1338,35 @@ pub fn main_get_lan_peers() -> String {
 pub fn main_get_connect_status() -> String {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
-        serde_json::to_string(&get_connect_status()).unwrap_or("".to_string())
+        let status = get_connect_status();
+        let resource = match APP_RESOURCE_SAMPLER.lock() {
+            Ok(mut sampler) => {
+                sampler.sample(status.video_conn_count > 0 || status.screen_capture_count > 0)
+            }
+            Err(err) => {
+                log::error!("resource sampler lock poisoned: {}", err);
+                AppResourceSnapshot::default()
+            }
+        };
+        serde_json::json!({
+            "status_num": status.status_num,
+            "video_conn_count": status.video_conn_count,
+            "screen_capture_count": status.screen_capture_count,
+            "screen_capture_frame_count": status.screen_capture_frame_count,
+            "resource_cpu_percent": resource.cpu_percent,
+            "resource_memory_bytes": resource.memory_bytes,
+            "resource_process_count": resource.process_count,
+            "resource_main_cpu_percent": resource.main_cpu_percent,
+            "resource_main_memory_bytes": resource.main_memory_bytes,
+            "resource_server_cpu_percent": resource.server_cpu_percent,
+            "resource_server_memory_bytes": resource.server_memory_bytes,
+            "resource_session_active": resource.session_active,
+            "resource_session_seconds": resource.session_seconds,
+            "resource_session_cpu_average_percent": resource.session_cpu_average_percent,
+            "resource_session_cpu_peak_percent": resource.session_cpu_peak_percent,
+            "resource_session_memory_peak_bytes": resource.session_memory_peak_bytes,
+        })
+        .to_string()
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
