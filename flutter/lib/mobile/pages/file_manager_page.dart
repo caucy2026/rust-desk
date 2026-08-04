@@ -99,6 +99,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
   // PAD requires a read-only transfer experience in this build.
   bool get _deleteEnabled => !isAndroid;
 
+  bool _useDualPane(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return isAndroid && size.width >= 720 && size.width > size.height;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +158,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final dualPane = _useDualPane(context);
     final content = WillPopScope(
         onWillPop: () async {
           if (_showHistory) {
@@ -199,30 +205,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
             centerTitle: true,
             title: _showHistory
                 ? const Text('传输记录')
-                : ToggleSwitch(
-                    initialLabelIndex: showLocal ? 0 : 1,
-                    activeBgColor: [MyTheme.idColor],
-                    inactiveBgColor:
-                        Theme.of(context).brightness == Brightness.light
-                            ? MyTheme.grayBg
-                            : null,
-                    inactiveFgColor:
-                        Theme.of(context).brightness == Brightness.light
-                            ? Colors.black54
-                            : null,
-                    totalSwitches: 2,
-                    minWidth: 100,
-                    fontSize: 15,
-                    iconSize: 18,
-                    labels: [translate("Local"), translate("Remote")],
-                    icons: [Icons.phone_android_sharp, Icons.screen_share],
-                    onToggle: (index) {
-                      final current = showLocal ? 0 : 1;
-                      if (index != current) {
-                        setState(() => showLocal = !showLocal);
-                      }
-                    },
-                  ),
+                : dualPane
+                    ? const Text('PAD文件 ⇄ 远端文件')
+                    : ToggleSwitch(
+                        initialLabelIndex: showLocal ? 0 : 1,
+                        activeBgColor: [MyTheme.idColor],
+                        inactiveBgColor:
+                            Theme.of(context).brightness == Brightness.light
+                                ? MyTheme.grayBg
+                                : null,
+                        inactiveFgColor:
+                            Theme.of(context).brightness == Brightness.light
+                                ? Colors.black54
+                                : null,
+                        totalSwitches: 2,
+                        minWidth: 100,
+                        fontSize: 15,
+                        iconSize: 18,
+                        labels: [translate("Local"), translate("Remote")],
+                        icons: [Icons.phone_android_sharp, Icons.screen_share],
+                        onToggle: (index) {
+                          final current = showLocal ? 0 : 1;
+                          if (index != current) {
+                            setState(() => showLocal = !showLocal);
+                          }
+                        },
+                      ),
             actions: [
               Obx(() {
                 final count = _historyStore.groups
@@ -365,17 +373,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
           body: _showHistory
               ? _buildTransferHistory()
-              : showLocal
-                  ? FileManagerView(
-                      controller: model.localController,
-                      selectMode: selectMode,
-                      deleteEnabled: _deleteEnabled,
-                    )
-                  : FileManagerView(
-                      controller: model.remoteController,
-                      selectMode: selectMode,
-                      deleteEnabled: _deleteEnabled,
-                    ),
+              : dualPane
+                  ? _buildDualPane()
+                  : showLocal
+                      ? FileManagerView(
+                          controller: model.localController,
+                          selectMode: selectMode,
+                          deleteEnabled: _deleteEnabled,
+                        )
+                      : FileManagerView(
+                          controller: model.remoteController,
+                          selectMode: selectMode,
+                          deleteEnabled: _deleteEnabled,
+                        ),
           bottomSheet: bottomSheet(),
         ));
 
@@ -383,8 +393,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return SafeArea(
         child: Center(
           child: Container(
-            width: MediaQuery.of(context).size.width * 0.60,
-            height: MediaQuery.of(context).size.height * 0.60,
+            width: MediaQuery.of(context).size.width * (dualPane ? 0.90 : 0.60),
+            height:
+                MediaQuery.of(context).size.height * (dualPane ? 0.78 : 0.60),
             margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
@@ -401,6 +412,166 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     }
     return content;
+  }
+
+  Widget _buildDualPane() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _buildFilePane(
+              title: 'PAD端',
+              icon: Icons.tablet_android,
+              controller: model.localController,
+            ),
+          ),
+          SizedBox(
+            width: 78,
+            child: _buildDualPaneTransferControls(),
+          ),
+          Expanded(
+            child: _buildFilePane(
+              title: '远端设备',
+              icon: Icons.desktop_windows_outlined,
+              controller: model.remoteController,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilePane({
+    required String title,
+    required IconData icon,
+    required FileController controller,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: Row(
+              children: [
+                Icon(icon, size: 19, color: MyTheme.idColor),
+                const SizedBox(width: 7),
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Obx(() => Text(
+                      '${controller.selectedItems.items.length}项已选',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    )),
+              ],
+            ),
+          ),
+          Expanded(
+            child: FileManagerView(
+              controller: controller,
+              selectMode: selectMode,
+              deleteEnabled: _deleteEnabled,
+              dualPane: true,
+              onSelectionStarted: _activateDualPaneSelection,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDualPaneTransferControls() {
+    return Obx(() {
+      final localCount = model.localController.selectedItems.items.length;
+      final remoteCount = model.remoteController.selectedItems.items.length;
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _dualPaneTransferButton(
+            icon: Icons.arrow_forward,
+            label: localCount > 0 ? '发送 $localCount' : '发送',
+            tooltip: '把PAD选中的文件发送到右侧远端目录',
+            onPressed: localCount > 0
+                ? () => _transferDualPaneSelection(
+                      model.localController,
+                      model.remoteController,
+                    )
+                : null,
+          ),
+          const SizedBox(height: 18),
+          _dualPaneTransferButton(
+            icon: Icons.arrow_back,
+            label: remoteCount > 0 ? '取回 $remoteCount' : '取回',
+            tooltip: '把远端选中的文件传到左侧PAD目录',
+            onPressed: remoteCount > 0
+                ? () => _transferDualPaneSelection(
+                      model.remoteController,
+                      model.localController,
+                    )
+                : null,
+          ),
+        ],
+      );
+    });
+  }
+
+  Widget _dualPaneTransferButton({
+    required IconData icon,
+    required String label,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 66,
+        child: FilledButton(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22),
+              const SizedBox(height: 3),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _activateDualPaneSelection(bool isLocal) {
+    selectMode.value = isLocal ? SelectMode.local : SelectMode.remote;
+  }
+
+  Future<void> _transferDualPaneSelection(
+      FileController source, FileController target) async {
+    if (source.selectedItems.items.isEmpty) return;
+    await _startRecordedTransfer(
+      source,
+      source.selectedItems,
+      target.directoryData(),
+    );
+    source.selectedItems.clear();
+    if (target.selectedItems.items.isNotEmpty) {
+      selectMode.value = target.isLocal ? SelectMode.local : SelectMode.remote;
+    } else {
+      selectMode.value = SelectMode.none;
+    }
   }
 
   void _toggleHistory() {
@@ -770,13 +941,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   Widget? bottomSheet() {
     return Obx(() {
-      final selectedItems = getActiveSelectedItems();
+      final dualPane = _useDualPane(context);
+      final selectedItems = dualPane ? null : getActiveSelectedItems();
       final jobTable = model.jobController.jobTable;
 
       final localLabel = selectedItems?.isLocal == null
           ? ""
           : " [${selectedItems!.isLocal ? translate("Local") : translate("Remote")}]";
-      if (!(selectMode.value == SelectMode.none)) {
+      if (!dualPane && !(selectMode.value == SelectMode.none)) {
         final selectedItemsLen =
             "${selectedItems?.items.length ?? 0} ${translate("items")}";
         if (selectedItems == null ||
@@ -918,11 +1090,15 @@ class FileManagerView extends StatefulWidget {
   final FileController controller;
   final Rx<SelectMode> selectMode;
   final bool deleteEnabled;
+  final bool dualPane;
+  final ValueChanged<bool>? onSelectionStarted;
 
   FileManagerView(
       {required this.controller,
       required this.selectMode,
-      required this.deleteEnabled});
+      required this.deleteEnabled,
+      this.dualPane = false,
+      this.onSelectionStarted});
 
   @override
   State<StatefulWidget> createState() => _FileManagerViewState();
@@ -956,18 +1132,17 @@ class _FileManagerViewState extends State<FileManagerView> {
             if (index >= entries.length) {
               return listTail();
             }
-            var selected = false;
-            if (widget.selectMode.value != SelectMode.none) {
-              selected = _selectedItems.items.contains(entries[index]);
-            }
+            final selected = _selectedItems.items.contains(entries[index]);
 
             final sizeStr = entries[index].isFile
                 ? readableFileSize(entries[index].size.toDouble())
                 : "";
 
             final showCheckBox = () {
-              return widget.selectMode.value != SelectMode.none &&
-                  widget.selectMode.value.eq(controller.selectedItems.isLocal);
+              return widget.dualPane ||
+                  (widget.selectMode.value != SelectMode.none &&
+                      widget.selectMode.value
+                          .eq(controller.selectedItems.isLocal));
             }();
             return Card(
               child: ListTile(
@@ -996,69 +1171,39 @@ class _FileManagerViewState extends State<FileManagerView> {
                       ),
                 trailing: entries[index].isDrive
                     ? null
-                    : showCheckBox
-                        ? Checkbox(
-                            value: selected,
-                            onChanged: (v) {
-                              if (v == null) return;
-                              if (v && !selected) {
-                                _selectedItems.add(entries[index]);
-                              } else if (!v && selected) {
-                                _selectedItems.remove(entries[index]);
-                              }
-                              setState(() {});
-                            })
-                        : PopupMenuButton<String>(
-                            tooltip: "",
-                            icon: Icon(Icons.more_vert),
-                            itemBuilder: (context) {
-                              return [
-                                PopupMenuItem(
-                                  enabled: widget.deleteEnabled,
-                                  child: Text(translate("Delete")),
-                                  value: "delete",
-                                ),
-                                PopupMenuItem(
-                                  child: Text(translate("Multi Select")),
-                                  value: "multi_select",
-                                ),
-                                PopupMenuItem(
-                                  child: Text(translate("Properties")),
-                                  value: "properties",
-                                  enabled: false,
-                                ),
-                                if (!entries[index].isDrive &&
-                                    versionCmp(
-                                            controller.rootState.target
-                                                    ?.ffiModel.pi.version ??
-                                                '',
-                                            "1.3.0") >=
-                                        0)
-                                  PopupMenuItem(
-                                    child: Text(translate("Rename")),
-                                    value: "rename",
-                                  )
-                              ];
-                            },
-                            onSelected: (v) {
-                              if (v == "delete") {
-                                if (!widget.deleteEnabled) {
-                                  return;
-                                }
-                                final items = SelectedItems(isLocal: isLocal);
-                                items.add(entries[index]);
-                                controller.removeAction(items);
-                              } else if (v == "multi_select") {
-                                _selectedItems.clear();
-                                widget.selectMode.toggle(isLocal);
-                                setState(() {});
-                              } else if (v == "rename") {
-                                controller.renameAction(
-                                    entries[index], isLocal);
-                              }
-                            }),
+                    : widget.dualPane
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Checkbox(
+                                value: selected,
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  _setDualPaneSelection(entries[index], v);
+                                },
+                              ),
+                              _buildEntryMenu(entries[index]),
+                            ],
+                          )
+                        : showCheckBox
+                            ? Checkbox(
+                                value: selected,
+                                onChanged: (v) {
+                                  if (v == null) return;
+                                  if (v && !selected) {
+                                    _selectedItems.add(entries[index]);
+                                  } else if (!v && selected) {
+                                    _selectedItems.remove(entries[index]);
+                                  }
+                                  setState(() {});
+                                })
+                            : _buildEntryMenu(entries[index]),
                 onTap: () {
-                  if (showCheckBox) {
+                  if (widget.dualPane && entries[index].isFile) {
+                    _setDualPaneSelection(entries[index], !selected);
+                    return;
+                  }
+                  if (showCheckBox && !widget.dualPane) {
                     if (selected) {
                       _selectedItems.remove(entries[index]);
                     } else {
@@ -1069,13 +1214,15 @@ class _FileManagerViewState extends State<FileManagerView> {
                   }
                   if (entries[index].isDirectory || entries[index].isDrive) {
                     controller.openDirectory(entries[index].path);
-                  } else {
-                    // Perform file-related tasks.
                   }
                 },
                 onLongPress: entries[index].isDrive
                     ? null
                     : () {
+                        if (widget.dualPane) {
+                          _setDualPaneSelection(entries[index], !selected);
+                          return;
+                        }
                         _selectedItems.clear();
                         widget.selectMode.toggle(isLocal);
                         if (widget.selectMode.value != SelectMode.none) {
@@ -1089,6 +1236,77 @@ class _FileManagerViewState extends State<FileManagerView> {
         );
       }))
     ]);
+  }
+
+  Widget _buildEntryMenu(Entry entry) {
+    return PopupMenuButton<String>(
+        tooltip: "",
+        icon: Icon(Icons.more_vert),
+        itemBuilder: (context) {
+          return [
+            PopupMenuItem(
+              enabled: widget.deleteEnabled,
+              child: Text(translate("Delete")),
+              value: "delete",
+            ),
+            PopupMenuItem(
+              child: Text(translate("Multi Select")),
+              value: "multi_select",
+            ),
+            PopupMenuItem(
+              child: Text(translate("Properties")),
+              value: "properties",
+              enabled: false,
+            ),
+            if (!entry.isDrive &&
+                versionCmp(
+                        controller.rootState.target?.ffiModel.pi.version ?? '',
+                        "1.3.0") >=
+                    0)
+              PopupMenuItem(
+                child: Text(translate("Rename")),
+                value: "rename",
+              )
+          ];
+        },
+        onSelected: (v) {
+          if (v == "delete") {
+            if (!widget.deleteEnabled) {
+              return;
+            }
+            final items = SelectedItems(isLocal: isLocal);
+            items.add(entry);
+            controller.removeAction(items);
+          } else if (v == "multi_select") {
+            _selectedItems.clear();
+            if (widget.dualPane) {
+              widget.onSelectionStarted?.call(isLocal);
+              _selectedItems.add(entry);
+            } else {
+              widget.selectMode.toggle(isLocal);
+            }
+            setState(() {});
+          } else if (v == "rename") {
+            controller.renameAction(entry, isLocal);
+          }
+        });
+  }
+
+  void _setDualPaneSelection(Entry entry, bool selected) {
+    if (selected) {
+      if (_selectedItems.items.isEmpty) {
+        widget.onSelectionStarted?.call(isLocal);
+      }
+      if (!_selectedItems.items.contains(entry)) {
+        _selectedItems.add(entry);
+      }
+    } else {
+      _selectedItems.remove(entry);
+      if (_selectedItems.items.isEmpty) {
+        widget.selectMode.value = SelectMode.none;
+      }
+    }
+    setState(() {});
   }
 
   void breadCrumbScrollToEnd() {
