@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'home_page.dart';
 
@@ -30,6 +31,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   String? _error;
   var _starting = true;
   var _refreshWifiNameOnResume = false;
+  var _selectedCloudPackageId = 'windows';
   Timer? _statusTimer;
   Timer? _cloudRefreshTimer;
 
@@ -114,6 +116,18 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
     ).showSnackBar(const SnackBar(content: Text('网址已复制')));
   }
 
+  Future<void> _openCloudUrl(String url) async {
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开浏览器，请复制地址后手动打开。')),
+      );
+    }
+  }
+
   Future<void> _requestWifiNamePermission() async {
     final granted = await gFFI.invokeMethod(
       'client_distribution_request_wifi_name_permission',
@@ -160,6 +174,25 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         : const <dynamic, dynamic>{};
     final metadataSource = metadata['source']?.toString() ?? 'cached';
     final metadataMessage = metadata['message']?.toString() ?? '';
+    final cloudPackages = packages
+        .where(
+          (item) =>
+              item is Map &&
+              _isKemiCloudPortalUrl(
+                item['cloudPortalUrl']?.toString() ?? '',
+              ),
+        )
+        .cast<Map>()
+        .toList();
+    Map? selectedCloudPackage;
+    for (final item in cloudPackages) {
+      if (item['id']?.toString() == _selectedCloudPackageId) {
+        selectedCloudPackage = item;
+        break;
+      }
+    }
+    selectedCloudPackage ??= cloudPackages.isEmpty ? null : cloudPackages.first;
+    final cloudUrl = selectedCloudPackage?['cloudPortalUrl']?.toString() ?? '';
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
@@ -295,6 +328,170 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_done_outlined,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '云端 HTTPS 下载',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '无需局域网互通',
+                        style: TextStyle(
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text('当前网络禁止设备互访时，请选择设备后打开、扫码，或复制固定云端地址。'),
+                const SizedBox(height: 12),
+                if (cloudPackages.isEmpty)
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          metadataMessage.isNotEmpty
+                              ? metadataMessage
+                              : '正在解析新智联云端真实地址……',
+                        ),
+                      ),
+                    ],
+                  )
+                else ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: cloudPackages.map((item) {
+                      final id = item['id']?.toString() ?? '';
+                      final platform = item['platform']?.toString() ?? '客户端';
+                      final selected =
+                          selectedCloudPackage?['id']?.toString() == id;
+                      return ChoiceChip(
+                        label: Text(platform),
+                        selected: selected,
+                        avatar: Icon(
+                          _cloudPlatformIcon(platform),
+                          size: 18,
+                        ),
+                        onSelected: (_) {
+                          setState(() => _selectedCloudPackageId = id);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final detail = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${selectedCloudPackage?['platform'] ?? '客户端'} · '
+                            '${selectedCloudPackage?['version'] ?? ''}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 7),
+                          FilledButton.icon(
+                            onPressed: () => _openCloudUrl(cloudUrl),
+                            icon: const Icon(Icons.open_in_browser_outlined),
+                            label: const Text('打开云端下载'),
+                          ),
+                          const SizedBox(height: 9),
+                          _AddressBox(
+                            url: cloudUrl,
+                            onCopy: () => _copyUrl(cloudUrl),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            '固定地址由KEMI云端服务自动转到新智联云盘最新文件，文件更新后二维码和地址不变。',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      );
+                      final qr = Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: QrImageView(
+                              data: cloudUrl,
+                              size: 148,
+                              backgroundColor: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text('扫码从云端下载'),
+                        ],
+                      );
+                      if (constraints.maxWidth < 700) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            detail,
+                            const SizedBox(height: 16),
+                            Center(child: qr),
+                          ],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: detail),
+                          const SizedBox(width: 28),
+                          qr,
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        Card(
+          margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
                   '可下载客户端',
                   style: Theme.of(
@@ -345,6 +542,23 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
       ],
     );
   }
+}
+
+IconData _cloudPlatformIcon(String platform) {
+  final normalized = platform.toLowerCase();
+  if (normalized.contains('macos')) return Icons.apple;
+  if (normalized.contains('android') || normalized.contains('pad')) {
+    return Icons.android;
+  }
+  if (normalized.contains('linux')) return Icons.terminal;
+  return Icons.window_rounded;
+}
+
+bool _isKemiCloudPortalUrl(String value) {
+  final uri = Uri.tryParse(value);
+  return uri?.scheme == 'https' &&
+      uri?.host.toLowerCase() == 'kemi-chat.newlinksz.com' &&
+      uri!.path.startsWith('/kemi/download/');
 }
 
 class _AddressBox extends StatelessWidget {

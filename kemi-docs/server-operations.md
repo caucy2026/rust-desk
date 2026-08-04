@@ -26,6 +26,11 @@ hbbc内部监听`127.0.0.1:21120`，公网由Nginx 443提供
 修改页面、项目、平台卡片和固定name无需重新编译；需要立即生效时只重启
 `kemi-rustdesk-hbbc.service`。
 
+PAD“客户端”页保留本机`http://PAD-IP:8688`作为同网段高速下载，同时显示
+`https://kemi-chat.newlinksz.com/kemi/download/{android|windows|macos|linux}`固定备用地址。
+按钮、复制和二维码都使用固定hbbc路由；hbbc再302到当前已校验的Newlink CDN文件，
+所以云盘文件更新后不需要更新PAD二维码或重新打包客户端。
+
 完整字段、自动页面生成、两份清单交叉校验、Nginx、回滚和验收说明见服务端仓库
 `docs/hbbc-cloud-download-server.md`以及发布包
 `BIN/release/server/README-HBBC-配置与部署.md`。

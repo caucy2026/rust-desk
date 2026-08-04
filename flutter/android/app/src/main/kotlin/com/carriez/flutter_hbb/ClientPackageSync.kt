@@ -55,6 +55,8 @@ class ClientPackageSync private constructor(private val context: Context) {
             "https://cdn.jsdelivr.net/gh/caucy2026/common-data@main/kemi-rustdesk/stable/manifest.json"
         private const val CLOUD_PLUG_DATA_URL =
             "https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name="
+        private const val CLOUD_PORTAL_BASE_URL =
+            "https://kemi-chat.newlinksz.com/kemi/download"
         private const val CLOUD_MANIFEST_NAME = "release-manifest"
         private const val CLOUD_CHECKSUMS_NAME = "SHA256SUMS"
         private const val CLOUD_METADATA_CONNECT_TIMEOUT_MS = 8_000
@@ -224,6 +226,13 @@ class ClientPackageSync private constructor(private val context: Context) {
                 "available" to latestReady,
                 "fallbackAvailable" to (resolved != null && !latestReady),
                 "servingVersion" to (resolved?.target?.version ?: ""),
+                // The URL has already passed the HTTPS host allow-list while
+                // parsing the manifest. Flutter only displays/copies it; the
+                // local HTTP server remains the source of cached packages.
+                "cloudUrl" to (target?.url ?: ""),
+                // Stable hbbc route. hbbc resolves this to the current,
+                // validated Newlink CDN object, so QR codes never expire.
+                "cloudPortalUrl" to "$CLOUD_PORTAL_BASE_URL/${definition.id}",
                 "state" to (currentProgress?.state ?: if (latestReady) "ready" else "missing"),
                 "downloaded" to (currentProgress?.downloaded ?: 0L),
                 "total" to (currentProgress?.total ?: target?.size ?: 0L),

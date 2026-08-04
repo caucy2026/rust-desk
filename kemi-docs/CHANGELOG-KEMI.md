@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十三、2026-08-04 本地 HTTP 与 hbbc 云端下载互补（PAD 1.4.48+140 候选）
+
+- PAD“客户端”页继续在进入页面时启动`http://PAD-IP:8688`，用于同一局域网且设备可以互访时下载PAD已校验并缓存的四端文件；离开页面仍关闭本地HTTP服务。该路径不依赖云端页面，适合现场高速分发。
+- 新增固定云端备用路径`https://kemi-chat.newlinksz.com/kemi/download/{android|windows|macos|linux}`。平台选择、打开浏览器、复制地址和二维码都使用固定hbbc路由，不再把每次上传后变化的`cdn.newlink-sz.com`长地址编码进客户端。
+- hbbc每600秒读取JSON并解析Newlink六个固定资源，完成manifest、SHA256SUMS、文件名、MD5、HTTPS及域名白名单交叉校验后，才把固定路由302到当前真实文件。云盘更新只需维护六项资源和服务器JSON；无需更新PAD二维码或为了换URL重新打包APK。
+- 本地下载和云端下载互不替代：局域网客户端优先使用PAD地址；AP隔离、访客网络或设备互相不通时使用云端HTTPS。hbbc异常不会影响`hbbs/hbbr`远控服务，本地8688也仍可使用已缓存文件。
+- 客户端状态新增`cloudPortalUrl`，保留原`cloudUrl`作为PAD后台同步真实资源的内部信息。UI只接受`kemi-chat.newlinksz.com/kemi/download/`白名单固定地址，避免任意状态值进入二维码或外部浏览器。
+- `client_download_page.dart`定向`flutter analyze`无问题；固定签名arm64 Release完整构建通过。候选APK为24,149,095字节，SHA-256为`c74c94c03a6811e898f8deb879daed4fd838dbb0fbc173c1156ec25b371f8fe5`，包名`com.newlinksz.kemi.remote`，版本`1.4.48+140`，v1/v2签名有效，证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。版本化文件为`BIN/KEMI-远程桌面-PAD-1.4.48+140-candidate.apk`；尚未覆盖固定`BIN/release/KEMI-PAD.apk`，需在hbbc部署后真机闭环再晋升。
+
 ## 七十二、2026-08-03 文件传输窗口跨屏独立显示（PAD 1.4.48+138）
 
 - 原实现从远控页调用 `showGeneralDialog`，文件传输浮窗属于当前远控 Activity 的 Flutter 路由，因此只能覆盖在远控画面上；Flutter 单个 Activity 无法把同一路由绘制到另一块物理屏幕，这就是此前“文件窗口叠在当前屏”的根本原因。
