@@ -84,6 +84,32 @@
 - 代理关闭后停止转发。
 - 会话已结束时丢弃输入，不得转发到新的连接。
 
+### 2.7 远程画面指针操作与键盘保持
+
+键盘打开后，在发起远控的PAD显示区域进行以下操作均不得关闭键盘：
+
+- 物理鼠标左键点击、移动和拖动。
+- PAD手指点击、滑动和多指触摸。
+- 虚拟鼠标控件产生的远程输入。
+
+源屏`FlutterActivity`必须在把`MotionEvent`交给Flutter前，把真实鼠标或触摸事件通知原生键盘代理。鼠标主键和触摸按下进入同一IME焦点保护；鼠标右键必须取消该保护，保证右键down/up完整转发。只有用户点击键盘开关、在键盘目标屏主动收起、按HOME、退出会话或目标Display消失才可关闭键盘。
+
+### 2.8 工具栏收起状态
+
+用户主动点击底部工具栏“收起”时：
+
+1. 工具栏收起后，展开入口固定在远程画面右下角。
+2. 展开入口使用50%透明度，避免遮挡远程内容。
+3. 若键盘为`hidden`，收起完成后自动请求打开键盘。
+4. 键盘已处于`opening/visible/closing`时不得重复请求或反向关闭。
+5. 点击右下角入口只展开工具栏，不自动关闭键盘。
+
+这是用户明确触发的工具栏动作，不代表键盘可见性变化可以自动移动工具栏。
+
+### 2.9 首次认证输入安全
+
+首次安装后从默认主屏发起连接时，密码认证完成前不得创建可能抢占焦点的对屏键盘代理Activity。默认主屏将预创建延迟到`pi.isSet`确认认证完成后；非默认副屏仍可在进入远程页时预创建主屏宿主，以兼容Android跨Display后台启动限制。密码框继续使用Flutter自身输入连接，代理键盘不得接收或转发认证密码。
+
 ## 3. 非目标
 
 本功能不提供：
@@ -241,7 +267,7 @@ Activity 的 theme 和 window 配置应保证：
 - 根据状态设置按钮颜色和是否可点击。
 - 页面销毁时请求关闭代理。
 
-跨屏流程不得修改：
+键盘状态变化本身不得修改：
 
 - `_showEdit`。
 - `keyboardVisibilityController`。
@@ -249,6 +275,8 @@ Activity 的 theme 和 window 配置应保证：
 - `SystemChrome` overlays。
 - `floatingActionButtonLocation`。
 - `_showBar`。
+
+用户点击工具栏“收起”是唯一例外：该明确动作可以收起`_showBar`、把50%透明的展开入口放到右下角，并在键盘为`hidden`时调用现有打开流程；IME可见性回调自身仍不得改变这些布局状态。
 
 `Scaffold` 明确设置 `resizeToAvoidBottomInset: false`，作为布局不变的第二道保护；第一道保护仍是当前页面不创建 IME 输入连接。
 
@@ -1078,3 +1106,57 @@ IME随后报告隐藏 ─┴─ 120ms分类
 6. 用户现场确认“左键不影响键盘，右键功能正常”。
 
 以后修改跨屏键盘、物理鼠标或Activity生命周期时，必须同时验证“左键不闪”“右键down/up完整”“键盘按钮仍能关闭/重开”“HOME后可重新打开”。只看最终状态、只看画面或只看`hasWindowFocus()`都不能作为通过依据；正常左键路径中出现任何一次`IME insets visible=false`都应判为回归。
+
+## 21. 触摸保持、工具栏收起与首次认证（2026-08-04，PAD 1.4.49+153）
+
+### 21.1 触摸与物理鼠标不是同一输入源
+
+`+137`只在`SOURCE_MOUSE`上建立主键前置守护，因此实体鼠标左键不会关闭键盘，但PAD手指产生的`SOURCE_TOUCHSCREEN`完全绕过该入口。`+150`把主、副屏Activity的事件入口统一为`onSourcePointerEvent`，同时接受鼠标和触摸；secondary仍单独取消保护，保持右键down/up路径不变。
+
+真机证明仅统一事件入口仍不足：触摸滑动会让厂商Android把远程源Activity设为新的可聚焦窗口，系统因此撤销对面Display的IME焦点。`STATE_ALWAYS_VISIBLE`和立即恢复只能缩短消失时间，日志仍出现一次`IME insets visible=false`，不能按“最终又显示了”判定通过。
+
+### 21.2 双屏焦点所有权
+
+最终规则如下：
+
+```text
+键盘 opening / visible，且 sourceDisplayId != targetDisplayId
+        ↓
+源远控Activity：FLAG_NOT_FOCUSABLE（仍然可触摸）
+键盘代理Activity：持有目标Display输入焦点和IME
+        ↓
+源屏手指/鼠标MotionEvent继续进入Flutter并传给远端
+但源窗口不会夺走IME焦点
+        ↓
+键盘hidden / 打开失败 / Display移除 / App后台 / 会话释放
+        ↓
+清除源Activity FLAG_NOT_FOCUSABLE
+```
+
+严禁同时设置`FLAG_NOT_TOUCHABLE`，否则虽然键盘稳定，远程画面也无法操作。该规则只用于双屏；单屏回退必须维持普通窗口焦点模型。
+
+### 21.3 收起状态
+
+- 点击底栏“收起”后，如代理为`hidden`则自动执行既有键盘打开流程。
+- 已处于`opening/visible/closing`时不重复请求。
+- 收起后的展开按钮固定在源屏右下角，透明度50%。`+153`不再使用自带16dp外边距的`endFloat`，而是用Scaffold实际可绘制宽高减去按钮宽高计算坐标，因此右侧和底部间距严格为0，同时仍避开Android系统导航栏。
+- 收起动作只在代理状态明确为`hidden`时打开键盘；`opening/visible/closing`均不重开、不调用`restartInput`，避免已经打开的键盘闪动、输入连接重建或中文组合态丢失。
+- 点击展开按钮只恢复底栏，不关闭键盘。
+- 展开后点击“键盘”仍必须正常进入`closing→hidden`并恢复源窗口可聚焦。
+
+### 21.4 首次主屏密码输入
+
+认证前预创建跨屏代理可能抢走Flutter密码框输入连接。默认主屏首次进入远程页时，`keyboard_proxy_prepare`携带`deferDefaultDisplay=true`；Manager只记录延迟，不启动代理。`pi.isSet`确认认证完成后，Flutter再发送普通prepare。从非默认副屏启动时仍允许认证前预创建，避免Display 2到Display 0的后台Activity启动被系统拒绝。
+
+密码输入验收必须使用卸载后全新安装，不能用已记住密码的最近访问卡片代替。只能输入不提交的测试字符串，并从UI层确认TextField真实持有内容；认证阶段日志不得出现`Preparing keyboard proxy`或代理Activity激活。
+
+### 21.5 真机验收
+
+设备`192.168.3.63:5555`，PAD`1.4.49+152`：
+
+1. 收起工具栏后Display 2键盘真实可见，Display 0右下角为50%透明展开按钮。
+2. Display 0注入touchscreen点击和500毫秒滑动，Flutter收到`PointerDeviceKind.touch`；日志中`IME insets visible=false`为0，`mInputShown=true`。
+3. 展开后点击键盘，Manager进入`closing→hidden`并打印`source window focusable=true`，`mShowRequested=false`。
+4. 卸载并全新安装后，主屏首次密码框实际接收测试文本；认证前只有`Defer keyboard proxy preparation on default display until authentication`，没有代理Activity启动。
+
+以后相关修改必须同时满足：鼠标左键不闪、右键down/up成对、PAD触摸不闪、收起自动开键盘、主动关闭可恢复源窗口、首次主屏密码可输入。任一正常源屏操作出现`IME insets visible=false`均视为回归。

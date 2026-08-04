@@ -219,7 +219,8 @@ class RemoteActivity : FlutterActivity() {
                     result.success(
                         KeyboardProxyManager.prepare(
                             this@RemoteActivity,
-                            mChannel
+                            mChannel,
+                            call.argument<Boolean>("deferDefaultDisplay") == true
                         )
                     )
                 }
@@ -263,32 +264,36 @@ class RemoteActivity : FlutterActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        noteKeyboardProxyMouseEvent(event)
+        noteKeyboardProxyPointerEvent(event)
         if (physicalMouseRightButton.handleMotionEvent(event)) return true
         return super.dispatchTouchEvent(event)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        noteKeyboardProxyMouseEvent(event)
+        noteKeyboardProxyPointerEvent(event)
         if (physicalMouseRightButton.handleMotionEvent(event)) return true
         return super.dispatchGenericMotionEvent(event)
     }
 
-    private fun noteKeyboardProxyMouseEvent(event: MotionEvent) {
-        if (event.source and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE) {
+    private fun noteKeyboardProxyPointerEvent(event: MotionEvent) {
+        val isMouse = event.source and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE
+        val isTouchscreen =
+            event.source and InputDevice.SOURCE_TOUCHSCREEN == InputDevice.SOURCE_TOUCHSCREEN
+        if (isMouse || isTouchscreen) {
             val action = event.actionMasked
             val actionButton = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 event.actionButton
             } else {
                 0
             }
-            val secondary = event.buttonState and MotionEvent.BUTTON_SECONDARY != 0 ||
-                actionButton == MotionEvent.BUTTON_SECONDARY
+            val secondary = isMouse &&
+                (event.buttonState and MotionEvent.BUTTON_SECONDARY != 0 ||
+                    actionButton == MotionEvent.BUTTON_SECONDARY)
             val primaryDown =
                 (action == MotionEvent.ACTION_DOWN && !secondary) ||
                     (action == MotionEvent.ACTION_BUTTON_PRESS &&
                         actionButton == MotionEvent.BUTTON_PRIMARY)
-            KeyboardProxyManager.onSourceMouseEvent(
+            KeyboardProxyManager.onSourcePointerEvent(
                 display?.displayId ?: Display.DEFAULT_DISPLAY,
                 primaryDown = primaryDown,
                 pointerUp = action == MotionEvent.ACTION_UP ||

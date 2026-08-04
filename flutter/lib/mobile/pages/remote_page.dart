@@ -124,7 +124,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       keyboardProxyController.addListener(_onKeyboardProxyChanged);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+          unawaited(gFFI.invokeMethod(
+            "keyboard_proxy_prepare",
+            {"deferDefaultDisplay": true},
+          ));
         }
       });
     }
@@ -147,10 +150,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     // clipboard-assisted text input. Physical keyboard events are not gated here.
     _waylandKeyboardGateWorker = ever(gFFI.ffiModel.pi.isSet, (bool isSet) {
       if (isSet) {
+        if (isAndroid) {
+          unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+        }
         _initWaylandKeyboardGateIfNeeded();
       }
     });
     if (gFFI.ffiModel.pi.isSet.value) {
+      if (isAndroid) {
+        unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+      }
       _initWaylandKeyboardGateIfNeeded();
     }
   }
@@ -571,6 +580,21 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
+  void _openKeyboardAfterBarCollapse() {
+    final alreadyActive = isAndroid
+        ? keyboardProxyController.value.state != KeyboardProxyState.hidden
+        : keyboardVisibilityController.isVisible && _showEdit;
+    if (alreadyActive) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) openKeyboard();
+    });
+  }
+
+  void _collapseBottomBar() {
+    setState(() => _showBar = false);
+    _openKeyboardAfterBarCollapse();
+  }
+
   Widget _bottomWidget() => _showGestureHelp
       ? getGestureHelp()
       : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
@@ -582,6 +606,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final keyboardIsVisible =
         !isAndroid && keyboardVisibilityController.isVisible && _showEdit;
     final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
+    final barCollapsed = !_showBar && !_showGestureHelp;
 
     return WillPopScope(
       onWillPop: () async {
@@ -591,34 +616,42 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       child: Scaffold(
           resizeToAvoidBottomInset: false,
           // workaround for https://github.com/rustdesk/rustdesk/issues/3131
-          floatingActionButtonLocation: keyboardIsVisible
-              ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
-              : null,
+          floatingActionButtonLocation: barCollapsed
+              ? const FlushBottomRightFabLocation()
+              : keyboardIsVisible
+                  ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
+                  : null,
           floatingActionButton: !showActionButton
               ? null
-              : FloatingActionButton(
-                  mini: !keyboardIsVisible,
-                  child: Icon(
-                    (keyboardIsVisible || _showGestureHelp)
-                        ? Icons.expand_more
-                        : Icons.expand_less,
-                    color: Colors.white,
+              : Opacity(
+                  opacity: barCollapsed ? 0.5 : 1,
+                  child: FloatingActionButton(
+                    mini: !keyboardIsVisible,
+                    child: Icon(
+                      (keyboardIsVisible || _showGestureHelp) && !barCollapsed
+                          ? Icons.expand_more
+                          : Icons.expand_less,
+                      color: Colors.white,
+                    ),
+                    backgroundColor: MyTheme.accent,
+                    onPressed: () {
+                      setState(() {
+                        if (!_showBar) {
+                          _showBar = true;
+                        } else if (keyboardIsVisible) {
+                          _showEdit = false;
+                          gFFI.invokeMethod("enable_soft_keyboard", false);
+                          _mobileFocusNode.unfocus();
+                          _physicalFocusNode.requestFocus();
+                        } else if (_showGestureHelp) {
+                          _showGestureHelp = false;
+                        } else {
+                          _showBar = false;
+                        }
+                      });
+                    },
                   ),
-                  backgroundColor: MyTheme.accent,
-                  onPressed: () {
-                    setState(() {
-                      if (keyboardIsVisible) {
-                        _showEdit = false;
-                        gFFI.invokeMethod("enable_soft_keyboard", false);
-                        _mobileFocusNode.unfocus();
-                        _physicalFocusNode.requestFocus();
-                      } else if (_showGestureHelp) {
-                        _showGestureHelp = false;
-                      } else {
-                        _showBar = !_showBar;
-                      }
-                    });
-                  }),
+                ),
           bottomNavigationBar: Obx(() => Stack(
                 alignment: Alignment.bottomCenter,
                 children: [
@@ -869,9 +902,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                 icon: const Icon(Icons.expand_more),
                 onPressed: gFFI.ffiModel.waitForFirstImage.isTrue
                     ? null
-                    : () {
-                        setState(() => _showBar = !_showBar);
-                      },
+                    : _collapseBottomBar,
               )),
         ],
       ),
@@ -1784,5 +1815,19 @@ class FABLocation extends FloatingActionButtonLocation {
   Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
     final offset = location.getOffset(scaffoldGeometry);
     return Offset(offset.dx + offsetX, offset.dy + offsetY);
+  }
+}
+
+class FlushBottomRightFabLocation extends FloatingActionButtonLocation {
+  const FlushBottomRightFabLocation();
+
+  @override
+  Offset getOffset(ScaffoldPrelayoutGeometry scaffoldGeometry) {
+    return Offset(
+      scaffoldGeometry.scaffoldSize.width -
+          scaffoldGeometry.floatingActionButtonSize.width,
+      scaffoldGeometry.scaffoldSize.height -
+          scaffoldGeometry.floatingActionButtonSize.height,
+    );
   }
 }

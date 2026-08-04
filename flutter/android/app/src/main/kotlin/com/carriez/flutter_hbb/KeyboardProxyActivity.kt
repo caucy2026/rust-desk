@@ -33,7 +33,7 @@ class KeyboardProxyActivity : Activity() {
         private const val IME_RETRY_DELAY_MS = 350L
         private const val IME_LOSS_CLASSIFY_DELAY_MS = 120L
         private const val IME_RESTORE_DELAY_MS = 80L
-        private const val SOURCE_MOUSE_GRACE_MS = 2_200L
+        private const val SOURCE_POINTER_GRACE_MS = 2_200L
         private const val PRIMARY_MOUSE_GUARD_INTERVAL_MS = 48L
         private const val PRIMARY_MOUSE_GUARD_MAX_MS = 650L
         private const val PRIMARY_MOUSE_GUARD_AFTER_UP_MS = 180L
@@ -109,15 +109,15 @@ class KeyboardProxyActivity : Activity() {
         ) {
             return@Runnable
         }
-        val recentSourceMouse = KeyboardProxyManager.hadRecentSourceMouseEvent(
+        val recentSourcePointer = KeyboardProxyManager.hadRecentSourcePointerEvent(
             requestId,
-            SOURCE_MOUSE_GRACE_MS
+            SOURCE_POINTER_GRACE_MS
         )
-        if (!editText.hasWindowFocus() || recentSourceMouse) {
+        if (!editText.hasWindowFocus() || recentSourcePointer) {
             Log.i(
                 TAG,
                 "Restore IME after external focus loss display=${display?.displayId} " +
-                    "windowFocus=${editText.hasWindowFocus()} sourceMouse=$recentSourceMouse request=$requestId"
+                    "windowFocus=${editText.hasWindowFocus()} sourcePointer=$recentSourcePointer request=$requestId"
             )
             restoreImeAfterExternalFocusLoss()
         } else {
@@ -456,6 +456,10 @@ class KeyboardProxyActivity : Activity() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         )
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        )
         requestTaskFocus("activate")
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(classifyImeHidden)
@@ -470,16 +474,16 @@ class KeyboardProxyActivity : Activity() {
     }
 
     /**
-     * Keep the cross-display IME host in front only while a physical primary-button
-     * gesture is being dispatched on the source display. Android otherwise moves
-     * focus away from this Activity and starts hiding the IME before the delayed
-     * visibility callback can classify the loss.
+     * Keep the cross-display IME host in front while a primary mouse or touchscreen
+     * gesture is dispatched on the source display. Android otherwise moves focus
+     * away from this Activity and starts hiding the IME before the delayed visibility
+     * callback can classify the loss.
      *
      * Secondary-button events cancel the guard immediately. This is important for
      * devices that expose the right mouse button through both MotionEvent and
      * KeyEvent: moving the keyboard task during that down/up pair can swallow its up.
      */
-    fun onSourceMouseGesture(primaryDown: Boolean, pointerUp: Boolean, secondary: Boolean) {
+    fun onSourcePointerGesture(primaryDown: Boolean, pointerUp: Boolean, secondary: Boolean) {
         if (!::editText.isInitialized) return
         if (secondary) {
             primaryMouseGuardUntilMs = 0L
@@ -506,6 +510,10 @@ class KeyboardProxyActivity : Activity() {
 
     private fun keepImeStableDuringPrimaryMouse() {
         if (!active || closeRequested || releaseRequested || !::editText.isInitialized) return
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        )
         requestTaskFocus("primary_mouse_guard")
         editText.isFocusable = true
         editText.isFocusableInTouchMode = true
@@ -564,6 +572,10 @@ class KeyboardProxyActivity : Activity() {
         imeShowAccepted = false
         primaryMouseGuardUntilMs = 0L
         if (!::editText.isInitialized) return
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+        )
         editText.removeCallbacks(requestIme)
         editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
@@ -619,9 +631,19 @@ class KeyboardProxyActivity : Activity() {
             // On this dual-screen Android build, clicking the remote display temporarily
             // removes focus from the IME host on the other display. Insets report hidden
             // before the window-focus callback arrives, so classify the cause after one
-            // short grace period. The source Activity's real mouse-event timestamp is
+            // short grace period. The source Activity's real pointer-event timestamp is
             // authoritative because a per-display host can still report window focus.
-            if (!restoreImeInProgress) {
+            val recentSourcePointer = KeyboardProxyManager.hadRecentSourcePointerEvent(
+                requestId,
+                SOURCE_POINTER_GRACE_MS
+            )
+            if (recentSourcePointer && !restoreImeInProgress) {
+                Log.i(
+                    TAG,
+                    "Restore IME immediately after source pointer request=$requestId"
+                )
+                restoreImeAfterExternalFocusLoss()
+            } else if (!restoreImeInProgress) {
                 editText.removeCallbacks(classifyImeHidden)
                 editText.postDelayed(classifyImeHidden, IME_LOSS_CLASSIFY_DELAY_MS)
             }
@@ -636,6 +658,10 @@ class KeyboardProxyActivity : Activity() {
         restoreImeInProgress = true
         imeRequestAttempts = 0
         imeShowAccepted = false
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE
+        )
         requestTaskFocus("external_focus_loss")
         editText.isFocusable = true
         editText.isFocusableInTouchMode = true
@@ -663,6 +689,10 @@ class KeyboardProxyActivity : Activity() {
         restoreImeInProgress = false
         primaryMouseGuardUntilMs = 0L
         if (::editText.isInitialized) {
+            window.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN
+            )
             editText.removeCallbacks(requestIme)
             editText.removeCallbacks(classifyImeHidden)
             editText.removeCallbacks(finishAfterHideTimeout)

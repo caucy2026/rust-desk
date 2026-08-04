@@ -2,6 +2,20 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十七、2026-08-04 PAD触摸键盘保持、工具栏收起与桌面状态跨平台对齐（PAD 1.4.49+153 候选）
+
+- 物理鼠标点击远程画面时键盘保持显示已经闭环，但PAD触摸仍会关闭键盘。根因是原生焦点保护只识别`InputDevice.SOURCE_MOUSE`，触摸事件使用`SOURCE_TOUCHSCREEN`，完全绕过了源屏指针时间戳、代理任务前置和IME恢复保护。`+150`把该入口统一为源屏指针事件：鼠标主键和触摸按下/抬起共用保护，鼠标右键仍明确取消保护，避免破坏已验收的右键down/up转发。
+- 底部工具栏点击“收起”后，展开入口固定显示在远程画面的右下角，并使用50%透明度，降低遮挡；收起动作完成后若键盘尚未打开，会自动执行现有键盘打开流程。键盘已经处于`opening/visible/closing`时不重复发送请求，展开工具栏也不主动关闭键盘。
+- 首次安装后从主屏连接并在密码框输入时，旧逻辑会在认证完成前预创建对屏`KeyboardProxyActivity`，可能抢走首次Flutter密码框的输入连接，表现为键盘已弹出但字符进不去；副屏路径因Display调度不同没有稳定复现。新逻辑仅在默认主屏认证阶段延迟预创建，等`pi.isSet`确认认证完成后再创建；从副屏启动仍保留认证前预创建，规避Android跨屏后台Activity启动限制。
+- 今天新增的桌面端“就绪 / 连接 / 抓屏 / 抓屏次数”状态实现位于共享`connection_page.dart`、`src/ipc.rs`、`src/ui_interface.rs`和`src/server/video_service.rs`，没有macOS平台条件，Windows与Linux构建天然使用同一逻辑。Mac `+141`已完成实机验证；Windows/Linux二进制在本轮PAD功能验收、代码提交并推送后使用各自构建环境生成，发布前必须回读三项状态和断开后抓屏归零。
+- `+150`真机触摸点击和500毫秒滑动后，原生日志已确认`sourcePointer=true`且最终`mInputShown=true`，但过程中仍出现一次`IME visible=false→true`，肉眼可能看到短暂闪烁，不能作为最终完成。`+151`在代理激活和源屏指针保护期间把窗口模式从`STATE_ALWAYS_HIDDEN`切为`STATE_ALWAYS_VISIBLE`；近期源屏触摸导致Insets隐藏时立即恢复，不再叠加120毫秒分类和80毫秒恢复等待。用户主动关闭、停放代理时再切回`STATE_ALWAYS_HIDDEN`，避免键盘无法按意图收起。
+- `+151`复测仍能捕获一次系统级`visible=false`，证明键盘宿主自身持续请求可见只能缩短恢复，不能阻止源屏触摸切换窗口焦点。`+152`在双屏键盘`opening/visible`期间把远程源Activity窗口设为`FLAG_NOT_FOCUSABLE`但不设`FLAG_NOT_TOUCHABLE`：触摸、滑动和鼠标MotionEvent继续进入远程画面，源窗口却不再夺走目标Display的IME焦点；键盘关闭、打开失败、Display移除、App后台或会话释放时统一清除该标志。该方案只在`sourceDisplayId != targetDisplayId`时启用，单屏回退不受影响。
+- `+152`在`192.168.3.63:5555`完成真机闭环：收起工具栏后键盘自动在Display 2进入`visible`，Display 0右下角显示50%透明展开按钮；注入真实touchscreen点击和500毫秒滑动均进入Flutter，期间`IME insets visible=false`计数为0，结束后`mInputShown=true`。展开工具栏并点击键盘后状态依次为`closing→hidden`，日志确认`source window focusable=true`且`mShowRequested=false`，说明保持方案没有破坏主动关闭。
+- 随后卸载原包并全新安装`+152`，清空当前PAD的KEMI最近访问、设置和客户端缓存，按真实首次启动从Display 0输入Mac ID进入密码框。日志只有`Defer keyboard proxy preparation on default display until authentication`，未创建代理Activity；密码框UI层实际回读测试文本`12KemiTest152`，证明首次主屏密码输入已恢复。测试密码未提交。
+- `flutter analyze --no-pub`检查PAD远程页、共享桌面状态页和键盘状态模型无新增错误；`cargo check --locked --features flutter`成功，只有项目已有警告。固定签名arm64 APK为24,151,376字节，SHA-256为`a25794e296f11c61f92e876ccac489105a41f36d42c621bf10ef30ec5c0743a4`，包名`com.newlinksz.kemi.remote`、版本`1.4.49+152`、v1/v2签名有效，证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`；候选归档为`BIN/KEMI-远程桌面-PAD-1.4.49+152-candidate.apk`。
+- `+153`进一步去掉Flutter `endFloat`默认保留的右侧和底部外边距。收起后的半透明展开按钮改为按Scaffold实际可绘制宽高减去按钮宽高计算坐标，右边和底边均为0；它贴紧应用显示区边缘，但不会侵入Android系统导航栏。收起前先读取键盘代理状态，只有明确为`hidden`才打开键盘；`opening/visible/closing`均只收起工具栏，不调用重开或`restartInput`，保留当前输入连接和中文组合态。
+- `+153`固定签名arm64 Release构建成功，APK为24,147,427字节，SHA-256为`991a9e32d43d220371009321ac2d4795c0203a0c54ba950543ef91e6a9a3e12b`；包名`com.newlinksz.kemi.remote`、版本`1.4.49+153`、v1/v2签名有效，证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。候选归档为`BIN/KEMI-远程桌面-PAD-1.4.49+153-candidate.apk`，并已覆盖安装到当前DHCP地址`192.168.3.62:5555`的同一台`huanglong` PAD，系统回读`versionCode=153`。
+
 ## 七十六、2026-08-04 KEMI快传跨平台客户端下载闭环规范（文档）
 
 - 新增`KEMI-SEND-CROSS-PLATFORM-CLIENT-DISTRIBUTION.md`，以KEMI快传`kemi-send`为可直接执行的实例，把“客户端页面展示→四端构建→六个发布文件→Newlink Common固定name→六个plugData查询地址→两份清单→hbbc JSON→服务器独立部署→发现API反馈客户端→PAD本地HTTP→云端下载→云备份→日常升级”串成完整闭环。

@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Display
+import android.view.WindowManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -30,9 +31,10 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private var targetDisplayId = Display.DEFAULT_DISPLAY
     private var channel: MethodChannel? = null
     private var proxyActivity = WeakReference<KeyboardProxyActivity>(null)
+    private var sourceActivity = WeakReference<Activity>(null)
     private var displayManager: DisplayManager? = null
     private var preparingRequestId = 0L
-    private var lastSourceMouseEventAtMs = 0L
+    private var lastSourcePointerEventAtMs = 0L
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
@@ -55,12 +57,20 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun prepare(source: Activity, methodChannel: MethodChannel): Boolean {
+    fun prepare(
+        source: Activity,
+        methodChannel: MethodChannel,
+        deferDefaultDisplay: Boolean = false
+    ): Boolean {
         channel = methodChannel
         if (state != "hidden") return false
 
         val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val sourceId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
+        if (deferDefaultDisplay && sourceId == Display.DEFAULT_DISPLAY) {
+            Log.i(TAG, "Defer keyboard proxy preparation on default display until authentication")
+            return true
+        }
         val targetId = findTargetDisplay(manager, sourceId)
         val existing = proxyActivity.get()
         if (existing != null && !existing.isFinishing && !existing.isDestroyed &&
@@ -115,9 +125,11 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         sessionId = requestedSessionId
         sourceDisplayId = sourceId
         targetDisplayId = targetId
+        sourceActivity = WeakReference(source)
         channel = methodChannel
         state = "opening"
-        lastSourceMouseEventAtMs = 0L
+        lastSourcePointerEventAtMs = 0L
+        setSourceWindowFocusable(false)
         displayManager = manager
         manager.registerDisplayListener(this, mainHandler)
         publishState("open_requested")
@@ -183,32 +195,32 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun onSourceMouseEvent(
+    fun onSourcePointerEvent(
         displayId: Int,
         primaryDown: Boolean,
         pointerUp: Boolean,
         secondary: Boolean
     ) {
         if ((state == "opening" || state == "visible") && displayId == sourceDisplayId) {
-            lastSourceMouseEventAtMs = SystemClock.elapsedRealtime()
-            proxyActivity.get()?.onSourceMouseGesture(primaryDown, pointerUp, secondary)
+            lastSourcePointerEventAtMs = SystemClock.elapsedRealtime()
+            proxyActivity.get()?.onSourcePointerGesture(primaryDown, pointerUp, secondary)
         }
     }
 
     @Synchronized
     fun onSourceSecondaryMouseEvent(displayId: Int) {
         if ((state == "opening" || state == "visible") && displayId == sourceDisplayId) {
-            lastSourceMouseEventAtMs = SystemClock.elapsedRealtime()
-            proxyActivity.get()?.onSourceMouseGesture(false, false, true)
+            lastSourcePointerEventAtMs = SystemClock.elapsedRealtime()
+            proxyActivity.get()?.onSourcePointerGesture(false, false, true)
         }
     }
 
     @Synchronized
-    fun hadRecentSourceMouseEvent(activityRequestId: Long, withinMs: Long): Boolean {
-        if (activityRequestId != requestId || state == "hidden" || lastSourceMouseEventAtMs == 0L) {
+    fun hadRecentSourcePointerEvent(activityRequestId: Long, withinMs: Long): Boolean {
+        if (activityRequestId != requestId || state == "hidden" || lastSourcePointerEventAtMs == 0L) {
             return false
         }
-        return SystemClock.elapsedRealtime() - lastSourceMouseEventAtMs <= withinMs
+        return SystemClock.elapsedRealtime() - lastSourcePointerEventAtMs <= withinMs
     }
 
     @Synchronized
@@ -312,7 +324,9 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         state = "hidden"
         publishState(reason)
         sessionId = ""
-        lastSourceMouseEventAtMs = 0L
+        lastSourcePointerEventAtMs = 0L
+        setSourceWindowFocusable(true)
+        sourceActivity.clear()
         if (keepPreparedActivity) {
             preparingRequestId = 0L
         } else {
@@ -321,6 +335,24 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             displayManager = null
             channel = null
         }
+    }
+
+    private fun setSourceWindowFocusable(focusable: Boolean) {
+        val activity = sourceActivity.get() ?: return
+        if (sourceDisplayId == targetDisplayId || activity.isFinishing || activity.isDestroyed) {
+            return
+        }
+        if (focusable) {
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        } else {
+            // Keep the remote canvas touchable while preventing touchscreen input on
+            // this display from stealing the IME focus owned by the opposite display.
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        }
+        Log.i(
+            TAG,
+            "source window focusable=$focusable display=$sourceDisplayId request=$requestId"
+        )
     }
 
     @Synchronized
