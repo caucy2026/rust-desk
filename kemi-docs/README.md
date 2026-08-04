@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.48**，当前候选构建号为 **1.4.48+129**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端 `+129` 尚未全部验收前，`BIN/release` 的 `+125` 稳定清单仍只代表上一批次。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.49**，当前正式候选构建号为 **1.4.49+154**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端必须按同一功能提交、构建运行和SHA清单整体发布，禁止混用旧包。
 
 ### 核心定制功能
 
@@ -23,6 +23,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `全端 1.4.49 / PAD、macOS build 154` | PAD服务器未就绪时显示“重连”，点击后仅重启rendezvous注册链路；断开后抓屏状态闭环、跨屏键盘/物理鼠标和桌面状态同步进入同一正式候选；Windows/Linux由focused run `30891539907`生成并与功能提交`ed615c7fb`绑定 |
 | `全端 1.4.48 / PAD、macOS build 125` | 四端统一绑定候选`a5ff428b5`及新服务器/固定公钥；macOS本地全量重编译、固定签名并实测连接`119.96.24.110:21116`，Windows/Linux focused run `30731531135`成功；六个固定发布文件统一在`BIN/release/` |
 | `PAD 1.4.48+125` | 设置首页和关于区域直接显示当前ID服务器；关于页网站改为`newlink-sz.com`；开源服务端`21114`账户API缺失明确视为正常能力边界 |
 | `1.4.48 / PAD 1.4.48+124` | Windows、macOS、Linux和PAD主页显示实际运行包版本；新客户端默认启用UDP打洞；MAC/PAD已固定使用`kemi-chat.newlinksz.com`及当前服务器公钥，MAC实测与`21116`建立长连接 |

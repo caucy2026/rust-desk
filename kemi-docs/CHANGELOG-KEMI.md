@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 七十八、2026-08-04 PAD服务器手动重连与全端1.4.49正式对齐（PAD/macOS 1.4.49+154）
+
+- PAD主页服务器状态未就绪时，状态条后显示同风格的小型“重连”按钮；就绪后自动隐藏。点击只重启当前自建服务器的rendezvous注册链路，不重启共享屏幕、不重新申请MediaProjection，也不影响正在工作的录屏会话。按钮在重连中显示转圈，连接恢复后立即消失；10秒仍无结果则恢复可点击，用户无需再重启整个App。
+- 重连复用当前`custom-rendezvous-server`并通过既有原生option处理触发`RendezvousMediator::restart()`：原socket循环退出、跳过普通退避后重新注册。Flutter侧禁止在已就绪或正在重连时重复触发，并由既有连接状态轮询收口UI状态。
+- 产品版本统一为`1.4.49`，PAD/macOS构建号统一为`154`；Cargo、Flutter、GitHub工作流、PKGBUILD和RPM入口全部对齐。功能提交先冻结为`7eabfe8022f5dab5e15005034e1d4f4f4c3ab551`，PAD与Mac均由本机全量构建；随后云端暴露`client_download_page.dart`使用了Flutter新API`Color.withValues`，而正式Windows/Linux工作流固定Flutter 3.22.3。兼容修复仅将该处改为`withOpacity(.12)`，最终四端功能提交为`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`，focused run为`30891539907`。
+- 最终功能提交后重新全量打包PAD Flutter层，固定签名arm64 APK为24,148,348字节，SHA-256为`a815f7d84ba90e4abaf5640cb4c112bed31be58ceec64e3b7b820b912f2aaa9e`；包名`com.newlinksz.kemi.remote`、系统回读`1.4.49+154`、v1/v2签名有效，证书SHA-256为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。最终包已覆盖安装到`192.168.3.63:5555`并回读版本；当前另一屏正在运行其他应用，因此未强行修改服务器制造离线状态，避免中断用户现场。
+- 最终功能提交后重新全量打包macOS Flutter层并固定签名；arm64 ZIP为25,997,857字节，SHA-256为`ca7f170c81edfc697372d3cee7f7d8ad7d43b45f5f5d760915cc26c5758f6d94`。App及ZIP解包副本均回读`1.4.49 (154)`，主程序、service和动态库均为arm64，固定本地测试证书深层校验通过，内置Rust核心逐字检出`1.4.49`和`kemi-chat.newlinksz.com`。该证书不是Apple Developer ID且包未公证，只用于公司测试机分发。
+- focused run `30891539907`最终全绿：Windows x64 EXE为22,686,720字节，SHA-256为`e6f950941a2359f6b3944ee651e3eb282afedf7b1d03faab4b34e44b06e9e759`；Linux x86_64 AppImage为77,711,864字节，SHA-256为`47dec309fc9e93e8a2962ff6b8234a9504877c05949d1411b8b7bc094bdd456f`。两项本地哈希、GitHub Release资产摘要和云端`SHA256SUMS`三方一致，云端manifest精确绑定`1.4.49 / ed615c7fb / 30891539907`。
+- 四端最终二进制全部从功能提交`ed615c7fb`构建后，才覆盖`BIN/release`固定文件并最后生成`SHA256SUMS.txt`与`release-manifest.json`。本轮审计特意重打了最初在兼容提交前生成的PAD/Mac，避免“功能等价但源码commit不精确”的可追溯性缺口；禁止拿旧二进制冒充1.4.49。
+
 ## 七十七、2026-08-04 PAD触摸键盘保持、工具栏收起与桌面状态跨平台对齐（PAD 1.4.49+153 候选）
 
 - 物理鼠标点击远程画面时键盘保持显示已经闭环，但PAD触摸仍会关闭键盘。根因是原生焦点保护只识别`InputDevice.SOURCE_MOUSE`，触摸事件使用`SOURCE_TOUCHSCREEN`，完全绕过了源屏指针时间戳、代理任务前置和IME恢复保护。`+150`把该入口统一为源屏指针事件：鼠标主键和触摸按下/抬起共用保护，鼠标右键仍明确取消保护，避免破坏已验收的右键down/up转发。

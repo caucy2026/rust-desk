@@ -2,9 +2,9 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前待上传批次：1.4.48+129
+## 当前待上传批次：1.4.49+154
 
-本批次四端统一绑定源码 commit `eef2e0c0222c0701c3fea6137907d933c8da8921`，并包含：KEMI服务器与固定公钥、无账户 UI、服务器状态语义及本批次已 review 的会话修复。PAD/macOS由本机全量构建，Windows x64/Linux x86_64由 GitHub focused run `30795669077` 构建；四项通过大小、架构和SHA-256校验后，`BIN/release` 六个固定文件整体切换到本批次，不再属于旧 `1.4.48+125` 批次。
+本批次四端统一绑定功能源码 commit `ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`，并包含：KEMI服务器与固定公钥、无账户 UI、服务器状态语义、断开后停止抓屏、跨屏键盘与物理鼠标闭环，以及PAD服务器未就绪时的手动“重连”入口。PAD/macOS由本机全量构建，Windows x64/Linux x86_64由 GitHub focused run `30891539907` 构建；四项已通过大小、架构、签名状态和SHA-256校验，`BIN/release`六个固定文件已整体切换到同一批次，等待Newlink云盘人工上传。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 
@@ -45,16 +45,16 @@ Newlink国内云盘HTTPS文件
 
 ## 2. 四端版本、归档名和云盘固定名
 
-产品版本来自根 `Cargo.toml`，当前为 `1.4.48`。当前待上传批次绑定源码`eef2e0c0222c0701c3fea6137907d933c8da8921`：PAD为`1.4.48+129`，macOS为`1.4.48 (129)`，Windows/Linux包内产品版本为`1.4.48`。Windows/Linux由focused run `30795669077`生成，macOS/PAD在本机全量构建并使用既有固定测试签名。桌面云端包没有Flutter build number字段，因此清单如实保留产品版本，并通过批次、commit、run ID和SHA-256建立对应关系。
+产品版本来自根 `Cargo.toml`，当前为 `1.4.49`。当前待上传批次绑定功能源码`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`：PAD为`1.4.49+154`，macOS为`1.4.49 (154)`，Windows/Linux包内产品版本为`1.4.49`。Windows/Linux由focused run `30891539907`生成，macOS/PAD在本机全量构建并使用既有固定测试签名。桌面云端包没有Flutter build number字段，因此清单如实保留产品版本，并通过批次、commit、run ID和SHA-256建立对应关系。
 
 `BIN/`根目录中当前批次的版本化归档为：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.48+129-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.48+129.zip
-├── KEMI-远程桌面-Windows-x64-1.4.48-eef2e0c.exe
-└── KEMI-远程桌面-Linux-x86_64-1.4.48-eef2e0c.AppImage
+├── KEMI-远程桌面-PAD-1.4.49+154-release.apk
+├── KEMI-远程桌面-macOS-arm64-1.4.49+154.zip
+├── KEMI-远程桌面-Windows-x64-1.4.49-ed615c7.exe
+└── KEMI-远程桌面-Linux-x86_64-1.4.49-ed615c7.AppImage
 ```
 
 上述`BIN/`根目录归档名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -123,10 +123,10 @@ BIN/release/
 
 | 平台 | 版本来源 | 当前`BIN/release/`内容 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.48`、`versionCode=129`，清单写 `1.4.48+129` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.48`、`CFBundleVersion=129` |
-| Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.48`，绑定源码`eef2e0c02`与run `30795669077` |
-| Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.48`，绑定源码`eef2e0c02`与run `30795669077` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.49`、`versionCode=154`，清单写 `1.4.49+154` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.49`、`CFBundleVersion=154` |
+| Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |
+| Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |
 
 ## 3. common-data 仓库结构
 

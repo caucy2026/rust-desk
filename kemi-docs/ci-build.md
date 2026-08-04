@@ -494,53 +494,50 @@ gh run view <run-id> --log-failed
 
 ### Imported
 
-核验后导入：
-
-```text
-flutter/android/app/src/main/assets/client-dist/
-├── KEMI-remote-desktop-windows-x64.exe
-└── KEMI-remote-desktop-linux-x86_64.AppImage
-```
-
-不得把 bridge、TopMostWindow 或 DEB 中间 artifact 冒充最终客户端。
+核验后把最终EXE/AppImage保存为`BIN/`带版本号的不可变归档，并复制到
+`BIN/release/KEMI-Windows.exe`与`BIN/release/KEMI-Linux.AppImage`。PAD不再把Windows、
+Linux或Mac大文件打进APK；它根据最后发布的manifest在空闲时下载、校验并缓存，进入“客户端”
+页后再通过局域网HTTP提供。不得把bridge、TopMostWindow、DEB中间artifact或旧版客户端冒充
+最终文件。
 
 ### Delivery Done
 
-1. Windows/Linux 与本地 Mac ZIP一起编入最终 PAD APK；
-2. 卸载 PAD 旧包后安装最终包；
-3. 从 PAD“客户端”页下载四个平台文件；
-4. 下载文件与导入文件 SHA-256一致；
-5. Windows、Linux、macOS分别启动并验收远控与文件传输；
-6. 记录版本、commit、run ID、哈希、签名和目标系统结果。
+1. 本地PAD/Mac与云端Windows/Linux绑定同一功能commit并分别完成构建核验；
+2. `BIN/release`四端固定文件全部替换后，重新生成SHA清单和manifest；
+3. 人工按“四端客户端→SHA256SUMS→release-manifest”的顺序上传Newlink云盘；
+4. 回读固定接口并验证动态HTTPS地址、大小与SHA-256；
+5. PAD自动下载新清单和四端缓存，再从“客户端”页验证局域网HTTP与云端通道；
+6. Windows、Linux、macOS分别启动并验收远控与文件传输，记录版本、commit、run ID、哈希和签名。
 
 ## 17. 当前 KEMI 云端状态
 
 候选源码提交：
 
 ```text
-a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5
+ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6
 ```
 
 focused run：
 
 ```text
-30731531135
-https://github.com/caucy2026/rust-desk/actions/runs/30731531135
+30891539907
+https://github.com/caucy2026/rust-desk/actions/runs/30891539907
 ```
 
 结果：
 
 - default bridge：成功；
 - TopMostWindow x64：成功；
-- Windows x64：成功，artifact `8828441239`，最终EXE为22,642,176字节；
-- Linux x86_64主构建和AppImage：成功，DEB artifact `8828415442`、最终AppImage artifact `8828435424`；
-- 汇总manifest：成功，artifact `8828443404`；
-- 候选prerelease为`kemi-client-a5ff428b53f93a78ec0b02d794ecbbe6fd629bd5`，包含Windows、Linux、manifest和SHA256SUMS；
-- Windows SHA-256为`ba5e6dd0ede56f369c7096aa8aea6b5b98598c8c7388591a15f3eff91c9358cb`；Linux SHA-256为`66affa2de063f94fa50422dc8e4ee02d63ae2a9290c274dd4e4b347b97a89d4a`；
+- Windows x64：成功，artifact `8886022083`，最终EXE为22,686,720字节；
+- Linux x86_64主构建和AppImage：成功，DEB artifact `8886121924`、最终AppImage artifact `8886195156`；
+- 汇总manifest：成功，artifact `8886205006`；
+- 候选prerelease为`kemi-client-ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`，包含Windows、Linux、manifest和SHA256SUMS；
+- Windows SHA-256为`e6f950941a2359f6b3944ee651e3eb282afedf7b1d03faab4b34e44b06e9e759`；Linux SHA-256为`47dec309fc9e93e8a2962ff6b8234a9504877c05949d1411b8b7bc094bdd456f`；本地下载、GitHub Release digest和云端SHA清单三方一致；
 - checkout后应用`.github/patches/kemi_hbb_common_server.diff`，使云端新clone的子模块也使用KEMI服务器与公钥；补丁失败会在依赖安装前停止，不允许静默编出公共RustDesk默认配置；
+- 前一轮`7eabfe802 / 30888794012`的Windows和Linux均在Flutter编译阶段失败，首个有效错误为`MaterialColor.withValues`不存在；正式工作流固定Flutter 3.22.3，而本机新Flutter只给出反方向弃用提示。最终提交将该处改为兼容的`withOpacity(.12)`，两端随即成功。以后推送前必须扫描或用固定Flutter基线验证新API，不能只依据本机SDK；
 - Windows目标机与Linux目标机的GUI启动、远控和文件传输仍待对应系统实机验收。
 
-上一批`4e30063b9 / 30590581209`及其AppImage补包run属于`1.4.46`历史批次，只用于追溯，不能继续作为当前`BIN/release`来源。
+上一批`eef2e0c02 / 30795669077`属于`1.4.48`历史批次，只用于追溯，不能继续作为当前`BIN/release`来源。
 
 ## 18. KEMI 汇报模板
 
