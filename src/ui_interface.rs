@@ -45,6 +45,10 @@ pub struct UiStatus {
     pub id: String,
     #[cfg(feature = "flutter")]
     pub video_conn_count: usize,
+    #[cfg(feature = "flutter")]
+    pub screen_capture_count: usize,
+    #[cfg(feature = "flutter")]
+    pub screen_capture_frame_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +69,10 @@ lazy_static::lazy_static! {
         id: "".to_owned(),
         #[cfg(feature = "flutter")]
         video_conn_count: 0,
+        #[cfg(feature = "flutter")]
+        screen_capture_count: 0,
+        #[cfg(feature = "flutter")]
+        screen_capture_frame_count: 0,
     }));
     static ref ASYNC_JOB_STATUS : Arc<Mutex<String>> = Default::default();
     static ref ASYNC_HTTP_STATUS : Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -1317,6 +1325,10 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
     let mut mouse_time = 0;
     #[cfg(feature = "flutter")]
     let mut video_conn_count = 0;
+    #[cfg(feature = "flutter")]
+    let mut screen_capture_count = 0;
+    #[cfg(feature = "flutter")]
+    let mut screen_capture_frame_count = 0;
     #[cfg(not(feature = "flutter"))]
     let mut id = "".to_owned();
     let is_cm = crate::common::is_cm();
@@ -1357,6 +1369,17 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                             #[cfg(feature = "flutter")]
                             Ok(Some(ipc::Data::VideoConnCount(Some(n)))) => {
                                 video_conn_count = n;
+                                UI_STATUS.lock().unwrap().video_conn_count = n;
+                            }
+                            #[cfg(feature = "flutter")]
+                            Ok(Some(ipc::Data::ScreenCaptureCount(Some(n)))) => {
+                                screen_capture_count = n;
+                                UI_STATUS.lock().unwrap().screen_capture_count = n;
+                            }
+                            #[cfg(feature = "flutter")]
+                            Ok(Some(ipc::Data::ScreenCaptureFrameCount(Some(n)))) => {
+                                screen_capture_frame_count = n;
+                                UI_STATUS.lock().unwrap().screen_capture_frame_count = n;
                             }
                             Ok(Some(ipc::Data::OnlineStatus(Some((mut x, _c))))) => {
                                 if x > 0 {
@@ -1376,6 +1399,10 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                                     id: id.clone(),
                                     #[cfg(feature = "flutter")]
                                     video_conn_count,
+                                    #[cfg(feature = "flutter")]
+                                    screen_capture_count,
+                                    #[cfg(feature = "flutter")]
+                                    screen_capture_frame_count,
                                 };
                             }
                             Ok(Some(ipc::Data::ControlPermissionsRemoteModify(v))) => {
@@ -1404,6 +1431,10 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
                         c.send(&ipc::Data::Config(("temporary-password".to_owned(), None))).await.ok();
                         #[cfg(feature = "flutter")]
                         c.send(&ipc::Data::VideoConnCount(None)).await.ok();
+                        #[cfg(feature = "flutter")]
+                        c.send(&ipc::Data::ScreenCaptureCount(None)).await.ok();
+                        #[cfg(feature = "flutter")]
+                        c.send(&ipc::Data::ScreenCaptureFrameCount(None)).await.ok();
                         c.send(&ipc::Data::ControlPermissionsRemoteModify(None)).await.ok();
                         #[cfg(target_os = "windows")]
                         c.send(&ipc::Data::FileTransferEnabledState(None)).await.ok();
@@ -1428,6 +1459,10 @@ async fn check_connect_status_(reconnect: bool, rx: mpsc::UnboundedReceiver<ipc:
             id: id.clone(),
             #[cfg(feature = "flutter")]
             video_conn_count,
+            #[cfg(feature = "flutter")]
+            screen_capture_count,
+            #[cfg(feature = "flutter")]
+            screen_capture_frame_count,
         };
         sleep(1.).await;
     }

@@ -454,6 +454,10 @@ pub enum Data {
     CheckHwcodec,
     #[cfg(feature = "flutter")]
     VideoConnCount(Option<usize>),
+    #[cfg(feature = "flutter")]
+    ScreenCaptureCount(Option<usize>),
+    #[cfg(feature = "flutter")]
+    ScreenCaptureFrameCount(Option<u64>),
     // Although the key is not necessary, it is used to avoid hardcoding the key.
     WaylandScreencastRestoreToken((String, String)),
     HwCodecConfig(Option<String>),
@@ -821,6 +825,16 @@ async fn handle(data: Data, stream: &mut Connection) {
                 .filter(|x| x.conn_type == crate::server::AuthConnType::Remote)
                 .count();
             allow_err!(stream.send(&Data::VideoConnCount(Some(n))).await);
+        }
+        #[cfg(feature = "flutter")]
+        Data::ScreenCaptureCount(None) => {
+            let n = crate::server::video_service::active_screen_capture_count();
+            allow_err!(stream.send(&Data::ScreenCaptureCount(Some(n))).await);
+        }
+        #[cfg(feature = "flutter")]
+        Data::ScreenCaptureFrameCount(None) => {
+            let n = crate::server::video_service::active_screen_capture_frame_count();
+            allow_err!(stream.send(&Data::ScreenCaptureFrameCount(Some(n))).await);
         }
         Data::Config((name, value)) => match value {
             None => {

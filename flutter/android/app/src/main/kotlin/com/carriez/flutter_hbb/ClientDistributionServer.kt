@@ -25,6 +25,8 @@ class ClientDistributionServer(private val context: Context) {
         private const val TAG = "ClientDistribution"
         private const val PREFERRED_PORT = 8686
         private const val SOCKET_TIMEOUT_MS = 7_000
+        private const val CLOUD_DOWNLOAD_PAGE_URL =
+            "http://kemi-chat.newlinksz.com:21120/kemi-desk"
     }
 
     private data class PackageEntry(
@@ -35,7 +37,7 @@ class ClientDistributionServer(private val context: Context) {
         val fileName: String,
         val contentType: String,
         val file: File?,
-        val cloudUrl: String?,
+        val backupUrl: String?,
     )
 
     private val packageSync = ClientPackageSync.get(context)
@@ -121,16 +123,17 @@ class ClientDistributionServer(private val context: Context) {
                 fileName = fileName,
                 contentType = definition.contentType,
                 file = resolved?.file,
-                cloudUrl = target?.url?.takeIf(::isSafeCloudUrl),
+                backupUrl = target?.url?.takeIf(::isSafeBackupUrl),
             )
         }
     }
 
     private fun availablePackages() = packageEntries().filter { it.file?.isFile == true }
 
-    private fun isSafeCloudUrl(value: String): Boolean = try {
+    private fun isSafeBackupUrl(value: String): Boolean = try {
         val uri = URI(value)
-        uri.scheme == "https" && uri.host.equals("cdn.newlink-sz.com", ignoreCase = true)
+        uri.scheme == "https" &&
+            uri.host.equals("cdn.newlink-sz.com", ignoreCase = true)
     } catch (_: Exception) {
         false
     }
@@ -225,19 +228,17 @@ class ClientDistributionServer(private val context: Context) {
             } else {
                 """<span class="action disabled">PAD 正在校验</span>"""
             }
-            val cloudUrl = entry.cloudUrl
-            val cloudActions = if (cloudUrl != null) {
-                val safeUrl = escapeHtml(cloudUrl)
+            val backupUrl = entry.backupUrl
+            val backupActions = if (backupUrl != null) {
+                val safeUrl = escapeHtml(backupUrl)
                 """
-                  <a class="action secondary" href="$safeUrl" target="_blank" rel="noopener noreferrer">HTTPS 云端下载</a>
-                  <div class="cloud-address">
-                    <span>云端实时地址</span>
-                    <code>$safeUrl</code>
-                    <button class="copy-cloud" type="button" data-url="$safeUrl" onclick="copyCloudUrl(this)">复制地址</button>
+                  <div class="backup-option">
+                    <a class="action backup" href="$safeUrl" target="_blank" rel="noopener noreferrer">云备份下载</a>
+                    <small>仅作为上面两种下载均失效情况下的备案</small>
                   </div>
                 """.trimIndent()
             } else {
-                """<div class="cloud-address unavailable-address">云端地址暂未解析，请稍后刷新。</div>"""
+                """<span class="unavailable-address">云备份暂不可用</span>"""
             }
             """
               <article class="download$recommendedClass">
@@ -245,12 +246,13 @@ class ClientDistributionServer(private val context: Context) {
                 <div class="package-body">
                   <div class="package-title"><b>$title</b>$recommendedTag</div>
                   <p>$detail$version</p>
-                  <div class="actions">$localAction $cloudActions</div>
+                  <div class="actions">$localAction $backupActions</div>
                 </div>
               </article>
             """.trimIndent()
         }
         val address = localIpv4Addresses().firstOrNull()?.let { "http://$it:$port" } ?: ""
+        val cloudDownloadPageUrl = escapeHtml(CLOUD_DOWNLOAD_PAGE_URL)
         val wifiName = currentWifiName()
         val wifiTitle = if (wifiName.isNullOrBlank()) {
             "未读取到 Wi-Fi 名称"
@@ -266,7 +268,7 @@ class ClientDistributionServer(private val context: Context) {
         val metadata = packageSync.metadataStatus()
         val sourceText = when (metadata["source"]) {
             "newlink_https" -> "Newlink HTTPS 实时地址"
-            "github_fallback" -> "GitHub 备用源"
+            "github_fallback" -> "备用版本清单"
             "error" -> "云端暂不可用，保留已验证缓存"
             else -> "已验证缓存"
         }
@@ -296,6 +298,14 @@ class ClientDistributionServer(private val context: Context) {
     .address { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 19px; border-radius: 15px; background: #17233c; color: #fff; }
     .address small { width: 100%; color: #b9c6dc; font-size: 13px; }
     .address code { flex: 1; min-width: 230px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: clamp(17px, 3vw, 21px); overflow-wrap: anywhere; }
+    .channels { display: grid; grid-template-columns: repeat(2, 1fr); margin-top: 22px; overflow: hidden; border: 1px solid #bfd1ef; border-radius: 15px; background: #fff; }
+    .channel { display: flex; min-width: 0; flex-direction: column; padding: 18px; }
+    .channel + .channel { border-left: 1px solid #d9e4f3; }
+    .channel-number { color: var(--blue-dark); font-size: 12px; font-weight: 800; }
+    .channel h3 { margin: 5px 0; font-size: 19px; }
+    .channel p { min-height: 42px; margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .channel-url { display: block; min-height: 58px; padding: 11px; border-radius: 9px; background: #f4f7fb; color: var(--blue-dark); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; text-decoration: none; }
+    .channel-url:hover, .channel-url:focus-visible { background: #e9f2ff; text-decoration: underline; }
     button { appearance: none; border: 0; cursor: pointer; font: inherit; font-weight: 700; }
     .copy { padding: 10px 15px; border-radius: 9px; background: #fff; color: #17233c; font-size: 14px; }
     section { margin-top: 24px; padding: 28px; }
@@ -316,17 +326,16 @@ class ClientDistributionServer(private val context: Context) {
     .primary:hover, .primary:focus-visible { background: var(--blue-dark); }
     .secondary { border: 1px solid #a9c5fa; background: #f3f7ff; color: var(--blue-dark); }
     .secondary:hover, .secondary:focus-visible { border-color: var(--blue); background: #eaf2ff; }
+    .backup { border: 1px solid #d7b867; background: #fff9e9; color: #765b13; }
+    .backup:hover, .backup:focus-visible { border-color: #b99535; background: #fff3d1; }
+    .backup-option { display: flex; width: 100%; align-items: center; gap: 8px; }
+    .backup-option > small { color: var(--muted); font-size: 10px; line-height: 1.35; }
     .disabled { background: #edf0f5; color: #8b94a6; cursor: wait; }
-    .cloud-address { display: grid; grid-template-columns: 1fr auto; width: 100%; margin-top: 2px; padding: 10px; border: 1px solid #e2e7f0; border-radius: 9px; background: #f8fafc; }
-    .cloud-address > span { grid-column: 1 / -1; margin-bottom: 5px; color: var(--muted); font-size: 11px; }
-    .cloud-address code { min-width: 0; padding-right: 8px; color: #45516a; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; word-break: break-all; }
-    .copy-cloud { align-self: center; padding: 7px 9px; border: 1px solid #ccd6e7; border-radius: 7px; background: #fff; color: #34425c; font-size: 12px; }
     .unavailable-address { display: block; color: var(--muted); font-size: 12px; }
     .recommended { grid-column: 1 / -1; border-color: #95b9ff; background: #f6f9ff; }
     .tag { display: inline-block; margin: 0 0 5px 7px; padding: 3px 7px; border-radius: 5px; background: #dce9ff; color: var(--blue-dark); font-size: 11px; vertical-align: middle; }
-    .footnote { margin-top: 18px; padding: 13px 15px; border-radius: 10px; background: #fff8e7; color: #6c571e; font-size: 13px; line-height: 1.6; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px; color: var(--muted); font-size: 12px; }
-    @media (max-width: 650px) { main { width: min(100% - 20px, 960px); margin-top: 10px; } .hero, section { padding: 23px 18px; } .downloads { grid-template-columns: 1fr; } .recommended { grid-column: auto; } .address { padding: 15px; } .download { min-height: 0; } .cloud-address { grid-template-columns: 1fr; } .copy-cloud { width: 100%; margin-top: 8px; } }
+    @media (max-width: 650px) { main { width: min(100% - 20px, 960px); margin-top: 10px; } .hero, section { padding: 23px 18px; } .channels, .downloads { grid-template-columns: 1fr; } .channel + .channel { border-top: 1px solid #d9e4f3; border-left: 0; } .recommended { grid-column: auto; } .address { padding: 15px; } .download { min-height: 0; } .backup-option { align-items: flex-start; flex-direction: column; } }
   </style>
 </head>
 <body>
@@ -334,54 +343,33 @@ class ClientDistributionServer(private val context: Context) {
     <header class="panel hero">
       <div class="badge"><i class="dot"></i> 客户端下载服务已开启</div>
       <h1>下载 KEMI 客户端</h1>
-      <p class="intro">先确认 Wi-Fi，再选择从 PAD 下载已校验文件，或直接使用 HTTPS 云端地址。</p>
+      <p class="intro">请选择同局域网下载或云端下载，两种方式均可进入客户端选择页面。</p>
       <div class="wifi-card">
         <div class="wifi-symbol">Wi-Fi</div>
         <div><small>当前 PAD 网络</small><strong>$wifiTitle</strong><p>$wifiDetail</p></div>
       </div>
-      <div class="address">
-        <small>在电脑或手机浏览器中输入</small>
-        <code id="url">${escapeHtml(address)}</code>
-        <button class="copy" type="button" onclick="copyUrl()">复制网址</button>
+      <div class="channels">
+        <article class="channel">
+          <span class="channel-number">方式一</span>
+          <h3>同局域网下载</h3>
+          <p>下载设备与PAD处于同一局域网，并且网络允许设备互相访问时使用。</p>
+          <a class="channel-url" id="url" href="#clients">${escapeHtml(address)}</a>
+        </article>
+        <article class="channel">
+          <span class="channel-number">方式二</span>
+          <h3>云端下载</h3>
+          <p>无需访问PAD的局域网IP，直接进入KEMI云端客户端下载页面。</p>
+          <a class="channel-url" href="$cloudDownloadPageUrl" target="_blank" rel="noopener noreferrer">$cloudDownloadPageUrl</a>
+        </article>
       </div>
     </header>
-    <section class="panel">
+    <section class="panel" id="clients">
       <h2>选择客户端</h2>
-      <p class="hint">“从PAD下载”适合同一 Wi-Fi；“HTTPS云端下载”可直接下载，也可复制真实地址到其他浏览器。</p>
+      <p class="hint">选择对应平台下载客户端。</p>
       <div class="downloads">$packageLinks</div>
-      <div class="footnote">PAD 先通过 HTTPS 下载并校验完整文件，只向局域网提供校验成功的版本。打不开时，请确认两台设备连接同一个 Wi-Fi，并关闭电脑 VPN。</div>
-      <div class="meta"><span>版本：${escapeHtml(androidVersion)}</span><span>上游：${escapeHtml(sourceText)}</span><span>可选：PAD本地 / HTTPS云端</span></div>
+      <div class="meta"><span>版本：${escapeHtml(androidVersion)}</span><span>上游：${escapeHtml(sourceText)}</span><span>主入口：同局域网 / KEMI云端</span></div>
     </section>
   </main>
-  <script>
-    async function copyText(value) {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(value);
-        return;
-      }
-      const area = document.createElement('textarea');
-      area.value = value;
-      area.style.position = 'fixed';
-      area.style.opacity = '0';
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
-    }
-    async function flashCopied(button, original) {
-      button.textContent = '已复制';
-      setTimeout(() => button.textContent = original, 1600);
-    }
-    async function copyUrl() {
-      const button = document.querySelector('.copy');
-      await copyText(document.getElementById('url').textContent);
-      flashCopied(button, '复制网址');
-    }
-    async function copyCloudUrl(button) {
-      await copyText(button.dataset.url);
-      flashCopied(button, '复制地址');
-    }
-  </script>
 </body>
 </html>"""
     }

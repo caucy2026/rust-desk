@@ -5,9 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'home_page.dart';
+
+const _cloudDownloadPageUrl = 'http://kemi-chat.newlinksz.com:21120/kemi-desk';
 
 class ClientDownloadPage extends StatefulWidget implements PageShape {
   ClientDownloadPage({Key? key}) : super(key: key);
@@ -31,7 +32,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   String? _error;
   var _starting = true;
   var _refreshWifiNameOnResume = false;
-  var _selectedCloudPackageId = 'windows';
+  var _selectedBackupPackageId = 'windows';
   Timer? _statusTimer;
   Timer? _cloudRefreshTimer;
 
@@ -116,18 +117,6 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
     ).showSnackBar(const SnackBar(content: Text('网址已复制')));
   }
 
-  Future<void> _openCloudUrl(String url) async {
-    final opened = await launchUrl(
-      Uri.parse(url),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开浏览器，请复制地址后手动打开。')),
-      );
-    }
-  }
-
   Future<void> _requestWifiNamePermission() async {
     final granted = await gFFI.invokeMethod(
       'client_distribution_request_wifi_name_permission',
@@ -174,25 +163,26 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         : const <dynamic, dynamic>{};
     final metadataSource = metadata['source']?.toString() ?? 'cached';
     final metadataMessage = metadata['message']?.toString() ?? '';
-    final cloudPackages = packages
+    final backupPackages = packages
         .where(
           (item) =>
               item is Map &&
-              _isKemiCloudPortalUrl(
-                item['cloudPortalUrl']?.toString() ?? '',
+              _isSafeNewlinkBackupUrl(
+                item['cloudUrl']?.toString() ?? '',
               ),
         )
         .cast<Map>()
         .toList();
-    Map? selectedCloudPackage;
-    for (final item in cloudPackages) {
-      if (item['id']?.toString() == _selectedCloudPackageId) {
-        selectedCloudPackage = item;
+    Map? selectedBackupPackage;
+    for (final item in backupPackages) {
+      if (item['id']?.toString() == _selectedBackupPackageId) {
+        selectedBackupPackage = item;
         break;
       }
     }
-    selectedCloudPackage ??= cloudPackages.isEmpty ? null : cloudPackages.first;
-    final cloudUrl = selectedCloudPackage?['cloudPortalUrl']?.toString() ?? '';
+    selectedBackupPackage ??=
+        backupPackages.isEmpty ? null : backupPackages.first;
+    final backupUrl = selectedBackupPackage?['cloudUrl']?.toString() ?? '';
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
@@ -219,81 +209,80 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   ],
                 ),
                 const SizedBox(height: 16),
+                const Text('在下载设备浏览器中输入对应网址，或扫描对应二维码。'),
+                const SizedBox(height: 8),
+                if (wifiName.isNotEmpty)
+                  Text(
+                    '当前 Wi‑Fi：$wifiName',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  )
+                else if (!wifiNamePermissionGranted)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _requestWifiNamePermission,
+                        icon: const Icon(Icons.location_on_outlined),
+                        label: const Text('授权显示当前 Wi‑Fi 名称'),
+                      ),
+                      const Text('仅用于读取当前 Wi‑Fi 名称，不会获取或上传位置。'),
+                    ],
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('无法读取当前 Wi‑Fi 名称，请确认系统定位服务已开启。'),
+                      TextButton.icon(
+                        onPressed: _openLocationSettings,
+                        icon: const Icon(Icons.settings_outlined),
+                        label: const Text('打开定位设置'),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 14),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final detail = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('请让 PAD 与下载设备连接同一个 Wi‑Fi。'),
-                        if (wifiName.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '当前 Wi‑Fi：$wifiName',
-                            style: Theme.of(
-                              context,
-                            ).textTheme.titleMedium?.copyWith(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ] else if (!wifiNamePermissionGranted) ...[
-                          const SizedBox(height: 3),
-                          TextButton.icon(
-                            onPressed: _requestWifiNamePermission,
-                            icon: const Icon(Icons.location_on_outlined),
-                            label: const Text('授权显示当前 Wi‑Fi 名称'),
-                          ),
-                          const Text('仅用于读取当前 Wi‑Fi 名称，不会获取或上传位置。'),
-                        ] else ...[
-                          const SizedBox(height: 4),
-                          const Text('无法读取当前 Wi‑Fi 名称，请确认系统定位服务已开启。'),
-                          TextButton.icon(
-                            onPressed: _openLocationSettings,
-                            icon: const Icon(Icons.settings_outlined),
-                            label: const Text('打开定位设置'),
-                          ),
-                        ],
-                        const SizedBox(height: 18),
-                        const Text('在下载设备浏览器中：输入下方网址，或扫描右侧二维码（二选一）。'),
-                        const SizedBox(height: 7),
-                        _AddressBox(url: url, onCopy: () => _copyUrl(url)),
-                      ],
+                    final local = _DownloadChannel(
+                      icon: Icons.wifi_outlined,
+                      title: '同局域网下载',
+                      description: '下载设备与 PAD 位于同一局域网时使用。',
+                      url: url,
+                      qrLabel: '扫码打开局域网下载',
+                      onCopy: () => _copyUrl(url),
                     );
-                    final qr = url.isEmpty
-                        ? const SizedBox.shrink()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              QrImageView(
-                                data: url,
-                                size: 152,
-                                backgroundColor: Colors.white,
-                              ),
-                              const SizedBox(height: 6),
-                              const Text('扫码打开（与输入网址二选一）'),
-                            ],
-                          );
-                    if (constraints.maxWidth < 700 || url.isEmpty) {
+                    final cloud = _DownloadChannel(
+                      icon: Icons.cloud_outlined,
+                      title: '云端下载',
+                      description: '无需访问 PAD 的局域网地址。',
+                      url: _cloudDownloadPageUrl,
+                      qrLabel: '扫码打开云端下载',
+                      onCopy: () => _copyUrl(_cloudDownloadPageUrl),
+                    );
+                    if (constraints.maxWidth < 760) {
                       return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          detail,
-                          if (url.isNotEmpty) ...[
-                            const SizedBox(height: 18),
-                            Center(child: qr),
-                          ],
+                          local,
+                          const Divider(height: 28),
+                          cloud,
                         ],
                       );
                     }
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SizedBox(
-                          width: constraints.maxWidth * .5,
-                          child: detail,
+                        Expanded(child: local),
+                        const SizedBox(width: 15),
+                        Container(
+                          width: 1,
+                          height: 300,
+                          color: Theme.of(context).dividerColor,
                         ),
-                        const Spacer(),
-                        qr,
+                        const SizedBox(width: 15),
+                        Expanded(child: cloud),
                       ],
                     );
                   },
@@ -337,7 +326,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        '云端 HTTPS 下载',
+                        '云备份下载',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -353,7 +342,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '无需局域网互通',
+                        '最后备用',
                         style: TextStyle(
                           color: Colors.green.shade700,
                           fontWeight: FontWeight.w600,
@@ -363,9 +352,9 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   ],
                 ),
                 const SizedBox(height: 8),
-                const Text('当前网络禁止设备互访时，请选择设备后打开、扫码，或复制固定云端地址。'),
+                const Text('仅作为上面两种下载均失效情况下的备案'),
                 const SizedBox(height: 12),
-                if (cloudPackages.isEmpty)
+                if (backupPackages.isEmpty)
                   Row(
                     children: [
                       const SizedBox(
@@ -387,11 +376,11 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: cloudPackages.map((item) {
+                    children: backupPackages.map((item) {
                       final id = item['id']?.toString() ?? '';
                       final platform = item['platform']?.toString() ?? '客户端';
                       final selected =
-                          selectedCloudPackage?['id']?.toString() == id;
+                          selectedBackupPackage?['id']?.toString() == id;
                       return ChoiceChip(
                         label: Text(platform),
                         selected: selected,
@@ -400,7 +389,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                           size: 18,
                         ),
                         onSelected: (_) {
-                          setState(() => _selectedCloudPackageId = id);
+                          setState(() => _selectedBackupPackageId = id);
                         },
                       );
                     }).toList(),
@@ -412,27 +401,21 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${selectedCloudPackage?['platform'] ?? '客户端'} · '
-                            '${selectedCloudPackage?['version'] ?? ''}',
+                            '${selectedBackupPackage?['platform'] ?? '客户端'} · '
+                            '${selectedBackupPackage?['version'] ?? ''}',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 7),
-                          FilledButton.icon(
-                            onPressed: () => _openCloudUrl(cloudUrl),
-                            icon: const Icon(Icons.open_in_browser_outlined),
-                            label: const Text('打开云端下载'),
-                          ),
-                          const SizedBox(height: 9),
                           _AddressBox(
-                            url: cloudUrl,
-                            onCopy: () => _copyUrl(cloudUrl),
+                            url: backupUrl,
+                            onCopy: () => _copyUrl(backupUrl),
                           ),
                           const SizedBox(height: 7),
                           Text(
-                            '固定地址由KEMI云端服务自动转到新智联云盘最新文件，文件更新后二维码和地址不变。',
+                            '该地址来自新智联云盘当前已校验文件，更新后可能变化。',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -448,13 +431,13 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                               border: Border.all(color: Colors.black12),
                             ),
                             child: QrImageView(
-                              data: cloudUrl,
+                              data: backupUrl,
                               size: 148,
                               backgroundColor: Colors.white,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text('扫码从云端下载'),
+                          const Text('扫码打开云备份下载'),
                         ],
                       );
                       if (constraints.maxWidth < 700) {
@@ -505,7 +488,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                   metadataSource == 'newlink_https'
                       ? '已解析 Newlink HTTPS 最新地址；PAD 校验成功后才对外提供。'
                       : metadataSource == 'github_fallback'
-                          ? '云盘暂不可用，当前使用 GitHub 备用源。'
+                          ? '云盘暂不可用，当前使用备用版本清单。'
                           : metadataMessage.isNotEmpty
                               ? metadataMessage
                               : '正在解析云端实时地址……',
@@ -554,11 +537,75 @@ IconData _cloudPlatformIcon(String platform) {
   return Icons.window_rounded;
 }
 
-bool _isKemiCloudPortalUrl(String value) {
+bool _isSafeNewlinkBackupUrl(String value) {
   final uri = Uri.tryParse(value);
   return uri?.scheme == 'https' &&
-      uri?.host.toLowerCase() == 'kemi-chat.newlinksz.com' &&
-      uri!.path.startsWith('/kemi/download/');
+      uri?.host.toLowerCase() == 'cdn.newlink-sz.com';
+}
+
+class _DownloadChannel extends StatelessWidget {
+  const _DownloadChannel({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.url,
+    required this.qrLabel,
+    required this.onCopy,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final String url;
+  final String qrLabel;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(description),
+          const SizedBox(height: 8),
+          _AddressBox(url: url, onCopy: onCopy),
+          const SizedBox(height: 10),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: QrImageView(
+                    data: url,
+                    size: 126,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(qrLabel),
+              ],
+            ),
+          ),
+        ],
+      );
 }
 
 class _AddressBox extends StatelessWidget {
@@ -780,7 +827,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
     final percent =
         progress == null ? '' : ' ${(progress * 100).toStringAsFixed(0)}%';
     final sourceLabel =
-        _metadataSource == 'github_fallback' ? 'GitHub 备用源' : '新智联云盘';
+        _metadataSource == 'github_fallback' ? '备用版本清单' : '新智联云盘';
     return AlertDialog(
       title: Text('准备 ${widget.platform} 客户端'),
       content: SizedBox(

@@ -33,6 +33,9 @@ class OnlineStatusWidget extends StatefulWidget {
 /// State for the connection page.
 class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   final _svcStopped = Get.find<RxBool>(tag: 'stop-service');
+  final RxInt _remoteConnectionCount = 0.obs;
+  final RxInt _screenCaptureCount = 0.obs;
+  final RxInt _screenCaptureFrameCount = 0.obs;
   Timer? _updateTimer;
 
   double get em => 14.0;
@@ -67,32 +70,61 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
               .marginOnly(left: em),
         );
 
-    basicWidget() => Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              height: 8,
-              width: 8,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                color: _svcStopped.value ||
-                        stateGlobal.svcStatus.value == SvcStatus.connecting
-                    ? kColorWarn
-                    : (stateGlobal.svcStatus.value == SvcStatus.ready
-                        ? Color.fromARGB(255, 50, 190, 166)
-                        : Color.fromARGB(255, 224, 79, 95)),
-              ),
-            ).marginSymmetric(horizontal: em),
-            Container(
-              width: isIncomingOnly ? 226 : null,
-              child: _buildConnStatusMsg(),
-            ),
-            // stop
-            if (!isIncomingOnly) startServiceWidget(),
-            // KEMI ships with the company rendezvous/relay configuration, so the
-            // public-server self-hosting guide is intentionally not displayed.
-          ],
-        );
+    Widget basicWidget() {
+      widget.onSvcStatusChanged?.call();
+      final serverReady =
+          !_svcStopped.value && stateGlobal.svcStatus.value == SvcStatus.ready;
+      final serverConnecting = !_svcStopped.value &&
+          stateGlobal.svcStatus.value == SvcStatus.connecting;
+      final serverColor = serverReady
+          ? const Color.fromARGB(255, 50, 190, 166)
+          : serverConnecting
+              ? kColorWarn
+              : Colors.grey.shade400;
+      final serverDetails = _svcStopped.value
+          ? '本机远程服务当前没有运行。\n\n“就绪”只表示客户端已连接ID/信令服务器，可以发起或接收连接；不代表已有设备连接，也不代表正在抓屏。'
+          : serverReady
+              ? 'ID/信令服务器已连接，可以发起或接收远程连接。\n\n“就绪”不代表已有设备连接，也不代表正在抓屏，请分别查看“连接”和“抓屏”指示。'
+              : serverConnecting
+                  ? '正在连接ID/信令服务器，请稍候。\n\n服务器就绪后本项会变为绿色。'
+                  : 'ID/信令服务器当前不可用，请检查网络和服务器配置。';
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _buildStatusIndicator(
+            label: '就绪',
+            color: serverColor,
+            tooltip: serverReady ? '服务器已就绪' : '服务器未就绪',
+            details: serverDetails,
+            marginLeft: em,
+          ),
+          _buildStatusIndicator(
+            label: '连接',
+            color: _remoteConnectionCount.value > 0
+                ? const Color.fromARGB(255, 50, 190, 166)
+                : Colors.grey.shade400,
+            tooltip: _remoteConnectionCount.value > 0 ? '远程已连接' : '没有远程连接',
+            details: _remoteConnectionCount.value > 0
+                ? '当前有 ${_remoteConnectionCount.value} 个已认证的远程控制会话。\n\n绿色：有设备正在远程连接本机。\n灰色：当前没有远程控制设备。'
+                : '当前没有已认证的远程控制会话。\n\n绿色：有设备正在远程连接本机。\n灰色：当前没有远程控制设备。',
+          ),
+          _buildStatusIndicator(
+            label: '抓屏',
+            color: _screenCaptureCount.value > 0
+                ? const Color.fromARGB(255, 50, 190, 166)
+                : Colors.grey.shade400,
+            tooltip: _screenCaptureCount.value > 0 ? '正在抓屏' : '没有抓屏',
+            details: _screenCaptureCount.value > 0
+                ? '正在抓屏，当前抓屏会话已成功抓取 ${_screenCaptureFrameCount.value} 次画面。\n\n这里统计的是内部采集器成功取得有效画面的次数，不是屏幕数量。\n\n如果“连接”已经变灰但“抓屏”仍为绿色，说明远程断开后的采集尚未释放，应视为异常。'
+                : '当前没有屏幕采集循环。\n\n绿色：本机正在抓取屏幕画面。\n灰色：本机没有抓取屏幕。',
+          ),
+          // stop
+          if (!isIncomingOnly) startServiceWidget(),
+          // KEMI ships with the company rendezvous/relay configuration, so the
+          // public-server self-hosting guide is intentionally not displayed.
+        ],
+      );
+    }
 
     return Container(
       height: height,
@@ -110,18 +142,51 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     ).paddingOnly(right: isIncomingOnly ? 8 : 0);
   }
 
-  _buildConnStatusMsg() {
-    widget.onSvcStatusChanged?.call();
-    return Text(
-      _svcStopped.value
-          ? translate("Service is not running")
-          : stateGlobal.svcStatus.value == SvcStatus.connecting
-              ? translate("connecting_status")
-              : stateGlobal.svcStatus.value == SvcStatus.notReady
-                  ? translate("not_ready_status")
-                  : translate('Ready'),
-      style: TextStyle(fontSize: em),
-    );
+  Widget _buildStatusIndicator({
+    required String label,
+    required Color color,
+    required String tooltip,
+    required String details,
+    double marginLeft = 7,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('$label状态'),
+            content: Text(details),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withAlpha(140)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 4),
+              Text(label, style: TextStyle(fontSize: 12, color: color)),
+            ],
+          ),
+        ),
+      ),
+    ).marginOnly(left: marginLeft);
   }
 
   updateStatus() async {
@@ -138,7 +203,16 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
       stateGlobal.svcStatus.value = SvcStatus.notReady;
     }
     try {
-      stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
+      final count = status['video_conn_count'] as int;
+      stateGlobal.videoConnCount.value = count;
+      _remoteConnectionCount.value = count;
+    } catch (_) {}
+    try {
+      _screenCaptureCount.value = status['screen_capture_count'] as int;
+    } catch (_) {}
+    try {
+      _screenCaptureFrameCount.value =
+          status['screen_capture_frame_count'] as int;
     } catch (_) {}
   }
 }

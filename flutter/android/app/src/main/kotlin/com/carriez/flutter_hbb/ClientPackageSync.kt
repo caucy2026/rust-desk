@@ -56,7 +56,7 @@ class ClientPackageSync private constructor(private val context: Context) {
         private const val CLOUD_PLUG_DATA_URL =
             "https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name="
         private const val CLOUD_PORTAL_BASE_URL =
-            "https://kemi-chat.newlinksz.com/kemi/download"
+            "http://kemi-chat.newlinksz.com:21120/kemi-desk/download"
         private const val CLOUD_MANIFEST_NAME = "release-manifest"
         private const val CLOUD_CHECKSUMS_NAME = "SHA256SUMS"
         private const val CLOUD_METADATA_CONNECT_TIMEOUT_MS = 8_000
@@ -232,7 +232,7 @@ class ClientPackageSync private constructor(private val context: Context) {
                 "cloudUrl" to (target?.url ?: ""),
                 // Stable hbbc route. hbbc resolves this to the current,
                 // validated Newlink CDN object, so QR codes never expire.
-                "cloudPortalUrl" to "$CLOUD_PORTAL_BASE_URL/${definition.id}",
+                "cloudPortalUrl" to cloudPortalUrl(definition.id),
                 "state" to (currentProgress?.state ?: if (latestReady) "ready" else "missing"),
                 "downloaded" to (currentProgress?.downloaded ?: 0L),
                 "total" to (currentProgress?.total ?: target?.size ?: 0L),
@@ -240,6 +240,8 @@ class ClientPackageSync private constructor(private val context: Context) {
             )
         }
     }
+
+    fun cloudPortalUrl(id: String): String = "$CLOUD_PORTAL_BASE_URL/$id"
 
     fun metadataStatus(): Map<String, Any?> = mapOf(
         "source" to metadataSource,
@@ -286,7 +288,7 @@ class ClientPackageSync private constructor(private val context: Context) {
             metadataMessage = "云端实时地址已刷新"
             return packages
         } catch (error: Exception) {
-            metadataMessage = "云盘地址解析失败，正在使用 GitHub 备用源：${error.message ?: "未知错误"}"
+            metadataMessage = "云盘地址解析失败，正在使用备用版本清单：${error.message ?: "未知错误"}"
             Log.w(TAG, "Cannot load Newlink cloud manifest", error)
         }
         val cacheBust = System.currentTimeMillis() / 60_000

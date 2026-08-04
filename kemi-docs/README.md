@@ -96,6 +96,7 @@ kemi-docs/
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
 ├── windows-vscode-build-prompt.md ← Windows 同事在 VSCode 本地构建 x64 客户端
 ├── client-distribution.md         ← 四端BIN/common-data发布、PAD自动同步与局域网分发规范
+├── KEMI-SEND-CROSS-PLATFORM-CLIENT-DISTRIBUTION.md ← KEMI快传六文件、云后台、hbbc JSON、本地/云端下载闭环模板
 ├── file-transfer-history.md       ← PAD传输记录、去重、再次传输与错误提示设计
 ├── android-physical-mouse.md       ← PAD外接物理鼠标右键输入链路与排查
 ├── server-operations.md         ← 服务端构建与部署入口
@@ -171,6 +172,10 @@ Linux或CI时必须先读本文件。
 ### client-distribution.md
 
 四端交付的唯一说明：`BIN/`本地基准、`BIN/release/`六个固定上传文件、Newlink云端`Common`项目的人机分工、六个固定查询地址、上传顺序与回读验收，以及GitHub备用源、PAD同步和同Wi-Fi HTTP服务。涉及客户端分发或四端安装包时必须先读本文件。
+
+### KEMI-SEND-CROSS-PLATFORM-CLIENT-DISTRIBUTION.md
+
+以KEMI快传为实际例子的跨项目闭环模板：从四端构建、六个发布文件、Newlink后台固定name与查询地址、两份清单、hbbc站点JSON和服务器部署，到客户端发现API、PAD本地HTTP、APK自包复用、失败回退及初次接入/日常升级分工。其他多平台项目接入统一客户端下载时优先复制这套流程，不复制动态CDN地址。
 
 ### file-transfer-history.md
 

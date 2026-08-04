@@ -17,20 +17,26 @@ cd /Users/newlink/kemi/RustDesk/server
 ## 云端客户端下载服务 hbbc
 
 正式服务端按三个独立进程维护：`hbbs`负责ID、信令和UDP打洞，`hbbr`负责远控中继，
-`hbbc`负责JSON配置驱动的云端客户端下载页面。三者通过`kemi-rustdesk.target`统一启停，
-但hbbc不读取RustDesk密钥、不嵌入信令进程，下载服务异常不会影响远控连接。
+`hbbc`负责JSON配置驱动的云端客户端下载页面。三个systemd service各自启停、各自设置
+开机自启，不依赖`kemi-rustdesk.target`；hbbc不读取RustDesk密钥、不嵌入信令进程，
+下载服务异常不会影响远控连接。
 
-hbbc内部监听`127.0.0.1:21120`，公网由Nginx 443提供
-`https://kemi-chat.newlinksz.com/kemi`，不得直接把21120暴露公网。正式配置为
-`/etc/kemi-rustdesk/hbbc.json`，默认每600秒重新读取JSON并解析Newlink `plugData`。
-修改页面、项目、平台卡片和固定name无需重新编译；需要立即生效时只重启
-`kemi-rustdesk-hbbc.service`。
+hbbc当前由程序自身直接提供公网HTTP服务，端口为`21120`，不依赖Nginx、TLS证书或服务器
+其他代理配置。正式配置为`/etc/kemi-rustdesk/hbbc.json`，默认每600秒重新读取JSON并解析
+Newlink `plugData`。修改页面、项目、平台卡片和固定name无需重新编译；需要立即生效时只重启
+`kemi-rustdesk-hbbc.service`。当前入口为：
 
-PAD“客户端”页保留本机`http://PAD-IP:8688`作为同网段高速下载，同时显示
-`https://kemi-chat.newlinksz.com/kemi/download/{android|windows|macos|linux}`固定备用地址。
-按钮、复制和二维码都使用固定hbbc路由；hbbc再302到当前已校验的Newlink CDN文件，
-所以云盘文件更新后不需要更新PAD二维码或重新打包客户端。
+```text
+http://kemi-chat.newlinksz.com:21120/kemi-desk
+http://kemi-chat.newlinksz.com:21120/kemi-send
+```
 
-完整字段、自动页面生成、两份清单交叉校验、Nginx、回滚和验收说明见服务端仓库
+浏览器访问PAD的`http://PAD-IP:8686`后，网页顶部在一个统一外边框内提供两个主入口：方式一
+继续使用当前PAD局域网地址；方式二固定打开`http://kemi-chat.newlinksz.com:21120/kemi-desk`
+完整云端下载页。地址本身可点击，不显示多余打开/复制按钮。平台卡片中的Newlink HTTPS实际
+文件恢复为“云备份下载”，每个按钮后分别注明只作为两个主入口都失效时的备案；该地址由PAD
+实时解析固定`plugData`接口，不硬编码历史CDN URL。
+
+完整字段、自动页面生成、两份清单交叉校验、独立HTTP服务、回滚和验收说明见服务端仓库
 `docs/hbbc-cloud-download-server.md`以及发布包
 `BIN/release/server/README-HBBC-配置与部署.md`。

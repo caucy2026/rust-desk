@@ -57,6 +57,7 @@ use std::{
     collections::HashSet,
     io::ErrorKind::WouldBlock,
     ops::{Deref, DerefMut},
+    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
     time::{self, Duration, Instant},
 };
 
@@ -78,6 +79,52 @@ lazy_static::lazy_static! {
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
     static ref SCREENSHOTS: Mutex<HashMap<(VideoSource, usize), Screenshot>> = Default::default();
+}
+
+static ACTIVE_SCREEN_CAPTURE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static ACTIVE_SCREEN_CAPTURE_FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Number of monitor capture loops that have completed capturer/encoder setup
+/// and are currently able to read screen frames.
+pub fn active_screen_capture_count() -> usize {
+    ACTIVE_SCREEN_CAPTURE_COUNT.load(Ordering::Acquire)
+}
+
+/// Number of valid monitor frames obtained during the current capture session.
+/// It is reset when capture changes from fully idle to active.
+pub fn active_screen_capture_frame_count() -> u64 {
+    ACTIVE_SCREEN_CAPTURE_FRAME_COUNT.load(Ordering::Acquire)
+}
+
+struct ActiveScreenCaptureGuard {
+    active: bool,
+}
+
+impl ActiveScreenCaptureGuard {
+    fn new(active: bool) -> Self {
+        if active {
+            let previous = ACTIVE_SCREEN_CAPTURE_COUNT.fetch_add(1, Ordering::AcqRel);
+            if previous == 0 {
+                ACTIVE_SCREEN_CAPTURE_FRAME_COUNT.store(0, Ordering::Release);
+            }
+            let count = previous + 1;
+            log::info!("screen capture active, count={count}");
+        }
+        Self { active }
+    }
+}
+
+impl Drop for ActiveScreenCaptureGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let previous = ACTIVE_SCREEN_CAPTURE_COUNT.fetch_sub(1, Ordering::AcqRel);
+            debug_assert!(previous > 0);
+            log::info!(
+                "screen capture stopped, count={}",
+                previous.saturating_sub(1)
+            );
+        }
+    }
 }
 
 struct Screenshot {
@@ -643,6 +690,11 @@ fn run(vs: VideoService) -> ResultType<()> {
             )?
         }
     };
+    // This guard is deliberately created only after both the screen capturer
+    // and encoder are ready. When the last subscriber disconnects, sp.ok()
+    // becomes false, run() exits and dropping the guard immediately clears the
+    // user-visible capture indicator.
+    let _active_screen_capture = ActiveScreenCaptureGuard::new(vs.source.is_monitor());
     #[cfg(feature = "vram")]
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
@@ -755,6 +807,9 @@ fn run(vs: VideoService) -> ResultType<()> {
             Ok(frame) => {
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    if vs.source.is_monitor() {
+                        ACTIVE_SCREEN_CAPTURE_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+                    }
                     let screenshot_key = (vs.source, display_idx);
                     let screenshot = SCREENSHOTS.lock().unwrap().remove(&screenshot_key);
                     if let Some(mut screenshot) = screenshot {
