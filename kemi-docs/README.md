@@ -2,7 +2,15 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前全端源码版本为 **1.4.49**，当前正式候选构建号为 **1.4.49+154**；`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD已以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器既可下载PAD已校验的本地副本，也可打开或复制实时HTTPS云端地址，GitHub保留为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端必须按同一功能提交、构建运行和SHA清单整体发布，禁止混用旧包。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前源码候选版本为 **1.4.50**，PAD候选构建号为 **1.4.50+155**；当前Newlink云端和`BIN/release`正式批次仍为完整四端 **1.4.49+154**。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器通过`/clients`直接进入四平台下载区，GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端必须按同一功能提交、构建运行和SHA清单整体发布，禁止只替换单个平台制造半批次。
+
+## 当前项目总结（2026-08-04）
+
+- 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
+- Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
+- 当前代码候选`1.4.50+155`解决副屏密码输入连接被代理Activity抢占、GitHub 1.4.46旧清单覆盖以及二维码进入重复导读页三个问题；固定签名APK已全新安装到`192.168.3.63:5555`并归档，密码实际提交仍等待用户验收。
+- 当前对外可下载四端仍是`1.4.49+154`。PAD页面显示1.4.49不是缓存错误，而是云端正式批次事实；1.4.50通过验收后仍需Mac/Windows/Linux对齐、重建六文件并按manifest最后上传的规则发布。
+- GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 
 ### 核心定制功能
 
@@ -23,6 +31,7 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `PAD 1.4.50+155候选；全端源码1.4.50` | 副屏认证完成前禁止跨屏代理，修复`inactive InputConnection`；Newlink清单重试、拒绝旧GitHub回退并允许新清单中断旧下载；局域网二维码直达`/clients`四平台下载区。当前未切换正式六文件批次 |
 | `全端 1.4.49 / PAD、macOS build 154` | PAD服务器未就绪时显示“重连”，点击后仅重启rendezvous注册链路；断开后抓屏状态闭环、跨屏键盘/物理鼠标和桌面状态同步进入同一正式候选；Windows/Linux由focused run `30891539907`生成并与功能提交`ed615c7fb`绑定 |
 | `全端 1.4.48 / PAD、macOS build 125` | 四端统一绑定候选`a5ff428b5`及新服务器/固定公钥；macOS本地全量重编译、固定签名并实测连接`119.96.24.110:21116`，Windows/Linux focused run `30731531135`成功；六个固定发布文件统一在`BIN/release/` |
 | `PAD 1.4.48+125` | 设置首页和关于区域直接显示当前ID服务器；关于页网站改为`newlink-sz.com`；开源服务端`21114`账户API缺失明确视为正常能力边界 |

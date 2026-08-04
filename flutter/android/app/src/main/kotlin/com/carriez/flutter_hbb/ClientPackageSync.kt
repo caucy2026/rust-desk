@@ -61,6 +61,8 @@ class ClientPackageSync private constructor(private val context: Context) {
         private const val CLOUD_CHECKSUMS_NAME = "SHA256SUMS"
         private const val CLOUD_METADATA_CONNECT_TIMEOUT_MS = 8_000
         private const val CLOUD_METADATA_READ_TIMEOUT_MS = 15_000
+        private const val CLOUD_MANIFEST_ATTEMPTS = 3
+        private const val CLOUD_MANIFEST_RETRY_DELAY_MS = 1_500L
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
         private const val RAW_MANIFEST_CONNECT_TIMEOUT_MS = 4_000
@@ -142,6 +144,7 @@ class ClientPackageSync private constructor(private val context: Context) {
         Thread(task, "kemi-client-package-sync").apply { isDaemon = true }
     }
     private val syncing = AtomicBoolean(false)
+    private val pendingFullSync = AtomicBoolean(false)
     private val pendingLock = Any()
     private val pendingIds = linkedSetOf<String>()
     private val progressLock = Any()
@@ -157,19 +160,29 @@ class ClientPackageSync private constructor(private val context: Context) {
     private val previousManifestFile: File by lazy { File(cacheDir, "manifest.previous.json") }
 
     fun syncAllAsync(onComplete: ((Boolean) -> Unit)? = null): Boolean {
-        if (!syncing.compareAndSet(false, true)) return false
+        pendingFullSync.set(true)
+        if (!syncing.compareAndSet(false, true)) return true
         executor.execute {
             val ok = try {
-                val packages = refreshManifest()
-                var allOk = true
-                packages.forEach { target ->
-                    if (!ensurePackage(target)) allOk = false
+                var finalResult = true
+                while (pendingFullSync.getAndSet(false)) {
+                    val packages = refreshManifest()
+                    var allOk = true
+                    for (target in packages) {
+                        if (pendingFullSync.get()) break
+                        if (!ensurePackage(target)) allOk = false
+                    }
+                    if (pendingFullSync.get()) {
+                        Log.i(TAG, "New manifest refresh requested; preempting stale package batch")
+                        continue
+                    }
+                    if (allOk) {
+                        previousManifestFile.delete()
+                        pruneObsoleteFiles(packages)
+                    }
+                    finalResult = allOk
                 }
-                if (allOk) {
-                    previousManifestFile.delete()
-                    pruneObsoleteFiles(packages)
-                }
-                allOk
+                finalResult
             } catch (error: Exception) {
                 Log.w(TAG, "Client package sync failed", error)
                 false
@@ -177,7 +190,7 @@ class ClientPackageSync private constructor(private val context: Context) {
                 syncing.set(false)
             }
             onComplete?.invoke(ok)
-            startPendingDownloads()
+            if (pendingFullSync.get()) syncAllAsync() else startPendingDownloads()
         }
         return true
     }
@@ -193,7 +206,7 @@ class ClientPackageSync private constructor(private val context: Context) {
         if (synchronized(pendingLock) { pendingIds.isEmpty() }) return
         if (!syncing.compareAndSet(false, true)) return
         executor.execute {
-            while (true) {
+            while (!pendingFullSync.get()) {
                 val id = synchronized(pendingLock) {
                     pendingIds.firstOrNull()?.also { pendingIds.remove(it) }
                 } ?: break
@@ -207,7 +220,7 @@ class ClientPackageSync private constructor(private val context: Context) {
                 }
             }
             syncing.set(false)
-            startPendingDownloads()
+            if (pendingFullSync.get()) syncAllAsync() else startPendingDownloads()
         }
     }
 
@@ -281,16 +294,27 @@ class ClientPackageSync private constructor(private val context: Context) {
             ?: "KEMI-remote-desktop-PAD-${installedPadVersion()}.apk"
 
     private fun refreshManifest(): List<RemoteClientPackage> {
-        try {
-            val packages = downloadCloudManifest()
-            metadataSource = "newlink_https"
-            metadataUpdatedAt = System.currentTimeMillis()
-            metadataMessage = "云端实时地址已刷新"
-            return packages
-        } catch (error: Exception) {
-            metadataMessage = "云盘地址解析失败，正在使用备用版本清单：${error.message ?: "未知错误"}"
-            Log.w(TAG, "Cannot load Newlink cloud manifest", error)
+        var cloudError: Exception? = null
+        repeat(CLOUD_MANIFEST_ATTEMPTS) { attempt ->
+            try {
+                val packages = downloadCloudManifest()
+                metadataSource = "newlink_https"
+                metadataUpdatedAt = System.currentTimeMillis()
+                metadataMessage = "云端实时地址已刷新"
+                return packages
+            } catch (error: Exception) {
+                cloudError = error
+                Log.w(TAG, "Cannot load Newlink cloud manifest, attempt=${attempt + 1}", error)
+                if (attempt + 1 < CLOUD_MANIFEST_ATTEMPTS) {
+                    try {
+                        Thread.sleep(CLOUD_MANIFEST_RETRY_DELAY_MS)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                }
+            }
         }
+        metadataMessage = "云盘地址解析失败，保留已验证缓存：${cloudError?.message ?: "未知错误"}"
         val cacheBust = System.currentTimeMillis() / 60_000
         val sources = listOf(
             RAW_MANIFEST_URL to RAW_MANIFEST_CONNECT_TIMEOUT_MS,
@@ -300,6 +324,7 @@ class ClientPackageSync private constructor(private val context: Context) {
         sources.forEach { (url, connectTimeout) ->
             try {
                 val packages = downloadManifest(url, connectTimeout)
+                rejectStaleGithubFallback(packages)
                 metadataSource = "github_fallback"
                 metadataUpdatedAt = System.currentTimeMillis()
                 return packages
@@ -445,10 +470,35 @@ class ClientPackageSync private constructor(private val context: Context) {
                     }
                 }
             }
+            val parsed = parseManifest(part.readText())
+            rejectStaleGithubFallback(parsed)
             return promoteManifestPart(part)
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun rejectStaleGithubFallback(packages: List<RemoteClientPackage>) {
+        val android = packages.firstOrNull { it.definition.id == "android" } ?: return
+        if (URL(android.url).host != "api.github.com") return
+        if (compareVersions(android.version, installedPadVersion()) < 0) {
+            throw IllegalStateException(
+                "GitHub备用清单版本${android.version}早于当前PAD ${installedPadVersion()}，已拒绝回退",
+            )
+        }
+    }
+
+    private fun compareVersions(left: String, right: String): Int {
+        val leftParts = Regex("\\d+").findAll(left).map { it.value.toLongOrNull() ?: 0L }.toList()
+        val rightParts = Regex("\\d+").findAll(right).map { it.value.toLongOrNull() ?: 0L }.toList()
+        val count = maxOf(leftParts.size, rightParts.size)
+        for (index in 0 until count) {
+            val result = (leftParts.getOrElse(index) { 0L }).compareTo(
+                rightParts.getOrElse(index) { 0L },
+            )
+            if (result != 0) return result
+        }
+        return 0
     }
 
     private fun saveManifest(text: String): List<RemoteClientPackage> {
@@ -583,6 +633,13 @@ class ClientPackageSync private constructor(private val context: Context) {
                             target.definition.id,
                             Progress("downloading", downloaded, target.size, "正在下载"),
                         )
+                        if (pendingFullSync.get()) {
+                            setProgress(
+                                target.definition.id,
+                                Progress("missing", downloaded, target.size, "发现新版本，正在刷新"),
+                            )
+                            return false
+                        }
                     }
                 }
             }

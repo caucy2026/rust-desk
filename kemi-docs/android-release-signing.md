@@ -1,6 +1,6 @@
 # KEMI Android 正式包名、签名与 Release 构建
 
-> 当前基线：`1.4.46+106`。本文是Android正式身份和签名的唯一操作说明。
+> 当前已验证签名候选：`1.4.50+155`。本文是Android正式身份和签名的唯一操作说明。
 
 ## 1. 固定身份
 
@@ -8,7 +8,7 @@
 公司域名：www.newlink-sz.com
 Android applicationId：com.newlinksz.kemi.remote
 Kotlin namespace：com.carriez.flutter_hbb
-版本：1.4.46+106
+当前候选版本：1.4.50+155
 ```
 
 域名中的连字符不能直接用于applicationId，因此固定使用`newlinksz`。applicationId是设备和
@@ -92,8 +92,8 @@ flutter/build/app/outputs/flutter-apk/app-release.apk
 
 ```text
 package=com.newlinksz.kemi.remote
-versionName=1.4.46
-versionCode=106
+versionName=1.4.50
+versionCode=155
 debuggable不存在或为false
 APK v1/v2签名状态
 Signer SHA-256=85:46:D0:3E:51:D0:9D:FA:17:DB:CF:43:2F:84:BC:CF:
@@ -102,7 +102,7 @@ Signer SHA-256=85:46:D0:3E:51:D0:9D:FA:17:DB:CF:43:2F:84:BC:CF:
 
 还要记录APK文件大小、SHA-256、源码commit、构建时间、目标ABI和内置客户端分发资源。
 
-当前 `1.4.46+106` 候选记录：
+历史 `1.4.46+106` 候选记录：
 
 ```text
 文件：BIN/KEMI-远程桌面-PAD-1.4.46+106-release.apk
@@ -111,6 +111,17 @@ APK SHA-256：d3ca5841ada8a7b354076dc85073b9c02b5647ad78ca33b5047410b6b6fc77ec
 Signer SHA-256：8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2
 ABI：arm64-v8a
 可复现源码基线：fb61a9572
+```
+
+当前`1.4.50+155`候选记录：
+
+```text
+文件：BIN/KEMI-远程桌面-PAD-1.4.50+155-release.apk
+大小：24,149,535 bytes
+APK SHA-256：7894cc6c19ebd812948d7144eebbe5c55060b0e5a668a9530436aa448845a0fe
+Signer SHA-256：8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2
+ABI：arm64-v8a
+状态：PAD单端候选备份；未覆盖BIN/release六文件正式批次
 ```
 
 ## 5. 功能与安全边界

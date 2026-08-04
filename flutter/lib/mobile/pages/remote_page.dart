@@ -122,14 +122,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (isAndroid) {
       unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", true));
       keyboardProxyController.addListener(_onKeyboardProxyChanged);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          unawaited(gFFI.invokeMethod(
-            "keyboard_proxy_prepare",
-            {"deferDefaultDisplay": true},
-          ));
-        }
-      });
     }
     gFFI.chatModel
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
@@ -151,6 +143,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _waylandKeyboardGateWorker = ever(gFFI.ffiModel.pi.isSet, (bool isSet) {
       if (isSet) {
         if (isAndroid) {
+          // Authentication can run on either the primary or a secondary display.
+          // Preparing KeyboardProxyActivity before peer info is ready invalidates
+          // the password field's Flutter InputConnection on multi-display Android.
           unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
         }
         _initWaylandKeyboardGateIfNeeded();

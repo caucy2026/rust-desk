@@ -108,7 +108,7 @@
 
 ### 2.9 首次认证输入安全
 
-首次安装后从默认主屏发起连接时，密码认证完成前不得创建可能抢占焦点的对屏键盘代理Activity。默认主屏将预创建延迟到`pi.isSet`确认认证完成后；非默认副屏仍可在进入远程页时预创建主屏宿主，以兼容Android跨Display后台启动限制。密码框继续使用Flutter自身输入连接，代理键盘不得接收或转发认证密码。
+密码认证完成前不得创建可能抢占焦点的对屏键盘代理Activity，这条规则与远程页位于主屏还是副屏无关。只有`pi.isSet`确认认证完成后才允许预创建代理宿主。密码框继续使用Flutter自身输入连接，代理键盘不得接收或转发认证密码。
 
 ## 3. 非目标
 
@@ -1146,7 +1146,7 @@ IME随后报告隐藏 ─┴─ 120ms分类
 
 ### 21.4 首次主屏密码输入
 
-认证前预创建跨屏代理可能抢走Flutter密码框输入连接。默认主屏首次进入远程页时，`keyboard_proxy_prepare`携带`deferDefaultDisplay=true`；Manager只记录延迟，不启动代理。`pi.isSet`确认认证完成后，Flutter再发送普通prepare。从非默认副屏启动时仍允许认证前预创建，避免Display 2到Display 0的后台Activity启动被系统拒绝。
+认证前预创建跨屏代理可能抢走Flutter密码框输入连接。`+152/+153`只在默认主屏使用`deferDefaultDisplay=true`，从非默认副屏启动时仍允许认证前预创建；该方案后来被证明不完整，已由第22节的`1.4.50+155`规则取代。当前规则是不区分显示屏，统一等待`pi.isSet`确认认证完成后再prepare。
 
 密码输入验收必须使用卸载后全新安装，不能用已记住密码的最近访问卡片代替。只能输入不提交的测试字符串，并从UI层确认TextField真实持有内容；认证阶段日志不得出现`Preparing keyboard proxy`或代理Activity激活。
 
@@ -1160,3 +1160,38 @@ IME随后报告隐藏 ─┴─ 120ms分类
 4. 卸载并全新安装后，主屏首次密码框实际接收测试文本；认证前只有`Defer keyboard proxy preparation on default display until authentication`，没有代理Activity启动。
 
 以后相关修改必须同时满足：鼠标左键不闪、右键down/up成对、PAD触摸不闪、收起自动开键盘、主动关闭可恢复源窗口、首次主屏密码可输入。任一正常源屏操作出现`IME insets visible=false`均视为回归。
+
+## 22. 副屏密码输入失效根因与最终认证门禁（2026-08-04，PAD 1.4.50+155）
+
+### 22.1 现场证据
+
+本次密码页面实际位于Display 2，系统状态同时满足：Flutter `EditText`仍为focused、输入法`mShowRequested=true`、`mInputShown=true`、served connection类型仍显示Flutter。随后日志出现：
+
+```text
+Preparing keyboard proxy source=2 target=0 request=1
+KeyboardProxyActivity started on Display 0
+commitText on inactive InputConnection
+commitText on inactive InputConnection
+```
+
+这说明“键盘可见”和“密码输入连接有效”不是一回事。代理Activity启动改变了跨Display输入连接所有权，输入法后续仍向旧Flutter connection提交，Android只能丢弃并报告inactive。
+
+### 22.2 为什么旧保护失效
+
+旧实现把“source display是否为DEFAULT_DISPLAY”错误地当成“是否处于认证阶段”：
+
+```text
+Display 0认证 → deferDefaultDisplay命中 → 不创建代理
+Display 2认证 → 条件不命中           → 提前创建Display 0代理 → 密码连接失效
+```
+
+认证状态应由`pi.isSet`表达，不能由屏幕编号推断。首次安装只在主屏验证通过，不代表副屏路径正确。
+
+### 22.3 最终实现
+
+- 删除远程页`initState`中的认证前prepare调用。
+- `pi.isSet`从false变为true时再调用`keyboard_proxy_prepare`。
+- 页面构造时若peer info已经有效，保留同步prepare兜底。
+- 认证期不创建、置前或复用`KeyboardProxyActivity`；连接后的跨屏键盘行为保持不变。
+
+以后主屏和副屏都必须执行首次密码验收。认证期间日志只允许Flutter自身`showSoftInput`，不得出现`Preparing keyboard proxy`；认证完成后才允许出现代理prepare。最终产品验收还必须由用户真实输入密码并成功连接，不能只根据键盘可见或UI焦点判定通过。

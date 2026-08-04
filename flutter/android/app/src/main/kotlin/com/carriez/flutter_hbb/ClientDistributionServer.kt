@@ -38,6 +38,8 @@ class ClientDistributionServer(private val context: Context) {
         val contentType: String,
         val file: File?,
         val backupUrl: String?,
+        val isLatest: Boolean,
+        val servingVersion: String,
     )
 
     private val packageSync = ClientPackageSync.get(context)
@@ -90,7 +92,7 @@ class ClientDistributionServer(private val context: Context) {
     }
 
     private fun status(): Map<String, Any?> {
-        val urls = localIpv4Addresses().map { "http://$it:$port" }
+        val urls = localIpv4Addresses().map { "http://$it:$port/clients" }
         return mapOf(
             "running" to running,
             "port" to port,
@@ -119,11 +121,13 @@ class ClientDistributionServer(private val context: Context) {
                 id = definition.id,
                 platform = definition.platform,
                 detail = definition.detail,
-                version = servedTarget?.version ?: "",
+                version = target?.version ?: servedTarget?.version ?: "",
                 fileName = fileName,
                 contentType = definition.contentType,
                 file = resolved?.file,
                 backupUrl = target?.url?.takeIf(::isSafeBackupUrl),
+                isLatest = resolved?.isLatest == true,
+                servingVersion = resolved?.target?.version ?: "",
             )
         }
     }
@@ -186,6 +190,7 @@ class ClientDistributionServer(private val context: Context) {
     private fun route(output: OutputStream, path: String) {
         when (path) {
             "/" -> writeText(output, 200, buildHtml(), "text/html; charset=utf-8")
+            "/clients" -> writeText(output, 200, buildHtml(directClients = true), "text/html; charset=utf-8")
             "/health" -> writeText(output, 200, "ok")
             else -> {
                 val entry = availablePackages().firstOrNull { "/download/${it.fileName}" == path }
@@ -198,7 +203,7 @@ class ClientDistributionServer(private val context: Context) {
         }
     }
 
-    private fun buildHtml(): String {
+    private fun buildHtml(directClients: Boolean = false): String {
         val entries = packageEntries().associateBy { it.id }
         val packageLinks = listOf("windows", "macos", "linux", "android").joinToString("") { id ->
             val entry = entries[id] ?: return@joinToString ""
@@ -224,7 +229,8 @@ class ClientDistributionServer(private val context: Context) {
             val recommendedTag = if (id == "windows") "<em class=\"tag\">推荐</em>" else ""
             val version = entry.version.takeIf(String::isNotBlank)?.let { " · 版本 ${escapeHtml(it)}" } ?: ""
             val localAction = if (entry.file?.isFile == true) {
-                """<a class="action primary" href="/download/${entry.fileName}">从 PAD 下载 <small>已校验</small></a>"""
+                val status = if (entry.isLatest) "已校验" else "缓存 ${escapeHtml(entry.servingVersion)}"
+                """<a class="action primary" href="/download/${entry.fileName}">从 PAD 下载 <small>$status</small></a>"""
             } else {
                 """<span class="action disabled">PAD 正在校验</span>"""
             }
@@ -251,7 +257,7 @@ class ClientDistributionServer(private val context: Context) {
               </article>
             """.trimIndent()
         }
-        val address = localIpv4Addresses().firstOrNull()?.let { "http://$it:$port" } ?: ""
+        val address = localIpv4Addresses().firstOrNull()?.let { "http://$it:$port/clients" } ?: ""
         val cloudDownloadPageUrl = escapeHtml(CLOUD_DOWNLOAD_PAGE_URL)
         val wifiName = currentWifiName()
         val wifiTitle = if (wifiName.isNullOrBlank()) {
@@ -272,6 +278,27 @@ class ClientDistributionServer(private val context: Context) {
             "error" -> "云端暂不可用，保留已验证缓存"
             else -> "已验证缓存"
         }
+        val pageIntro = if (directClients) {
+            "请选择对应系统，直接从当前PAD下载已校验的客户端。"
+        } else {
+            "请选择同局域网下载或云端下载，两种方式均可进入客户端选择页面。"
+        }
+        val channelsHtml = if (directClients) "" else """
+          <div class="channels">
+            <article class="channel">
+              <span class="channel-number">方式一</span>
+              <h3>同局域网下载</h3>
+              <p>下载设备与PAD处于同一局域网，并且网络允许设备互相访问时使用。</p>
+              <a class="channel-url" id="url" href="$address">${escapeHtml(address)}</a>
+            </article>
+            <article class="channel">
+              <span class="channel-number">方式二</span>
+              <h3>云端下载</h3>
+              <p>无需访问PAD的局域网IP，直接进入KEMI云端客户端下载页面。</p>
+              <a class="channel-url" href="$cloudDownloadPageUrl" target="_blank" rel="noopener noreferrer">$cloudDownloadPageUrl</a>
+            </article>
+          </div>
+        """.trimIndent()
         return """<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -343,25 +370,12 @@ class ClientDistributionServer(private val context: Context) {
     <header class="panel hero">
       <div class="badge"><i class="dot"></i> 客户端下载服务已开启</div>
       <h1>下载 KEMI 客户端</h1>
-      <p class="intro">请选择同局域网下载或云端下载，两种方式均可进入客户端选择页面。</p>
+      <p class="intro">$pageIntro</p>
       <div class="wifi-card">
         <div class="wifi-symbol">Wi-Fi</div>
         <div><small>当前 PAD 网络</small><strong>$wifiTitle</strong><p>$wifiDetail</p></div>
       </div>
-      <div class="channels">
-        <article class="channel">
-          <span class="channel-number">方式一</span>
-          <h3>同局域网下载</h3>
-          <p>下载设备与PAD处于同一局域网，并且网络允许设备互相访问时使用。</p>
-          <a class="channel-url" id="url" href="#clients">${escapeHtml(address)}</a>
-        </article>
-        <article class="channel">
-          <span class="channel-number">方式二</span>
-          <h3>云端下载</h3>
-          <p>无需访问PAD的局域网IP，直接进入KEMI云端客户端下载页面。</p>
-          <a class="channel-url" href="$cloudDownloadPageUrl" target="_blank" rel="noopener noreferrer">$cloudDownloadPageUrl</a>
-        </article>
-      </div>
+      $channelsHtml
     </header>
     <section class="panel" id="clients">
       <h2>选择客户端</h2>
