@@ -8,7 +8,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Display
-import android.view.WindowManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -31,7 +30,6 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private var targetDisplayId = Display.DEFAULT_DISPLAY
     private var channel: MethodChannel? = null
     private var proxyActivity = WeakReference<KeyboardProxyActivity>(null)
-    private var sourceActivity = WeakReference<Activity>(null)
     private var displayManager: DisplayManager? = null
     private var preparingRequestId = 0L
     private var lastSourcePointerEventAtMs = 0L
@@ -125,11 +123,9 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         sessionId = requestedSessionId
         sourceDisplayId = sourceId
         targetDisplayId = targetId
-        sourceActivity = WeakReference(source)
         channel = methodChannel
         state = "opening"
         lastSourcePointerEventAtMs = 0L
-        setSourceWindowFocusable(false)
         displayManager = manager
         manager.registerDisplayListener(this, mainHandler)
         publishState("open_requested")
@@ -325,8 +321,6 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         publishState(reason)
         sessionId = ""
         lastSourcePointerEventAtMs = 0L
-        setSourceWindowFocusable(true)
-        sourceActivity.clear()
         if (keepPreparedActivity) {
             preparingRequestId = 0L
         } else {
@@ -335,24 +329,6 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             displayManager = null
             channel = null
         }
-    }
-
-    private fun setSourceWindowFocusable(focusable: Boolean) {
-        val activity = sourceActivity.get() ?: return
-        if (sourceDisplayId == targetDisplayId || activity.isFinishing || activity.isDestroyed) {
-            return
-        }
-        if (focusable) {
-            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-        } else {
-            // Keep the remote canvas touchable while preventing touchscreen input on
-            // this display from stealing the IME focus owned by the opposite display.
-            activity.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
-        }
-        Log.i(
-            TAG,
-            "source window focusable=$focusable display=$sourceDisplayId request=$requestId"
-        )
     }
 
     @Synchronized

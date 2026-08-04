@@ -3,11 +3,11 @@
 > 用途：把本文件交给新的 AI 会话或开发者，使其不依赖旧聊天记录即可继续开发。
 >
 > 当前基线日期：2026-08-04
-> 当前云端正式发布批次：`1.4.49+154`，功能源码`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`，Windows/Linux focused run `30891539907`；当前源码/PAD候选为`1.4.50+155`，只归档在`BIN/`，尚未切换`BIN/release`六文件。
+> 当前云端正式发布批次：`1.4.49+154`，功能源码`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`，Windows/Linux focused run `30891539907`；当前源码/PAD候选为`1.4.51+156`，只归档在`BIN/`，尚未切换`BIN/release`六文件。
 > 功能代码基线：本文所在提交；上一稳定基线为`6aabce9c471cef0283345ab84407fc233ffcc750`
 > GitHub 备份：`git@github.com:caucy2026/rust-desk.git`；候选分支 `master`，未完成进度使用 `wip/*`
 
-当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。该目录当前仍是已发布的完整`1.4.49+154`批次；`BIN/KEMI-远程桌面-PAD-1.4.50+155-release.apk`是单端候选备份，不得单独复制进release。下一正式批次必须重新对齐四端和两份清单，并按客户端、SHA清单、manifest的顺序整体上传。
+当前本地交付目录 `/Users/newlink/kemi/RustDesk/BIN/release` 固定保存六个云端上传文件：四端客户端、`release-manifest.json`和`SHA256SUMS.txt`。该目录当前仍是已发布的完整`1.4.49+154`批次；`BIN/KEMI-远程桌面-PAD-1.4.51+156-release.apk`是最新单端候选备份，不得单独复制进release。下一正式批次必须重新对齐四端和两份清单，并按客户端、SHA清单、manifest的顺序整体上传。
 
 Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`，不要直接运行`flutter build windows`或自行升级工具链。
 
@@ -32,7 +32,7 @@ Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`�
 7. 涉及 macOS 时先读 kemi-docs/macos-configuration.md；涉及 GitHub、Windows 或 Linux 构建时先读 kemi-docs/ci-build.md
 8. 执行 git status --short、git log --oneline -8、git remote -v，确认真实基线
 
-当前Flutter源码候选为`1.4.50+155`，Android applicationId为`com.newlinksz.kemi.remote`。KEMI使用无账户的开源hbbs/hbbr，四端不得显示账户页或登录按钮。PAD不把四端客户端递归打进APK，而是在空闲任务或进入“客户端”页时按固定Newlink接口下载、校验并缓存；当前云端四端仍绑定功能提交`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`的1.4.49批次。文件传输并行浮窗的功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交；清单中的`source_commit`必须保留实际生成二进制的功能提交，不能改成后续纯文档提交。
+当前Flutter源码候选为`1.4.51+156`，Android applicationId为`com.newlinksz.kemi.remote`。KEMI使用无账户的开源hbbs/hbbr，四端不得显示账户页或登录按钮。PAD不把四端客户端递归打进APK，而是在空闲任务或进入“客户端”页时按固定Newlink接口下载、校验并缓存；当前云端四端仍绑定功能提交`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`的1.4.49批次。文件传输并行浮窗的功能代码基线为8f4c18c57。文档提交和后续开发会使HEAD继续前进，必须用`git rev-parse HEAD`和`git ls-remote backup refs/heads/master`核对当前本地与远端提交；清单中的`source_commit`必须保留实际生成二进制的功能提交，不能改成后续纯文档提交。
 
 不可回退的产品行为：
 - Android PAD 主屏是 Display 0，远程桌面运行在 Display 2 的 RemoteActivity。
@@ -58,8 +58,8 @@ Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`�
 - 首页显示 KEMI远程桌面PAD版 v<APK版本>，版本必须读取 PackageInfo，而不是旧预编译 Rust .so 的版本。
 - 首页中间的“最近访问、收藏、已发现、地址簿、可访问设备”图标栏下必须显示当前选中功能的中文用途说明；该行为由 `PeerTabPage` 共用，Mac 与 PAD 不得各自复制实现。多选工具栏显示时保持隐藏说明行。
 - Android 首页“客户端”是临时局域网安装包分发页：进入页立即解析Newlink固定接口并启动HTTP服务，离开页或销毁App关闭HTTP服务；只允许白名单下载路由。PAD与下载设备必须同一Wi-Fi；四端文件只有完成大小、SHA-256和接口MD5校验后才显示为可下载，不再在构建APK前塞入`assets/client-dist`。详见`client-distribution.md`。
-- 当前源码版本必须一致：Cargo.toml=1.4.50、Cargo.lock rustdesk=1.4.50、flutter/pubspec.yaml=1.4.50+155；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键功能沿用已在1.4.46+123真机确认的实现。
-- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`res/rpm*.spec` 与 `res/PKGBUILD` 当前均为 `1.4.50`；生成安装包后必须读取包内版本复核，不能只看文件名。跨平台源码必须兼容工作流固定Flutter 3.22.3，不能仅因本机新Flutter分析通过就使用`Color.withValues`等新API。
+- 当前源码版本必须一致：Cargo.toml=1.4.51、Cargo.lock rustdesk=1.4.51、flutter/pubspec.yaml=1.4.51+156；Android applicationId固定为`com.newlinksz.kemi.remote`，release必须使用Newlink固定证书，禁止debug证书。PAD物理鼠标右键必须保留1.4.51的焦点ANR修复，禁止再次把远控源窗口设为`NOT_FOCUSABLE`。
+- Windows/Linux 打包版本也必须同步：`.github/workflows/flutter-build.yml` 的 `VERSION`、`res/rpm*.spec` 与 `res/PKGBUILD` 当前均为 `1.4.51`；生成安装包后必须读取包内版本复核，不能只看文件名。跨平台源码必须兼容工作流固定Flutter 3.22.3，不能仅因本机新Flutter分析通过就使用`Color.withValues`等新API。
 - UDP打洞是否发起由客户端决定：空的`enable-udp-punch`默认解释为开启，明确保存`N`才关闭；自建服务器不得再触发客户端默认关闭。服务端只负责UDP协调并保证`21116/UDP`可达，不存在额外的“默认开启客户端UDP打洞”服务端开关。
 
 工作方式：
@@ -452,15 +452,15 @@ _homeDir = '$storageDir/Download';
 
 | 文件 | 当前值 |
 |---|---|
-| `Cargo.toml` | `version = "1.4.50"` |
-| `Cargo.lock` 的 rustdesk package | `version = "1.4.50"` |
-| `flutter/pubspec.yaml` | `version: 1.4.50+155` |
+| `Cargo.toml` | `version = "1.4.51"` |
+| `Cargo.lock` 的 rustdesk package | `version = "1.4.51"` |
+| `flutter/pubspec.yaml` | `version: 1.4.51+156` |
 
 Android 最终应显示：
 
 ```text
-versionName=1.4.50
-versionCode=155
+versionName=1.4.51
+versionCode=156
 ```
 
 ### 9.2 首页版本号

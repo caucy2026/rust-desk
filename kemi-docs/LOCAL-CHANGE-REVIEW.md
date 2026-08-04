@@ -1,10 +1,10 @@
 # KEMI 本地未提交改动与风险复核
 
-## 0. 当前候选快照：1.4.50+155（2026-08-04）
+## 0. 当前候选快照：1.4.51+156（2026-08-04）
 
 > 当前源码基线：本文所在提交；云端正式六文件仍为`1.4.49+154 / ed615c7fb / run 30891539907`。
 >
-> 当前PAD单端候选：`1.4.50+155`。以下第1节起的`1.4.48+129`内容是上一轮完整审计历史，保留用于追溯，不代表当前未提交文件。
+> 当前PAD单端候选：`1.4.51+156`。以下第1节起的`1.4.48+129`内容是上一轮完整审计历史，保留用于追溯，不代表当前未提交文件。
 
 本轮功能改动边界：
 
@@ -13,14 +13,16 @@
 | `flutter/lib/mobile/pages/remote_page.dart` | 删除认证前跨屏代理prepare，统一在`pi.isSet`后创建 | 高风险输入链路；现场根因已由`inactive InputConnection`确认，主屏/副屏认证都必须复测，用户真实密码验收尚待完成 |
 | `ClientPackageSync.kt` | Newlink清单三次重试；拒绝旧GitHub回退；全量刷新可抢占旧大文件下载 | 中风险并发与缓存；真机从1.4.46旧缓存恢复到Newlink 1.4.49，四资产解析成功；仍需后续观察断点续传和六文件新批次切换 |
 | `ClientDistributionServer.kt` | 新增`/clients`直达页；二维码和复制地址统一带该路径；目标版本与缓存版本分开显示 | 低到中风险HTTP兼容；保留`/`旧入口，Mac真实请求`/clients`返回四平台下载项且无1.4.46 |
-| 版本入口 | Cargo、Flutter、CI、PKGBUILD、RPM统一到`1.4.50`，PAD build 155 | Windows/Linux/Mac尚未生成1.4.50二进制，因此不得覆盖`BIN/release`正式六文件 |
+| `KeyboardProxyManager.kt` | 不再把跨屏键盘的远控源窗口设为`NOT_FOCUSABLE` | 高风险输入焦点修复；现场多次ANR均为源MainActivity没有焦点窗口，撤销后19次右键无新增ANR且键盘继续提交文本，用户确认相对稳定 |
+| `PhysicalMouseRightButtonForwarder.kt` | 右键状态与下一鼠标事件的`buttonState`自校准 | 低风险兜底；补发up时不消费普通hover/move，显式release仍正常消费；特殊右键拖动仍需长期观察固件是否错误清空buttonState |
+| 版本入口 | Cargo、Flutter、CI、PKGBUILD、RPM统一到`1.4.51`，PAD build 156 | Windows/Linux/Mac尚未生成1.4.51二进制，因此不得覆盖`BIN/release`正式六文件 |
 
 当前构建与交付证据：
 
 - Flutter定向analyze无error；Debug APK与固定签名arm64 Release均构建成功。
-- APK：24,149,535字节；SHA-256 `7894cc6c19ebd812948d7144eebbe5c55060b0e5a668a9530436aa448845a0fe`；包名`com.newlinksz.kemi.remote`；版本`1.4.50+155`；固定证书v1/v2校验通过。
-- 真机`192.168.3.63:5555`已卸载后全新安装，旧客户端缓存不存在；候选归档为`BIN/KEMI-远程桌面-PAD-1.4.50+155-release.apk`。
-- 发布门禁：本轮只备份源码和PAD候选，不能把单个1.4.50 APK复制到`BIN/release`。通过密码验收并获得Mac/Windows/Linux同版本候选后，才重新生成六文件正式快照。
+- APK：24,149,566字节；SHA-256 `3da2ff1a1ea985dfbea388430e680d2a069f413bd79de8f1055a5871d276d7c9`；包名`com.newlinksz.kemi.remote`；版本`1.4.51+156`；固定证书v1/v2校验通过。
+- 真机`192.168.3.63:5555`已保留数据覆盖安装；清空旧日志后19次物理右键全部`down/up`成对、没有新增焦点ANR，键盘仍可提交文本，用户确认相对稳定。候选归档为`BIN/KEMI-远程桌面-PAD-1.4.51+156-release.apk`。
+- 发布门禁：本轮只生成源码和PAD候选，不能把单个1.4.51 APK复制到`BIN/release`。PAD相对稳定不等于四端正式批次完成；获得Mac/Windows/Linux同版本候选后，才重新生成六文件正式快照。
 
 > 快照日期：2026-08-03
 >

@@ -2,6 +2,40 @@
 
 > 目标：让PAD、Windows、macOS、Linux等多端产品，用一个简单、稳定、可追溯的入口下载对应客户端。本文以`KEMI-SEND`为完整实例，同时可作为其他KEMI项目的通用模板。
 
+## 0. 先说结论：页面地址和资源地址都可以提前约定
+
+KEMI-SEND可以在客户端尚未构建、云端文件尚未上传时，先把页面和六个资源的固定地址全部约定好。后续发布只替换文件，不改客户端、不改hbbc程序，也不改用户访问入口。
+
+这里必须区分四层地址：
+
+| 地址层级 | 由谁控制 | 能否提前确定 | KEMI-SEND示例 |
+|---|---|---|---|
+| hbbc云端页面 | `hbbc.json`中的`public_base_url + sites[].path` | 可以 | `http://kemi-chat.newlinksz.com:21120/kemi-send` |
+| 各平台稳定下载路由 | JSON中的页面`path + assets[].id` | 可以 | `/kemi-send/download/windows` |
+| Newlink固定资源查询地址 | 管理员后台确定的`projectName + name`；JSON保存同一组值 | 可以，推荐开发前约定 | `https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-Send-Windows` |
+| 本次文件实际CDN地址 | 管理员上传文件后由Newlink后台在plugData的`data[0].url`返回 | 不能可靠写死 | `https://cdn.newlink-sz.com/...` |
+
+因此，“每个资源的URL由管理员后台确定”有两种交接方式：
+
+1. **推荐：提前约定。** 产品、开发和管理员先定好`Common`项目及六个固定`name`；开发可以提前写好hbbc JSON、网页入口和客户端发现配置。管理员以后始终覆盖相同name；首次上传和回读验收成功后，服务器管理员只需把`resolve_enabled`改为`true`，不需要重编hbbc。
+2. **兼容：上传后反馈。** 管理员先在后台建立资源，然后把六个固定plugData查询地址交给开发；开发从地址中提取`projectName`和`name`填入JSON。仍然不把本次动态CDN长地址写进JSON。
+
+建议KEMI-SEND直接采用第一种方式，提前冻结以下约定：
+
+```text
+云端页面：http://kemi-chat.newlinksz.com:21120/kemi-send
+后台项目：Common
+资源name：
+  KEMI-Send-PAD
+  KEMI-Send-Windows
+  KEMI-Send-macOS
+  KEMI-Send-Linux
+  KEMI-Send-SHA256SUMS
+  KEMI-Send-release-manifest
+```
+
+文件未上传前，JSON保持`resolve_enabled:false`，页面地址仍可提前访问并作为占位页；六项上传并验收通过后改为`true`。以后更新版本只覆盖同名资源，hbbc每600秒解析最新实际地址。
+
 ## 1. 最终用户看到什么
 
 KEMI快传的“客户端下载”页只需要让普通用户理解两个主入口：
@@ -73,7 +107,7 @@ PAD       [从PAD下载] [云备份下载]  仅作为上面两种下载均失效
 核心原则：
 
 - 客户端、二维码和文档只保存稳定入口，不保存每次上传后变化的CDN长地址。
-- hbbc JSON只描述“项目、页面、平台和固定name”，不写某一批次的版本、哈希或动态CDN URL。
+- hbbc JSON控制云端HTTP页面、站点ID、页面后缀、平台路由，并描述管理员后台已经确定或提前约定的`projectName`和固定`name`；不写某一批次的版本、哈希或动态CDN URL。
 - 日常升级只替换六个云端项目；hbbc二进制、JSON、客户端页面地址都不需要更新。
 - 四端文件未全部构建并验收前，不更新正式manifest，不让用户看到半成品批次。
 - 本地HTTP与云端HTTP互补，任何一条链路失败都不能破坏另一条链路。
@@ -86,7 +120,7 @@ PAD       [从PAD下载] [云备份下载]  仅作为上面两种下载均失效
 |---|---|---|
 | KEMI快传构建人员 | 冻结版本、构建四端、签名、基础启动验证 | 四个平台客户端 |
 | 发布人员 | 计算大小和SHA-256，生成两份清单 | 六个发布文件及发布记录 |
-| Newlink云后台管理员 | 在`Common`项目覆盖六个固定name | 六个固定plugData查询地址及上传完成时间 |
+| Newlink云后台管理员 | 与项目提前约定或在后台建立六个固定name，并在`Common`项目覆盖对应文件 | 六个固定plugData查询地址、上传完成时间；若已提前约定，只需确认未变 |
 | hbbc服务器管理员 | 首次合并JSON、检查配置、只重启hbbc | `/kemi-send`页面与四个稳定下载路由 |
 | KEMI快传客户端开发 | 接入本地HTTP、云端发现API和下载UI | PAD/桌面端“客户端下载”功能 |
 
@@ -202,6 +236,8 @@ hbbc当前强制读取每个target的`id`、`version`、`file`、`size`和`sha25
 
 项目固定使用`Common`。后台“固定name”与本地选择的文件是两个概念：固定name永远不变，本地文件名随版本变化。
 
+`projectName=Common`和六个`name`最好在首次开发前由管理员、产品和开发共同确认。这样下面六个plugData查询URL在任何文件上传前就已经可以写入hbbc JSON、联调文档和自动验收脚本。首次上传是在这些固定资源名下填入真实文件，不是在发布时临时发明新URL。
+
 | 上传顺序 | Common固定name | 本地选择文件 |
 |---:|---|---|
 | 1 | `KEMI-Send-PAD` | `KEMI-Send-PAD-1.0.0+1.apk` |
@@ -213,7 +249,7 @@ hbbc当前强制读取每个target的`id`、`version`、`file`、`size`和`sha25
 
 必须最后上传manifest。任何客户端文件或SHA清单上传失败时，停止发布，不上传新manifest。
 
-管理员上传完成后交给开发/验证人员的是下面六个**固定查询地址**，不是网页后台地址，也不需要手工抄写每次变化的CDN URL：
+管理员上传完成后交给开发/验证人员的是下面六个**固定查询地址**，不是网页后台地址，也不需要手工抄写每次变化的CDN URL。如果这些地址已提前约定，管理员上传后只需确认项目和name没有变，并给出完成时间：
 
 ```text
 https://www.newlinksz.cn/screensaver/api/plugData?projectName=Common&name=KEMI-Send-PAD
@@ -234,7 +270,7 @@ manifest完成时间：2026-08-04 14:30:00 +08:00
 失败项：无
 ```
 
-不要传账号密码。动态`cdn.newlink-sz.com` URL由开发流程和hbbc通过固定接口自行解析。
+不要传账号密码。管理员负责后台固定资源的建立和覆盖；动态`cdn.newlink-sz.com` URL由Newlink后台在上传后生成，由开发流程和hbbc通过固定接口自行解析。
 
 ## 7. 上传后开发流程检查什么
 
@@ -339,7 +375,7 @@ sudo journalctl -u kemi-rustdesk-hbbc.service -n 100 --no-pager
 
 只重启`kemi-rustdesk-hbbc.service`，不重启`hbbs`、`hbbr`，不重新运行全量安装脚本。
 
-`public_base_url + sites[].path`自动形成正式页面地址：
+云端HTTP页面地址完全由JSON控制。`public_base_url + sites[].path`自动形成正式页面地址，因此在KEMI-SEND客户端编译前就可以确定：
 
 ```text
 http://kemi-chat.newlinksz.com:21120/kemi-send
@@ -354,7 +390,20 @@ http://kemi-chat.newlinksz.com:21120/kemi-send/download/linux
 http://kemi-chat.newlinksz.com:21120/kemi-send/download/android
 ```
 
-这些稳定路由返回302到本次Newlink HTTPS真实文件。云盘覆盖更新后，稳定路由、二维码和客户端代码都不改变。
+这些稳定路由也由JSON中的`sites[].path`和`assets[].id`生成，并返回302到本次Newlink HTTPS真实文件。云盘覆盖更新后，稳定路由、二维码和客户端代码都不改变。
+
+JSON与管理员后台资源的对应关系如下：
+
+```text
+JSON project_name              ← plugData参数 projectName
+JSON manifest_plug_name        ← 发布清单资源name
+JSON checksums_plug_name       ← SHA清单资源name
+JSON assets[].plug_name        ← 各平台客户端资源name
+JSON sites[].path              → hbbc云端页面后缀
+JSON assets[].id               → hbbc平台下载路由后缀
+```
+
+管理员若采用提前约定的六个name，JSON可以提前定稿；管理员若在后台使用了另一组name，只修改JSON对应字段并检查配置即可，不需要重新编译hbbc。
 
 ## 10. hbbc验证清单
 
@@ -452,16 +501,16 @@ KEMI-SEND APK内不嵌入四个平台安装包。正确方式是：
 
 ### 初次接入KEMI-SEND
 
-1. 建立四端统一版本规则和固定签名。
-2. 构建并验收四端客户端。
-3. 生成SHA256SUMS和release-manifest。
-4. 管理员按顺序上传六个固定云端项目。
-5. 开发流程回读六个plugData地址并验证真实文件。
-6. 生成/合并`kemi-send`站点JSON，设置`resolve_enabled:true`。
-7. 服务器管理员检查JSON并只重启hbbc。
-8. 验证页面、API和四个302路由。
-9. 把`base + site_id + last_known_url`反馈给KEMI快传客户端。
-10. 构建客户端，验证本地HTTP、云端页和云备份三条路径。
+1. 提前约定hbbc页面地址、`site_id/path`、Newlink项目和六个固定name。
+2. 先生成/合并`kemi-send`站点JSON，资源未就绪时保持`resolve_enabled:false`。
+3. 建立四端统一版本规则和固定签名。
+4. 构建并验收四端客户端。
+5. 生成SHA256SUMS和release-manifest。
+6. 管理员按顺序上传六个固定云端资源，确认固定查询地址未变。
+7. 开发流程回读六个plugData地址并验证真实文件。
+8. 将JSON的`resolve_enabled`改为`true`，服务器管理员检查JSON并只重启hbbc。
+9. 验证页面、API和四个302路由。
+10. KEMI快传客户端使用提前约定的`base + site_id + last_known_url`，验证本地HTTP、云端页和云备份三条路径。
 
 ### 以后发布新版本
 

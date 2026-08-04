@@ -2,6 +2,23 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 八十一、2026-08-04 1.4.51相对稳定候选收口与KEMI-SEND地址约定
+
+- PAD `1.4.51+156`固定签名arm64 Release构建成功，文件为24,149,566字节，SHA-256为`3da2ff1a1ea985dfbea388430e680d2a069f413bd79de8f1055a5871d276d7c9`；包名`com.newlinksz.kemi.remote`、版本码156、v1/v2签名有效，证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。候选归档为`BIN/KEMI-远程桌面-PAD-1.4.51+156-release.apk`，没有单独覆盖正式`BIN/release`六文件。
+- 保留数据覆盖安装到`192.168.3.63:5555`并清空旧日志后，跨屏键盘打开期间连续采集19次物理右键，全部严格形成一组`down/up`；测试窗口内没有新增`Application does not have a focused window`或`Input dispatching timed out`，键盘代理仍持续产生文本提交。用户确认本版本相对稳定，作为后续开发和回归测试的新PAD候选基线。
+- 右键修复的稳定边界明确为：远控源Activity永远保持可聚焦；键盘保持由IME代理状态机负责；厂商固件漏发release时按下一次无次键状态的鼠标事件补发`up`。剩余需长期观察的是特殊鼠标右键拖动时错误上报`buttonState=0`，不能通过重新加入`FLAG_NOT_FOCUSABLE`规避任何键盘问题。
+- `KEMI-SEND-CROSS-PLATFORM-CLIENT-DISTRIBUTION.md`补充地址控制权：hbbc页面和平台稳定路由由JSON控制，可在客户端构建前确定；Newlink固定资源查询地址由管理员后台的`projectName + name`决定，也推荐提前约定；上传后返回的实际CDN `data[0].url`仍是动态值，由hbbc每600秒解析，禁止写死。
+- KEMI-SEND推荐提前冻结`Common`项目、`/kemi-send`页面及六个`KEMI-Send-*`固定name。资源未就绪时保持`resolve_enabled:false`；六文件上传并回读验收后改为`true`，以后版本只覆盖同名资源，不重编hbbc、不修改客户端和用户入口。
+
+## 八十、2026-08-04 物理右键ANR根因修复（PAD 1.4.51+156 候选）
+
+- 真机日志确认右键协议层正常：每次物理右键均产生一组`[PhysicalMouse] right down/up on display 2`，不是MAC端执行慢，也不是右键释放通常丢失。
+- PAD在16:53、19:35、19:38、19:51、19:53、19:54和19:58多次记录`Input dispatching timed out (Application does not have a focused window)`，ANR归属`com.newlinksz.kemi.remote/MainActivity`。
+- 根因是跨屏键盘保持逻辑在键盘打开时给远控源窗口添加`FLAG_NOT_FOCUSABLE`。窗口仍接收物理鼠标目标事件，却不具备焦点，Android InputDispatcher等待焦点窗口后触发系统超时。右键因同时经过MotionEvent/KeyEvent兼容入口，更容易暴露该问题，但不是协议死锁。
+- `KeyboardProxyManager`不再改变远控源窗口的focusable属性；键盘是否保持改由既有指针时间戳、IME可见性分类和代理Activity恢复状态机处理，保证远控画面始终是合法输入窗口。
+- `PhysicalMouseRightButtonForwarder`增加状态自校准：若厂商固件在跨屏焦点变化时漏发`BUTTON_RELEASE`，下一次不含次键状态的鼠标事件会补发`up`，避免远端永久保持右键按下；显式release仍由原事件消费。
+- Kotlin定向编译`:app:compileDebugKotlin`通过；固定签名Release和真机证据见第八十一节。键盘打开期间连续右键已经跨过原5秒ANR窗口且没有新增系统超时，用户确认本版相对稳定。
+
 ## 七十九、2026-08-04 副屏认证输入、旧清单回退与局域网直达页（PAD 1.4.50+155 候选）
 
 - 现场复现“密码键盘已显示但字符输入不进去”时，远控认证页位于Display 2，而`KeyboardProxyActivity`被提前创建在Display 0。系统输入法仍显示`mInputShown=true`、Flutter密码框仍持有视觉焦点，但日志连续出现`commitText on inactive InputConnection`。根因不是输入法或Mac权限，而是`deferDefaultDisplay`只保护Display 0认证；副屏认证绕过保护后，代理Activity使原Flutter密码框的InputConnection失效。

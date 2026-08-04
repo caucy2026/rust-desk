@@ -45,6 +45,15 @@ class PhysicalMouseRightButtonForwarder(
                     (actionButton == MotionEvent.BUTTON_SECONDARY || secondaryDown)) ||
                 (action == MotionEvent.ACTION_CANCEL && secondaryDown)
 
+        // Some Android mouse firmwares occasionally omit BUTTON_RELEASE when
+        // focus moves between displays. Reconcile our state from the next mouse
+        // event so the remote side can never remain stuck in right-button-down.
+        val secondaryNoLongerPressed =
+            secondaryDown &&
+                !secondaryInState &&
+                action != MotionEvent.ACTION_DOWN &&
+                action != MotionEvent.ACTION_BUTTON_PRESS
+
         if (isDown) {
             if (!secondaryDown) {
                 secondaryDown = true
@@ -52,9 +61,9 @@ class PhysicalMouseRightButtonForwarder(
             }
             return true
         }
-        if (isUp) {
+        if (isUp || secondaryNoLongerPressed) {
             releaseIfNeeded()
-            return true
+            return isUp
         }
         return false
     }

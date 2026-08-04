@@ -2,9 +2,9 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前云端正式批次：1.4.49+154；本地PAD候选：1.4.50+155
+## 当前云端正式批次：1.4.49+154；本地PAD候选：1.4.51+156
 
-当前Newlink云端和`BIN/release`六文件为四端`1.4.49+154`完整正式批次，绑定功能源码 commit `ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`及focused run `30891539907`。本地另有PAD `1.4.50+155`候选，修复副屏认证输入、旧GitHub清单回退阻塞和局域网二维码入口；它只归档在`BIN/`根目录，未覆盖`BIN/release/KEMI-PAD.apk`。只有四端和两份清单全部形成下一完整批次后，才允许整体切换`BIN/release`。
+当前Newlink云端和`BIN/release`六文件为四端`1.4.49+154`完整正式批次，绑定功能源码 commit `ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`及focused run `30891539907`。本地PAD最新候选为`1.4.51+156`，包含`1.4.50+155`的副屏认证、旧GitHub清单回退阻塞和局域网二维码修复，并新增物理鼠标ANR修复；它只归档在`BIN/`根目录，未覆盖`BIN/release/KEMI-PAD.apk`。只有四端和两份清单全部形成下一完整批次后，才允许整体切换`BIN/release`。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 
@@ -53,12 +53,13 @@ Newlink国内云盘HTTPS文件
 
 ## 2. 四端版本、归档名和云盘固定名
 
-源码产品版本来自根`Cargo.toml`，当前候选为`1.4.50`；云端正式批次仍绑定功能源码`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`：PAD为`1.4.49+154`，macOS为`1.4.49 (154)`，Windows/Linux包内产品版本为`1.4.49`。Windows/Linux由focused run `30891539907`生成，macOS/PAD在本机全量构建并使用既有固定测试签名。桌面云端包没有Flutter build number字段，因此清单如实保留产品版本，并通过批次、commit、run ID和SHA-256建立对应关系。下一批次必须等1.4.50四端重新构建后再改本节的正式映射。
+源码产品版本来自根`Cargo.toml`，当前候选为`1.4.51`；云端正式批次仍绑定功能源码`ed615c7fb17d72b5c5d69731a2e3c8d208fda7e6`：PAD为`1.4.49+154`，macOS为`1.4.49 (154)`，Windows/Linux包内产品版本为`1.4.49`。Windows/Linux由focused run `30891539907`生成，macOS/PAD在本机全量构建并使用既有固定测试签名。桌面云端包没有Flutter build number字段，因此清单如实保留产品版本，并通过批次、commit、run ID和SHA-256建立对应关系。下一批次必须等1.4.51四端重新构建后再改本节的正式映射。
 
 `BIN/`根目录中当前批次的版本化归档为：
 
 ```text
 BIN/
+├── KEMI-远程桌面-PAD-1.4.51+156-release.apk   # 当前PAD单端候选，不属于正式六文件
 ├── KEMI-远程桌面-PAD-1.4.50+155-release.apk   # 当前PAD单端候选，不属于正式六文件
 ├── KEMI-远程桌面-PAD-1.4.49+154-release.apk
 ├── KEMI-远程桌面-macOS-arm64-1.4.49+154.zip

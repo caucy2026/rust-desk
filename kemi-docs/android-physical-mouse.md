@@ -4,7 +4,7 @@
 
 本文记录PAD外接物理鼠标的右键输入链路。触摸手势仍由`remote_input.dart`处理，不与本文的原生鼠标兼容层混用。
 
-`1.4.46+123`已由用户真机确认：在远控画面所在屏幕点击物理鼠标右键，远端能够收到并执行右键。兼容层只在当前显示`RemotePage`的Activity中启用；PAD主页、设置、另一块物理屏幕以及其他App不转发远程右键。
+`1.4.46+123`已由用户真机确认：在远控画面所在屏幕点击物理鼠标右键，远端能够收到并执行右键。兼容层只在当前显示`RemotePage`的Activity中启用；PAD主页、设置、另一块物理屏幕以及其他App不转发远程右键。`1.4.51+156`进一步修复跨屏键盘窗口焦点导致的系统ANR，并增加漏失release时的右键状态自校准。
 
 ## 2. 原来为什么失效
 
@@ -72,6 +72,32 @@ set_remote_mouse_input_active = true
 ```
 
 原生层的`secondaryDown`防止同一次物理动作同时产生`ACTION_DOWN`和`ACTION_BUTTON_PRESS`时重复发送；Flutter层的`_androidSecondaryMouseDownSent`保证只释放真实发送过的按下，并让释放不受中途权限状态变化影响。
+
+### 3.4 右键看似“卡死”的真实原因（1.4.51+156）
+
+真机记录显示物理右键`down/up`成对到达，但`MainActivity`反复发生：
+
+```text
+Input dispatching timed out (Application does not have a focused window)
+```
+
+问题来自跨屏键盘保持逻辑，而不是远程鼠标协议。键盘位于另一显示屏时，旧实现给远控源Activity添加`FLAG_NOT_FOCUSABLE`，希望避免触摸抢走IME焦点；但Android InputDispatcher仍会把物理鼠标事件指向远控窗口，窗口不可聚焦便进入等待，约5秒后形成ANR。
+
+当前规则：
+
+- 永远不把显示远控画面的源Activity改成`NOT_FOCUSABLE`；
+- 键盘保持依赖代理Activity现有的指针时间戳、IME隐藏原因分类和恢复逻辑；
+- 若固件漏发右键release，在下一个`buttonState`已无次键的鼠标事件中补发`up`；
+- 不把补发时遇到的普通hover/move事件吃掉，保证鼠标移动继续正常。
+
+这条边界必须保留：不能再通过取消远控窗口焦点来换取键盘常驻，否则任意物理输入都可能产生系统ANR。
+
+### 3.5 1.4.51+156真机收口证据
+
+- 固定签名候选保留数据覆盖安装到`192.168.3.63:5555`，系统回读版本`1.4.51+156`。
+- 清空旧日志后，在跨屏键盘开启并继续输入文字的现场连续采集19次物理右键，每次均严格形成一组`down/up on display 2`。
+- 同一测试窗口内未再出现`Application does not have a focused window`、`Input dispatching timed out`或新的KEMI ANR；键盘代理仍持续产生`commit_text`。
+- 用户确认本版本相对稳定。它是当前PAD回归基线，但特殊鼠标的右键按住拖动仍需观察固件是否在按住期间错误清空`buttonState`。
 
 ## 4. 涉及文件
 
