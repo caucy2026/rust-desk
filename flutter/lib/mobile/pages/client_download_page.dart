@@ -338,7 +338,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: .12),
+                        color: Colors.green.withOpacity(.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
