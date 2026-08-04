@@ -178,6 +178,42 @@ class HomePageState extends State<HomePage> {
               style: TextStyle(fontSize: 12, color: foreground),
             ),
           ),
+          if (status <= 0) ...[
+            const SizedBox(width: 6),
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: gFFI.serverModel.isReconnectingRendezvous
+                  ? null
+                  : gFFI.serverModel.reconnectRendezvous,
+              child: Container(
+                height: 20,
+                constraints: const BoxConstraints(minWidth: 48),
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color.withOpacity(0.65), width: 1),
+                ),
+                child: gFFI.serverModel.isReconnectingRendezvous
+                    ? SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: color,
+                        ),
+                      )
+                    : Text(
+                        '重连',
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1,
+                          color: color,
+                        ),
+                      ),
+              ),
+            ),
+          ],
         ],
       ),
     );

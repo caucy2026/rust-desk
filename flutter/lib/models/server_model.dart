@@ -33,6 +33,8 @@ class ServerModel with ChangeNotifier {
   bool _showElevation = false;
   bool hideCm = false;
   int _connectStatus = 0; // Rendezvous Server status
+  bool _isReconnectingRendezvous = false;
+  Timer? _rendezvousReconnectTimeout;
   String _verificationMethod = "";
   String _temporaryPasswordLength = "";
   bool _allowNumericOneTimePassword = false;
@@ -67,6 +69,8 @@ class ServerModel with ChangeNotifier {
   bool get showElevation => _showElevation;
 
   int get connectStatus => _connectStatus;
+
+  bool get isReconnectingRendezvous => _isReconnectingRendezvous;
 
   String get verificationMethod {
     final index = [
@@ -151,7 +155,13 @@ class ServerModel with ChangeNotifier {
       final connectionStatus =
           jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
       final statusNum = connectionStatus['status_num'] as int;
-      if (statusNum != _connectStatus) {
+      final reconnectCompleted = statusNum > 0 && _isReconnectingRendezvous;
+      if (reconnectCompleted) {
+        _isReconnectingRendezvous = false;
+        _rendezvousReconnectTimeout?.cancel();
+        _rendezvousReconnectTimeout = null;
+      }
+      if (statusNum != _connectStatus || reconnectCompleted) {
         _connectStatus = statusNum;
         notifyListeners();
       }
@@ -192,6 +202,35 @@ class ServerModel with ChangeNotifier {
     // Initial keyboard status is off on mobile
     if (isMobile) {
       bind.mainSetOption(key: kOptionEnableKeyboard, value: 'N');
+    }
+  }
+
+  /// Force Android's rendezvous mediator to discard its current socket and
+  /// register again. Writing the current server value is intentional: the
+  /// native option handler treats this key as a restart trigger even when its
+  /// value did not change.
+  Future<void> reconnectRendezvous() async {
+    if (_connectStatus > 0 || _isReconnectingRendezvous) return;
+
+    _isReconnectingRendezvous = true;
+    _connectStatus = 0;
+    notifyListeners();
+    _rendezvousReconnectTimeout?.cancel();
+
+    try {
+      final server = await bind.mainGetOption(key: 'custom-rendezvous-server');
+      await bind.mainSetOption(
+        key: 'custom-rendezvous-server',
+        value: server,
+      );
+      _rendezvousReconnectTimeout = Timer(const Duration(seconds: 10), () {
+        if (!_isReconnectingRendezvous) return;
+        _isReconnectingRendezvous = false;
+        notifyListeners();
+      });
+    } catch (_) {
+      _isReconnectingRendezvous = false;
+      notifyListeners();
     }
   }
 
