@@ -356,6 +356,12 @@ kemi-docs/**
 CI只在PR或手动触发，nightly/tag也不监听普通WIP push。因此当前KEMI推送`wip/*`不会启动
 或取消正在运行的`master`候选构建。以后新增workflow时必须重新审计，不能永久假设安全。
 
+2026-08-04实测：`kemi-docs/**`纯文档提交不会创建focused客户端run，但基础`CI`仍会创建run；
+文档提交`01e16d004`对应的基础run `30897568115`已主动取消。后续修改基础CI workflow时应把
+`kemi-docs/**`和纯Markdown加入`paths-ignore`；在该修改随下一次正常功能候选一起进入master前，
+纯文档推送后必须查询最新run并只取消该文档提交产生的基础CI，绝不能取消正在生成候选客户端的
+focused run。
+
 只运行：
 
 ```text
