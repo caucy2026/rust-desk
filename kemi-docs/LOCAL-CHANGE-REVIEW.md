@@ -20,7 +20,7 @@
 
 验证：本轮固定签名arm64 Release构建成功，24,594,997字节，SHA-256 `c80314376828cc40a7834c1804af6946076f7649a22bc591aec665d6a76cba0e`；包内`1.4.57+162`且显示名“KEMI远程办公”，证书未变化，APK内Rust核心与本轮目标文件哈希一致。定向analyze无error/warning，仅5条既有弃用info；Debug Kotlin和完整Release构建通过。
 
-发布剩余动作：生成并校验`BIN/release`六文件，推送`backup/master`；管理员本轮上传PAD、SHA清单并最后上传manifest，随后远端验证“旧PAD显示更新 → 下载进度 → 系统安装 → 重启回读1.4.57+162”。
+发布状态：功能源码提交`db0427d5a17d3a7a9370b1d4ea22f7d489176cb5`已推送`backup/master`；`BIN/release`已替换PAD并通过四端SHA校验，Mac/Windows/Linux字节未变。管理员剩余动作仅为上传PAD、SHA清单并最后上传manifest，随后远端验证“旧PAD显示更新 → 下载进度 → 系统安装 → 重启回读1.4.57+162”。
 
 ## 历史候选快照：1.4.51+156（2026-08-04）
 
