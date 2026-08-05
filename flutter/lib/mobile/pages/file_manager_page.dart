@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_breadcrumb/flutter_breadcrumb.dart';
 import 'package:flutter_hbb/models/file_model.dart';
+import 'package:flutter_hbb/models/file_transfer_policy.dart';
 import 'package:flutter_hbb/models/transfer_history_model.dart';
 import 'package:get/get.dart';
 import 'package:toggle_switch/toggle_switch.dart';
@@ -81,6 +82,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   late final FFI _ffi;
   late final FileModel model;
   late final TransferHistoryStore _historyStore;
+  late final ReceivedLocalFileRegistry _receivedLocalFiles;
   final selectMode = SelectMode.none.obs;
   bool _navigatingBackToRemote = false;
   bool _showHistory = false;
@@ -96,9 +98,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   DirectoryOptions get currentOptions => currentFileController.options.value;
   final _uniqueKey = UniqueKey();
 
-  // PAD requires a read-only transfer experience in this build.
-  bool get _deleteEnabled => !isAndroid;
-
   bool _useDualPane(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     return isAndroid && size.width >= 720 && size.width > size.height;
@@ -109,7 +108,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
     super.initState();
     _ffi = widget.isOverlay ? FFI(Uuid().v4obj()) : gFFI;
     model = _ffi.fileModel;
-    _historyStore = TransferHistoryStore(widget.id)..load();
+    _receivedLocalFiles = ReceivedLocalFileRegistry()..load();
+    _historyStore = TransferHistoryStore(
+      widget.id,
+      receivedLocalFiles: _receivedLocalFiles,
+    )..load();
     model.jobController.onTransferJobChanged = _historyStore.updateFromJob;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -379,12 +382,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       ? FileManagerView(
                           controller: model.localController,
                           selectMode: selectMode,
-                          deleteEnabled: _deleteEnabled,
+                          canDelete: (entry) =>
+                              _canDeleteEntry(model.localController, entry),
+                          onDelete: (entry) => _deleteReceivedLocalItems(
+                            model.localController,
+                            SelectedItems(isLocal: true)..add(entry),
+                          ),
                         )
                       : FileManagerView(
                           controller: model.remoteController,
                           selectMode: selectMode,
-                          deleteEnabled: _deleteEnabled,
+                          canDelete: (entry) =>
+                              _canDeleteEntry(model.remoteController, entry),
                         ),
           bottomSheet: bottomSheet(),
         ));
@@ -478,7 +487,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
             child: FileManagerView(
               controller: controller,
               selectMode: selectMode,
-              deleteEnabled: _deleteEnabled,
+              canDelete: (entry) => _canDeleteEntry(controller, entry),
+              onDelete: controller.isLocal
+                  ? (entry) => _deleteReceivedLocalItems(
+                        controller,
+                        SelectedItems(isLocal: true)..add(entry),
+                      )
+                  : null,
               dualPane: true,
               onSelectionStarted: _activateDualPaneSelection,
             ),
@@ -561,11 +576,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<void> _transferDualPaneSelection(
       FileController source, FileController target) async {
     if (source.selectedItems.items.isEmpty) return;
-    await _startRecordedTransfer(
+    final started = await _startRecordedTransfer(
       source,
       source.selectedItems,
       target.directoryData(),
     );
+    if (!started) return;
     source.selectedItems.clear();
     if (target.selectedItems.items.isNotEmpty) {
       selectMode.value = target.isLocal ? SelectMode.local : SelectMode.remote;
@@ -599,11 +615,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
-  Future<void> _startRecordedTransfer(FileController source,
+  Future<bool> _startRecordedTransfer(FileController source,
       SelectedItems originalItems, DirectoryData target) async {
     final items = SelectedItems(isLocal: source.isLocal);
     items.items.addAll(originalItems.items);
-    if (items.items.isEmpty) return;
+    if (items.items.isEmpty) return false;
+
+    if (!await _passesTargetSpaceCheck(source, items, target)) {
+      return false;
+    }
 
     // Persist before dispatch. A small file can finish before the asynchronous
     // completion callback arrives, but it must already be visible in history.
@@ -628,9 +648,124 @@ class _FileManagerPageState extends State<FileManagerPage> {
           if (binding != null) _historyStore.bindJob(jobId, binding);
         },
       );
+      return true;
     } catch (error) {
       debugPrint('[TransferHistory] start transfer failed: $error');
       if (mounted) showToast('传输启动失败：$error');
+      return false;
+    }
+  }
+
+  Future<bool> _passesTargetSpaceCheck(
+      FileController source, SelectedItems items, DirectoryData target) async {
+    // The PAD can reliably query its own StatFs data. A remote macOS target is
+    // deliberately not blocked because this build cannot query it reliably.
+    if (!isAndroid || source.isLocal) return true;
+
+    _ffi.dialogManager.showLoading('正在检查目标空间…');
+    try {
+      final totalBytes = await _calculateSelectedBytes(source, items);
+      final raw = await gFFI.invokeMethod(
+        'get_available_storage_bytes',
+        {'path': target.directory.path},
+      );
+      final availableBytes = raw is num ? raw.toInt() : -1;
+      if (availableBytes < 0) {
+        if (mounted) showToast('无法读取PAD剩余空间，本次传输已取消');
+        return false;
+      }
+      final limitBytes =
+          FileTransferSpacePolicy.maximumTransferBytes(availableBytes);
+      if (!FileTransferSpacePolicy.allows(
+        transferBytes: totalBytes,
+        availableBytes: availableBytes,
+      )) {
+        if (mounted) {
+          showToast(
+            '文件共 ${readableFileSize(totalBytes.toDouble())}，超过PAD剩余空间'
+            ' ${readableFileSize(availableBytes.toDouble())} 的一半，已禁止传输',
+          );
+        }
+        return false;
+      }
+      debugPrint('[FileTransferSpace] allow bytes=$totalBytes '
+          'available=$availableBytes limit=$limitBytes target=${target.directory.path}');
+      return true;
+    } catch (error) {
+      debugPrint('[FileTransferSpace] preflight failed: $error');
+      if (mounted) showToast('无法准确计算传输大小，本次传输已取消：$error');
+      return false;
+    } finally {
+      _ffi.dialogManager.dismissAll();
+    }
+  }
+
+  Future<int> _calculateSelectedBytes(
+      FileController source, SelectedItems items) async {
+    var totalBytes = 0;
+    for (final entry in items.items) {
+      if (entry.isFile) {
+        totalBytes += entry.size;
+        continue;
+      }
+      if (!entry.isDirectory) continue;
+      final actionId = JobController.jobID.next();
+      try {
+        final directory =
+            await source.fileFetcher.fetchDirectoryRecursiveToRemove(
+          actionId,
+          entry.path,
+          source.isLocal,
+          source.options.value.showHidden,
+        );
+        totalBytes += directory.entries.fold<int>(
+          0,
+          (sum, child) => sum + child.size,
+        );
+      } finally {
+        await model.jobController.cancelJob(actionId);
+      }
+    }
+    return totalBytes;
+  }
+
+  bool _canDeleteEntry(FileController controller, Entry entry) {
+    if (!isAndroid) return true;
+    return controller.isLocal && _receivedLocalFiles.canDelete(entry);
+  }
+
+  Future<void> _deleteReceivedLocalItems(
+      FileController controller, SelectedItems items) async {
+    if (isAndroid &&
+        (!controller.isLocal ||
+            items.items
+                .any((entry) => !_receivedLocalFiles.canDelete(entry)))) {
+      showToast('只能删除已成功传回PAD且未被修改的文件或文件夹');
+      return;
+    }
+    final candidates = items.items.toList();
+    await controller.removeAction(items);
+    try {
+      final refreshed = await controller.fileFetcher.fetchDirectory(
+        controller.directory.value.path,
+        true,
+        controller.options.value.showHidden,
+      );
+      refreshed.format(controller.options.value.isWindows);
+      for (final candidate in candidates) {
+        final stillExists = refreshed.entries.any(
+          (entry) => _samePath(entry.path, candidate.path, false),
+        );
+        if (!stillExists) {
+          if (candidate.isDirectory) {
+            _receivedLocalFiles.forgetTree(candidate.path);
+          } else {
+            _receivedLocalFiles.forget(candidate.path);
+          }
+        }
+      }
+    } catch (error) {
+      debugPrint('[ReceivedLocalFiles] post-delete validation failed: $error');
     }
   }
 
@@ -970,14 +1105,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.delete_forever),
-                  onPressed: _deleteEnabled && selectedItems != null
+                  onPressed: selectedItems != null &&
+                          selectedItems.items.isNotEmpty &&
+                          selectedItems.items.every(
+                            (entry) =>
+                                _canDeleteEntry(currentFileController, entry),
+                          )
                       ? () async {
-                          if (selectedItems.items.isNotEmpty) {
-                            await currentFileController
-                                .removeAction(selectedItems);
-                            selectedItems.items.clear();
-                            selectMode.value = SelectMode.none;
-                          }
+                          await _deleteReceivedLocalItems(
+                            currentFileController,
+                            selectedItems,
+                          );
+                          selectedItems.items.clear();
+                          selectMode.value = SelectMode.none;
                         }
                       : null,
                 )
@@ -1006,8 +1146,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                         : model.localController;
                     final thisSideData =
                         DirectoryData(currentDir, currentOptions);
-                    await _startRecordedTransfer(
+                    final started = await _startRecordedTransfer(
                         otherSide, selectedItems, thisSideData);
+                    if (!started) return;
                     selectedItems.items.clear();
                     selectMode.value = SelectMode.none;
                   },
@@ -1089,14 +1230,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
 class FileManagerView extends StatefulWidget {
   final FileController controller;
   final Rx<SelectMode> selectMode;
-  final bool deleteEnabled;
+  final bool Function(Entry entry) canDelete;
+  final Future<void> Function(Entry entry)? onDelete;
   final bool dualPane;
   final ValueChanged<bool>? onSelectionStarted;
 
   FileManagerView(
       {required this.controller,
       required this.selectMode,
-      required this.deleteEnabled,
+      required this.canDelete,
+      this.onDelete,
       this.dualPane = false,
       this.onSelectionStarted});
 
@@ -1245,7 +1388,7 @@ class _FileManagerViewState extends State<FileManagerView> {
         itemBuilder: (context) {
           return [
             PopupMenuItem(
-              enabled: widget.deleteEnabled,
+              enabled: widget.canDelete(entry),
               child: Text(translate("Delete")),
               value: "delete",
             ),
@@ -1271,12 +1414,16 @@ class _FileManagerViewState extends State<FileManagerView> {
         },
         onSelected: (v) {
           if (v == "delete") {
-            if (!widget.deleteEnabled) {
+            if (!widget.canDelete(entry)) {
               return;
             }
-            final items = SelectedItems(isLocal: isLocal);
-            items.add(entry);
-            controller.removeAction(items);
+            final onDelete = widget.onDelete;
+            if (onDelete != null) {
+              onDelete(entry);
+            } else {
+              final items = SelectedItems(isLocal: isLocal)..add(entry);
+              controller.removeAction(items);
+            }
           } else if (v == "multi_select") {
             _selectedItems.clear();
             if (widget.dualPane) {

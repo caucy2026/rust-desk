@@ -822,6 +822,7 @@ abstract class BasePeerCard extends StatelessWidget {
               await gFFI.abModel.deletePeers([id]);
               break;
             case PeerTabIndex.group:
+            case PeerTabIndex.connectionHistory:
               break;
           }
           if (tab != PeerTabIndex.ab) {

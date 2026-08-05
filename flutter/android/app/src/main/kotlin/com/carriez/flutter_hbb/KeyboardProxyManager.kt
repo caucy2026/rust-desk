@@ -29,6 +29,8 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private var sourceDisplayId = Display.DEFAULT_DISPLAY
     private var targetDisplayId = Display.DEFAULT_DISPLAY
     private var channel: MethodChannel? = null
+    private var ownerActivity = WeakReference<Activity>(null)
+    private var ownerSessionId = ""
     private var proxyActivity = WeakReference<KeyboardProxyActivity>(null)
     private var displayManager: DisplayManager? = null
     private var preparingRequestId = 0L
@@ -48,7 +50,14 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         if (preparingRequestId == 0L || proxyActivity.get() != null) return
         Log.w(TAG, "Keyboard proxy preparation timed out request=$preparingRequestId")
         preparingRequestId = 0L
-        if (state == "hidden") {
+        if (state == "opening") {
+            val source = ownerActivity.get()
+            if (source != null && !source.isFinishing && !source.isDestroyed) {
+                launchIfCurrent(source, requestId, sessionId, targetDisplayId)
+            } else {
+                finishHidden("prepare_source_lost", false)
+            }
+        } else if (state == "hidden") {
             displayManager?.unregisterDisplayListener(this)
             displayManager = null
         }
@@ -58,10 +67,24 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     fun prepare(
         source: Activity,
         methodChannel: MethodChannel,
+        requestedSessionId: String = "",
         deferDefaultDisplay: Boolean = false
     ): Boolean {
+        if (state != "hidden") {
+            if (requestedSessionId.isNotEmpty() && requestedSessionId == ownerSessionId) {
+                channel = methodChannel
+                ownerActivity = WeakReference(source)
+            }
+            Log.w(
+                TAG,
+                "Ignore prepare while state=$state owner=$ownerSessionId requested=$requestedSessionId"
+            )
+            return false
+        }
+
         channel = methodChannel
-        if (state != "hidden") return false
+        ownerActivity = WeakReference(source)
+        ownerSessionId = requestedSessionId
 
         val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val sourceId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
@@ -109,9 +132,31 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     @Synchronized
     fun open(source: Activity, methodChannel: MethodChannel, requestedSessionId: String): Map<String, Any> {
         if (state != "hidden") {
-            channel = methodChannel
+            if (requestedSessionId.isNotEmpty() && ownerSessionId.isNotEmpty() &&
+                requestedSessionId != ownerSessionId
+            ) {
+                Log.w(
+                    TAG,
+                    "Release stale keyboard owner=$ownerSessionId for new session=$requestedSessionId"
+                )
+                release("superseded_session")
+                return mapOf(
+                    "accepted" to false,
+                    "requestId" to requestId,
+                    "reason" to "stale_session_released",
+                    "retryAfterMs" to 2_200
+                )
+            }
+            if (requestedSessionId.isNotEmpty() && requestedSessionId == ownerSessionId) {
+                channel = methodChannel
+                ownerActivity = WeakReference(source)
+            }
             publishState("open_rejected_busy")
-            return mapOf("accepted" to false, "requestId" to requestId)
+            return mapOf(
+                "accepted" to false,
+                "requestId" to requestId,
+                "reason" to "busy"
+            )
         }
 
         val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -124,6 +169,8 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         sourceDisplayId = sourceId
         targetDisplayId = targetId
         channel = methodChannel
+        ownerActivity = WeakReference(source)
+        ownerSessionId = requestedSessionId
         state = "opening"
         lastSourcePointerEventAtMs = 0L
         displayManager = manager
@@ -137,7 +184,16 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             existing.display?.displayId == targetId
         ) {
             existing.activate(newRequestId, requestedSessionId)
-        } else if (preparingRequestId == 0L) {
+        } else {
+            if (preparingRequestId != 0L) {
+                // Keep the preparation request valid while promoting the explicit open.
+                // Either launch may create the singleInstance host first; onActivityReady
+                // accepts both request IDs and activates the current explicit request.
+                Log.w(
+                    TAG,
+                    "Promote unfinished preparation=$preparingRequestId with open request=$newRequestId"
+                )
+            }
             launchIfCurrent(source, newRequestId, requestedSessionId, targetId)
         }
         return mapOf("accepted" to true, "requestId" to newRequestId)
@@ -168,7 +224,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             return false
         }
         proxyActivity = WeakReference(activity)
-        if (preparedActivity) {
+        if (preparedActivity || openingActivity) {
             preparingRequestId = 0L
             mainHandler.removeCallbacks(prepareTimeout)
         }
@@ -281,7 +337,25 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun release(reason: String = "release_requested") {
+    fun release(
+        reason: String = "release_requested",
+        expectedSessionId: String? = null,
+        source: Activity? = null
+    ) {
+        if (!expectedSessionId.isNullOrEmpty() && ownerSessionId.isNotEmpty() &&
+            expectedSessionId != ownerSessionId
+        ) {
+            Log.w(
+                TAG,
+                "Ignore stale release reason=$reason owner=$ownerSessionId expected=$expectedSessionId"
+            )
+            return
+        }
+        val owner = ownerActivity.get()
+        if (source != null && owner != null && source !== owner) {
+            Log.w(TAG, "Ignore release from stale Activity reason=$reason")
+            return
+        }
         mainHandler.removeCallbacks(openTimeout)
         mainHandler.removeCallbacks(prepareTimeout)
         preparingRequestId = 0L
@@ -317,17 +391,20 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private fun finishHidden(reason: String, keepPreparedActivity: Boolean) {
         mainHandler.removeCallbacks(openTimeout)
         mainHandler.removeCallbacks(prepareTimeout)
+        preparingRequestId = 0L
         state = "hidden"
         publishState(reason)
         sessionId = ""
         lastSourcePointerEventAtMs = 0L
         if (keepPreparedActivity) {
-            preparingRequestId = 0L
+            // Keep ownership and the channel with the parked host for this session.
         } else {
             proxyActivity.clear()
             displayManager?.unregisterDisplayListener(this)
             displayManager = null
             channel = null
+            ownerActivity.clear()
+            ownerSessionId = ""
         }
     }
 
@@ -348,6 +425,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             "state" to state,
             "sourceDisplayId" to sourceDisplayId,
             "targetDisplayId" to targetDisplayId,
+            "sessionId" to if (sessionId.isNotEmpty()) sessionId else ownerSessionId,
             "reason" to reason
         )
         Log.i(TAG, "state=$state reason=$reason source=$sourceDisplayId target=$targetDisplayId request=$requestId")

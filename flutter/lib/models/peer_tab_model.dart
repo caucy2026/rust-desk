@@ -16,19 +16,21 @@ enum PeerTabIndex {
   lan,
   ab,
   group,
+  connectionHistory,
 }
 
 class PeerTabModel with ChangeNotifier {
   WeakReference<FFI> parent;
   int get currentTab => _currentTab;
   int _currentTab = 0; // index in tabNames
-  static const int maxTabCount = 5;
+  static const int maxTabCount = 6;
   static const List<String> tabNames = [
     'Recent sessions',
     'Favorites',
     'Discovered',
     'Address book',
     'Accessible devices',
+    '连接记录',
   ];
   // KEMI's home screen is localized for the target Chinese PAD/Mac workflow.
   // Keep these product explanations in the shared UI model rather than adding
@@ -39,6 +41,7 @@ class PeerTabModel with ChangeNotifier {
     '查看当前局域网内可被发现的设备。',
     '管理并同步地址簿中的联系人和设备。',
     '查看已共享给当前账号或当前账号可访问的设备。',
+    '记录每次连接时间、P2P/中继结果和失败原因，可按条删除。',
   ];
   static const List<IconData> icons = [
     Icons.access_time_filled,
@@ -46,13 +49,15 @@ class PeerTabModel with ChangeNotifier {
     Icons.explore,
     IconFont.addressBook,
     IconFont.deviceGroupFill,
+    Icons.history,
   ];
   List<bool> isEnabled = List.from([
     true,
     true,
     !isWeb && bind.mainGetLocalOption(key: "disable-discovery-panel") != "Y",
-    !(bind.isDisableAb() || bind.isDisableAccount()),
-    !(bind.isDisableGroupPanel() || bind.isDisableAccount()),
+    !bind.isDisableAb(),
+    !bind.isDisableGroupPanel(),
+    true,
   ]);
   final List<bool> _isVisible = List.filled(maxTabCount, true, growable: false);
   List<bool> get isVisibleEnabled => () {
@@ -83,8 +88,11 @@ class PeerTabModel with ChangeNotifier {
       final option = bind.getLocalFlutterOption(k: kOptionPeerTabVisible);
       if (option.isNotEmpty) {
         List<dynamic> decodeList = jsonDecode(option);
-        if (decodeList.length == _isVisible.length) {
-          for (int i = 0; i < _isVisible.length; i++) {
+        // Migrate the previous five-tab layout by preserving all old choices
+        // and appending the new connection-history tab as visible.
+        if (decodeList.length == _isVisible.length ||
+            decodeList.length == _isVisible.length - 1) {
+          for (int i = 0; i < decodeList.length; i++) {
             if (decodeList[i] is bool) {
               _isVisible[i] = decodeList[i];
             }
@@ -99,8 +107,13 @@ class PeerTabModel with ChangeNotifier {
       final option = bind.getLocalFlutterOption(k: kOptionPeerTabOrder);
       if (option.isNotEmpty) {
         List<dynamic> decodeList = jsonDecode(option);
-        if (decodeList.length == maxTabCount) {
-          var sortedList = decodeList.toList();
+        if (decodeList.length == maxTabCount ||
+            decodeList.length == maxTabCount - 1) {
+          var migrated = decodeList.toList();
+          if (migrated.length == maxTabCount - 1) {
+            migrated.add(maxTabCount - 1);
+          }
+          var sortedList = migrated.toList();
           sortedList.sort();
           bool valid = true;
           for (int i = 0; i < maxTabCount; i++) {
@@ -110,7 +123,7 @@ class PeerTabModel with ChangeNotifier {
           }
           if (valid) {
             for (int i = 0; i < orders.length; i++) {
-              orders[i] = decodeList[i];
+              orders[i] = migrated[i];
             }
           }
         }

@@ -12,6 +12,7 @@ pub struct QualityStatus {
     pub delay: Option<i32>,
     pub target_bitrate: Option<i32>,
     pub codec_format: Option<CodecFormat>,
+    pub decoder_backend: Option<String>,
     pub chroma: Option<String>,
 }
 

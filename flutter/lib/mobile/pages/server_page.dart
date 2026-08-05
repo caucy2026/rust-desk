@@ -837,7 +837,10 @@ void androidChannelInit() {
           }
         case "keyboard_proxy_state":
           {
-            keyboardProxyController.handleState(arguments);
+            keyboardProxyController.handleState(
+              arguments,
+              currentSessionId: gFFI.sessionId.toString(),
+            );
             break;
           }
         case "keyboard_proxy_commit_text":

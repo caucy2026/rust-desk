@@ -2685,7 +2685,7 @@ connect(BuildContext context, String id,
             // Open system settings so user can grant "All files access".
             // Do NOT use request() — it will hang waiting for a callback that never comes.
             AndroidPermissionManager.startAction(
-                kActionApplicationDetailsSettings);
+                kActionManageAppAllFilesAccessPermission);
           }
         } catch (e) {
           debugPrint('File transfer: skip permission check: $e');

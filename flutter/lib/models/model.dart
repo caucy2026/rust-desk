@@ -15,6 +15,7 @@ import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/ab_model.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/cm_file_model.dart';
+import 'package:flutter_hbb/models/connection_history_model.dart';
 import 'package:flutter_hbb/models/file_model.dart';
 import 'package:flutter_hbb/models/group_model.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
@@ -289,6 +290,11 @@ class FfiModel with ChangeNotifier {
     cachedPeerData.streamType = streamType;
     _secure = secure;
     _direct = direct;
+    final currentSessionId = parent.target?.sessionId;
+    if (currentSessionId != null) {
+      connectionHistoryModel.markConnected(
+          '$currentSessionId', direct, streamType);
+    }
     try {
       var connectionType = ConnectionTypeState.find(peerId);
       connectionType.setSecure(secure);
@@ -922,6 +928,12 @@ class FfiModel with ChangeNotifier {
     final text = evt['text'];
     final link = evt['link'];
 
+    if (title == 'Connection Error' ||
+        (type is String && type.contains('error'))) {
+      connectionHistoryModel.markFailed(
+          '$sessionId', '${title ?? ''} ${text ?? ''}');
+    }
+
     // Disable relative mouse mode on any error-type message to ensure cursor is released.
     // This includes connection errors, session-ending messages, elevation errors, etc.
     // Safety: releasing pointer lock on errors prevents the user from being stuck.
@@ -1138,7 +1150,11 @@ class FfiModel with ChangeNotifier {
       String text,
       OverlayDialogManager dialogManager,
       String peerId) async {
-    var hint = "\n\n${translate('relay_hint_tip')}";
+    final relayAllowed =
+        bind.mainGetLocalOption(key: kOptionKemiDualScreenPad) == 'Y';
+    var hint = relayAllowed
+        ? "\n\n${translate('relay_hint_tip')}"
+        : '\n\n当前设备仅允许 P2P 直连，不会占用服务器中继带宽。';
     if (text.contains("10054") || text.contains("104")) {
       hint = "";
     }
@@ -1169,14 +1185,14 @@ class FfiModel with ChangeNotifier {
         content: msgboxContent(type, title, text2),
         actions: [
           dialogButton('Close', onPressed: onClose, isOutline: true),
-          if (type == 'relay-hint')
+          if (type == 'relay-hint' && relayAllowed)
             dialogButton('Connect via relay',
                 onPressed: () => reconnect(dialogManager, sessionId, true),
                 buttonStyle: style,
                 isOutline: true),
           dialogButton('Retry',
               onPressed: () => reconnect(dialogManager, sessionId, false)),
-          if (type == 'relay-hint2')
+          if (type == 'relay-hint2' && relayAllowed)
             dialogButton('Connect via relay',
                 onPressed: () => reconnect(dialogManager, sessionId, true),
                 buttonStyle: style),
@@ -1400,6 +1416,11 @@ class FfiModel with ChangeNotifier {
         bind.isSupportMultiUiSession(version: _pi.version);
     _pi.username = evt['username'];
     _pi.hostname = evt['hostname'];
+    final target = parent.target;
+    if (target != null) {
+      connectionHistoryModel.updatePeerName('${target.sessionId}',
+          _pi.hostname.isNotEmpty ? _pi.hostname : _pi.username);
+    }
     _pi.platform = evt['platform'];
     _pi.sasEnabled = evt['sas_enabled'] == 'true';
     final currentDisplay = int.parse(evt['current_display']);
@@ -2347,7 +2368,8 @@ class CanvasModel with ChangeNotifier {
     final mobileViewportSize = _mobileViewportSize;
     if (isMobile && mobileViewportSize != null) {
       final obscuredBottom =
-          parent.target?.cursorModel.keyHelpToolsRectToAdjustCanvas?.bottom ?? 0;
+          parent.target?.cursorModel.keyHelpToolsRectToAdjustCanvas?.bottom ??
+              0;
       final height = mobileViewportSize.height - obscuredBottom;
       return Size(mobileViewportSize.width, height < 0 ? 0 : height);
     }
@@ -3626,6 +3648,7 @@ class QualityMonitorData {
   String? delay;
   String? targetBitrate;
   String? codecFormat;
+  String? decoderBackend;
   String? chroma;
 }
 
@@ -3685,6 +3708,10 @@ class QualityMonitorModel with ChangeNotifier {
       if (evt.containsKey('codec_format') &&
           (evt['codec_format'] as String).isNotEmpty) {
         _data.codecFormat = evt['codec_format'];
+      }
+      if (evt.containsKey('decoder_backend') &&
+          (evt['decoder_backend'] as String).isNotEmpty) {
+        _data.decoderBackend = evt['decoder_backend'];
       }
       if (evt.containsKey('chroma') && (evt['chroma'] as String).isNotEmpty) {
         _data.chroma = evt['chroma'];
@@ -3917,6 +3944,10 @@ class FFI {
       inputModel.updateTrackpadSpeed();
     }
 
+    if (isNewPeer && connType == ConnType.defaultConn) {
+      connectionHistoryModel.begin(sessionId: '$sessionId', peerId: id);
+    }
+
     // CAUTION: `sessionStart()` and `sessionStartWithDisplays()` are an async functions.
     // Though the stream is returned immediately, the stream may not be ready.
     // Any operations that depend on the stream should be carefully handled.
@@ -3975,6 +4006,7 @@ class FFI {
       () async {
         if (message is EventToUI_Event) {
           if (message.field0 == "close") {
+            connectionHistoryModel.markEnded('$sessionId');
             closed = true;
             debugPrint('Exit session event loop');
             return;
@@ -4017,6 +4049,11 @@ class FFI {
           onEvent2UIRgba();
         }
       }();
+    }, onError: (Object error, StackTrace stackTrace) {
+      connectionHistoryModel.markFailed('$sessionId', '连接事件流异常：$error');
+      connectionHistoryModel.markEnded('$sessionId');
+    }, onDone: () {
+      connectionHistoryModel.markEnded('$sessionId');
     });
     // every instance will bind a stream
     this.id = id;
@@ -4077,6 +4114,7 @@ class FFI {
 
   /// Close the remote session.
   Future<void> close({bool closeSession = true}) async {
+    connectionHistoryModel.markEnded('$sessionId');
     closed = true;
     chatModel.close();
     // Close all terminal models

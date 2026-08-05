@@ -147,6 +147,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Failed to connect via rendezvous server", "无法通过注册服务器建立连接"),
         ("Failed to connect via relay server", "无法通过中继服务器建立连接"),
         ("Failed to make direct connection to remote desktop", "无法直接连接到远程桌面"),
+        ("P2P direct connection failed: relay is only available when a dual-screen PAD initiates the session", "P2P 直连失败：只有双屏 PAD 主动发起远程会话时才允许使用中继，请检查两端网络后重试"),
         ("Set Password", "设置密码"),
         ("OS Password", "操作系统密码"),
         ("install_tip", "你正在运行未安装版本，由于 UAC 限制，作为被控端，会在某些情况下无法控制鼠标键盘，或者录制屏幕，请点击下面的按钮将 RustDesk 安装到系统，从而规避上述问题。"),

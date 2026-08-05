@@ -100,6 +100,15 @@ pub const SEC30: Duration = Duration::from_secs(30);
 const RESTART_REMOTE_DEVICE_GRACE: Duration = Duration::from_secs(5 * 60);
 pub const VIDEO_QUEUE_SIZE: usize = 120;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
+const KEMI_DUAL_SCREEN_PAD_OPTION: &str = "kemi-dual-screen-pad";
+const KEMI_P2P_ONLY_ERROR: &str =
+    "P2P direct connection failed: relay is only available when a dual-screen PAD initiates the session";
+
+/// KEMI reserves relay bandwidth for sessions initiated by a dual-screen PAD.
+/// Unknown and non-Android clients fail closed and remain P2P-only.
+fn kemi_outgoing_relay_allowed() -> bool {
+    LocalConfig::get_option(KEMI_DUAL_SCREEN_PAD_OPTION).eq_ignore_ascii_case("Y")
+}
 
 #[cfg(target_os = "linux")]
 pub const LOGIN_MSG_DESKTOP_NOT_INITED: &str = "Desktop env is not inited";
@@ -123,11 +132,9 @@ pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
 #[cfg(target_os = "linux")]
 pub const SCRAP_UBUNTU_HIGHER_REQUIRED: &str = "ubuntu-21-04-required";
 #[cfg(target_os = "linux")]
-pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
-    "wayland-requires-higher-linux-version";
+pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str = "wayland-requires-higher-linux-version";
 #[cfg(target_os = "linux")]
-pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str =
-    "xdp-portal-unavailable";
+pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
@@ -551,21 +558,31 @@ impl Client {
                             }
                         }
                         signed_id_pk = rr.pk().into();
-                        let fut = Self::create_relay(
-                            &peer,
-                            rr.uuid,
-                            rr.relay_server,
-                            &key,
-                            conn_type,
-                            my_addr.is_ipv4(),
-                        );
-                        connect_futures.push(
-                            async move {
-                                let conn = fut.await?;
-                                Ok((conn, None, if use_ws() { "WebSocket" } else { "Relay" }))
-                            }
-                            .boxed(),
-                        );
+                        if kemi_outgoing_relay_allowed() {
+                            let fut = Self::create_relay(
+                                &peer,
+                                rr.uuid,
+                                rr.relay_server,
+                                &key,
+                                conn_type,
+                                my_addr.is_ipv4(),
+                            );
+                            connect_futures.push(
+                                async move {
+                                    let conn = fut.await?;
+                                    Ok((conn, None, if use_ws() { "WebSocket" } else { "Relay" }))
+                                }
+                                .boxed(),
+                            );
+                        } else {
+                            log::warn!(
+                                "KEMI blocked peer-requested relay: this initiator is not a dual-screen PAD"
+                            );
+                        }
+                        if connect_futures.is_empty() {
+                            interface.update_direct(Some(false));
+                            bail!(KEMI_P2P_ONLY_ERROR);
+                        }
                         // Run all connection attempts concurrently, return the first successful one
                         let (conn, kcp, typ) = match select_ok(connect_futures).await {
                             Ok(conn) => (Ok(conn.0 .0), conn.0 .1, conn.0 .2),
@@ -715,7 +732,7 @@ impl Client {
 
         let mut direct = !conn.is_err();
         if interface.is_force_relay() || conn.is_err() {
-            if !relay_server.is_empty() {
+            if !relay_server.is_empty() && kemi_outgoing_relay_allowed() {
                 conn = Self::request_relay(
                     peer_id,
                     relay_server.to_owned(),
@@ -733,6 +750,9 @@ impl Client {
                 }
                 typ = "Relay";
                 direct = false;
+            } else if !kemi_outgoing_relay_allowed() {
+                interface.update_direct(Some(false));
+                bail!(KEMI_P2P_ONLY_ERROR);
             } else {
                 bail!("Failed to make direct connection to remote desktop");
             }
@@ -1861,11 +1881,17 @@ impl LoginConfigHandler {
         self.session_id = sid;
         self.supported_encoding = Default::default();
         self.clear_restarting_remote_device();
-        self.force_relay =
+        let requested_force_relay =
             config::option2bool("force-always-relay", &self.get_option("force-always-relay"))
                 || force_relay
                 || use_ws()
                 || Config::is_proxy();
+        self.force_relay = requested_force_relay && kemi_outgoing_relay_allowed();
+        if requested_force_relay && !self.force_relay {
+            log::warn!(
+                "KEMI ignored forced relay: relay is reserved for dual-screen PAD initiated sessions"
+            );
+        }
         if let Some((real_id, server, key)) = &self.other_server {
             let other_server_key = self.get_option("other-server-key");
             if !other_server_key.is_empty() && key.is_empty() {
@@ -2666,16 +2692,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -2863,6 +2888,7 @@ pub fn start_video_thread<F, T>(
     video_queue: Arc<RwLock<ArrayQueue<VideoFrame>>>,
     fps: Arc<RwLock<Option<usize>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
+    decoder_backend: Arc<RwLock<Option<String>>>,
     discard_queue: Arc<RwLock<bool>>,
     video_callback: F,
 ) where
@@ -2963,6 +2989,11 @@ pub fn start_video_thread<F, T>(
                                     session.refresh_video(display as _);
                                 }
                                 _ => {}
+                            }
+                            let backend = handler.decoder.backend_name().to_owned();
+                            let mut current_backend = decoder_backend.write().unwrap();
+                            if current_backend.as_ref() != Some(&backend) {
+                                *current_backend = Some(backend);
                             }
                         }
 
@@ -3456,11 +3487,7 @@ async fn consume_local_switch_sides_uuid(id: &str, uuid: &Uuid) -> bool {
         return false;
     }
     match conn.next_timeout(1000).await {
-        Ok(Some(crate::ipc::Data::SwitchSidesUuid(
-            returned_uuid,
-            returned_id,
-            Some(true),
-        ))) => {
+        Ok(Some(crate::ipc::Data::SwitchSidesUuid(returned_uuid, returned_id, Some(true)))) => {
             returned_uuid == uuid && returned_id == id
         }
         _ => false,
@@ -3762,7 +3789,12 @@ pub trait Interface: Send + Clone + 'static + Sized {
             log::info!("Restart remote device, suppress connection error: {err}");
             // Flutter treats this as a reconnect control event. The text is kept
             // for legacy UI and existing translation reuse.
-            self.msgbox("restarting", "Restarting remote device", "Connection in progress. Please wait.", "");
+            self.msgbox(
+                "restarting",
+                "Restarting remote device",
+                "Connection in progress. Please wait.",
+                "",
+            );
             return;
         }
 

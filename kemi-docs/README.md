@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前源码候选版本为 **1.4.51**，PAD候选构建号为 **1.4.51+156**；当前Newlink云端和`BIN/release`正式批次仍为完整四端 **1.4.49+154**。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；同网浏览器通过`/clients`直接进入四平台下载区，GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。四端必须按同一功能提交、构建运行和SHA清单整体发布，禁止只替换单个平台制造半批次。
+**KEMI-远程桌面** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前源码版本为 **1.4.55**，PAD构建号为 **1.4.55+160**；上传前Newlink云端仍为完整四端 **1.4.49+154**，本次`BIN/release`形成明确标注的PAD热修订快照，桌面三端不冒充新版本。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
-## 当前项目总结（2026-08-04）
+## 当前项目总结（2026-08-05）
 
 - 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
 - Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
-- 当前代码候选`1.4.51+156`在`1.4.50+155`副屏认证、旧清单拦截和`/clients`直达页基础上，修复跨屏键盘期间远控窗口被设成不可聚焦而导致的物理鼠标ANR，并为右键漏失release增加状态自校准；固定签名APK已覆盖安装到`192.168.3.63:5555`并归档，19次连续右键全部成对且无新增ANR，用户确认本版相对稳定。
-- 当前对外可下载四端仍是`1.4.49+154`。PAD页面显示1.4.49不是缓存错误，而是云端正式批次事实；`1.4.51+156`当前只是相对稳定的PAD候选，正式发布仍需Mac/Windows/Linux对齐、重建六文件并按manifest最后上传的规则完成。
+- 当前源码`1.4.55+160`在稳定鼠标/跨屏键盘基线上，加入连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁和客户端自更新；详细边界分别见`connection-history-and-resource-monitor.md`、`file-transfer-history.md`和`client-distribution.md`。
+- 上传前对外可下载四端仍是`1.4.49+154`。本次只重建PAD，`BIN/release`清单必须明确标为PAD热修订混合快照；后续完整四端发布仍需同一提交重新构建Mac/Windows/Linux。
 - GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 
 ### 核心定制功能
@@ -31,6 +31,8 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `PAD 1.4.53+158候选；全端源码1.4.53` | Android arm64接入真实MediaCodec VP9硬解；按厂商组件和具体I420/NV12输出选择，处理stride/crop/动态格式变化，失败自动回退libvpx；副屏实测进入`OMX.uapi.video.decoder.vp9`。当前未切换正式六文件批次 |
+| `PAD 1.4.52+157候选；全端源码1.4.52` | 恢复首页后两个入口；新增连接记录、删除/清空和跨重启持久化；CPU拆分整机/多核口径并上报实际Decoder后端。当前未切换正式六文件批次 |
 | `PAD 1.4.51+156候选；全端源码1.4.51` | 修复跨屏键盘打开时源Activity被设为`NOT_FOCUSABLE`造成的InputDispatcher ANR；远控窗口始终保持合法焦点能力；右键缺失release时按下一鼠标状态自动补发up。当前未切换正式六文件批次 |
 | `PAD 1.4.50+155候选；全端源码1.4.50` | 副屏认证完成前禁止跨屏代理，修复`inactive InputConnection`；Newlink清单重试、拒绝旧GitHub回退并允许新清单中断旧下载；局域网二维码直达`/clients`四平台下载区。当前未切换正式六文件批次 |
 | `全端 1.4.49 / PAD、macOS build 154` | PAD服务器未就绪时显示“重连”，点击后仅重启rendezvous注册链路；断开后抓屏状态闭环、跨屏键盘/物理鼠标和桌面状态同步进入同一正式候选；Windows/Linux由focused run `30891539907`生成并与功能提交`ed615c7fb`绑定 |

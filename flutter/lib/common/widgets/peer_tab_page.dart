@@ -7,6 +7,7 @@ import 'package:flutter_hbb/common/widgets/dialog.dart';
 import 'package:flutter_hbb/common/widgets/my_group.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/common/widgets/peer_card.dart';
+import 'package:flutter_hbb/common/widgets/connection_history_view.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/desktop/widgets/material_mod_popup_menu.dart'
@@ -34,7 +35,7 @@ class PeerTabPage extends StatefulWidget {
 class _TabEntry {
   final Widget widget;
   final Function({dynamic hint})? load;
-  _TabEntry(this.widget, [this.load]);
+  const _TabEntry(this.widget, [this.load]);
 }
 
 EdgeInsets? _menuPadding() {
@@ -54,18 +55,30 @@ class _PeerTabPageState extends State<PeerTabPage>
       menuPadding: _menuPadding(),
     )),
     _TabEntry(
-        AddressBook(
-          menuPadding: _menuPadding(),
-        ),
-        ({dynamic hint}) => gFFI.abModel.pullAb(
-            force: hint == null ? ForcePullAb.listAndCurrent : null,
-            quiet: false)),
+        bind.isDisableAccount()
+            ? const _AccountFeatureUnavailable(
+                title: '通讯录',
+                description:
+                    '当前开源服务端未提供账号和通讯录同步 API。入口已保留，配置带账号 API 的服务端后即可使用。',
+              )
+            : AddressBook(menuPadding: _menuPadding()),
+        bind.isDisableAccount()
+            ? null
+            : ({dynamic hint}) => gFFI.abModel.pullAb(
+                force: hint == null ? ForcePullAb.listAndCurrent : null,
+                quiet: false)),
     _TabEntry(
-      MyGroup(
-        menuPadding: _menuPadding(),
-      ),
-      ({dynamic hint}) => gFFI.groupModel.pull(force: hint == null),
+      bind.isDisableAccount()
+          ? const _AccountFeatureUnavailable(
+              title: '可访问设备',
+              description: '当前开源服务端不带账号和设备分组管理。入口已保留，不会因此显示无效的登录按钮。',
+            )
+          : MyGroup(menuPadding: _menuPadding()),
+      bind.isDisableAccount()
+          ? null
+          : ({dynamic hint}) => gFFI.groupModel.pull(force: hint == null),
     ),
+    const _TabEntry(ConnectionHistoryView()),
   ];
   RelativeRect? mobileTabContextMenuPos;
 
@@ -590,6 +603,7 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   List<Widget> _landscapeRightActions(BuildContext context) {
     final model = Provider.of<PeerTabModel>(context);
+    if (model.currentTab == PeerTabIndex.connectionHistory.index) return [];
     return [
       const PeerSearchBar().marginOnly(right: 13),
       _createRefresh(
@@ -614,6 +628,7 @@ class _PeerTabPageState extends State<PeerTabPage>
 
   List<Widget> _portraitRightActions(BuildContext context) {
     final model = Provider.of<PeerTabModel>(context);
+    if (model.currentTab == PeerTabIndex.connectionHistory.index) return [];
     final screenWidth = MediaQuery.of(context).size.width;
     final leftIconSize = Theme.of(context).iconTheme.size ?? 24;
     final leftActionsSize =
@@ -692,6 +707,40 @@ class _PeerTabPageState extends State<PeerTabPage>
       actions.addAll(dynamicActions);
     }
     return actions;
+  }
+}
+
+class _AccountFeatureUnavailable extends StatelessWidget {
+  const _AccountFeatureUnavailable({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.info_outline, size: 34),
+                const SizedBox(height: 12),
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text(description, textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

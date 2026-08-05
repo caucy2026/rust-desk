@@ -53,7 +53,16 @@ class KeyboardProxyController extends ValueNotifier<KeyboardProxySnapshot> {
     return true;
   }
 
-  void handleState(Map<dynamic, dynamic> arguments) {
+  void handleState(
+    Map<dynamic, dynamic> arguments, {
+    String currentSessionId = '',
+  }) {
+    final incomingSessionId = arguments['sessionId'] as String? ?? '';
+    if (incomingSessionId.isNotEmpty &&
+        currentSessionId.isNotEmpty &&
+        incomingSessionId != currentSessionId) {
+      return;
+    }
     final incomingRequestId = (arguments['requestId'] as num?)?.toInt() ?? 0;
     if (incomingRequestId < value.requestId) return;
 
@@ -65,10 +74,8 @@ class KeyboardProxyController extends ValueNotifier<KeyboardProxySnapshot> {
     value = KeyboardProxySnapshot(
       requestId: incomingRequestId,
       state: state,
-      sourceDisplayId:
-          (arguments['sourceDisplayId'] as num?)?.toInt() ?? 0,
-      targetDisplayId:
-          (arguments['targetDisplayId'] as num?)?.toInt() ?? 0,
+      sourceDisplayId: (arguments['sourceDisplayId'] as num?)?.toInt() ?? 0,
+      targetDisplayId: (arguments['targetDisplayId'] as num?)?.toInt() ?? 0,
       reason: arguments['reason'] as String? ?? '',
     );
     if (state == KeyboardProxyState.hidden) {

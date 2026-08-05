@@ -481,6 +481,7 @@ class FileController {
           sessionId: sessionId, name: msg.key, value: msg.value);
     }
     directory.value.clear();
+    selectedItems.clear();
     options.value.clear();
   }
 
@@ -546,6 +547,10 @@ class FileController {
       debugPrint(
           '[FileModel] fetchDirectory done isLocal=$isLocal path=${fd.path} id=${fd.id} entries=${fd.entries.length}');
       fd.format(isWindows, sort: sortBy.value);
+      // Entries in a selection belong to the directory snapshot that produced
+      // them. Keeping them after navigation/reload can transfer invisible,
+      // stale files from a previous directory or even a previous session.
+      selectedItems.clear();
       directory.value = fd;
       return true;
     } catch (e) {

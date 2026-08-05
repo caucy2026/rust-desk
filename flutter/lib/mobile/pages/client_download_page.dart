@@ -32,6 +32,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   String? _error;
   var _starting = true;
   var _refreshWifiNameOnResume = false;
+  var _resumeAndroidUpdate = false;
   var _selectedBackupPackageId = 'windows';
   Timer? _statusTimer;
   Timer? _cloudRefreshTimer;
@@ -57,6 +58,15 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
     if (state == AppLifecycleState.resumed && _refreshWifiNameOnResume) {
       _refreshWifiNameOnResume = false;
       unawaited(_startServer());
+    }
+    if (state == AppLifecycleState.resumed && _resumeAndroidUpdate) {
+      _resumeAndroidUpdate = false;
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 350),
+          () => _installDownloadedAndroidUpdate(openPermissionSettings: false),
+        ),
+      );
     }
   }
 
@@ -107,6 +117,58 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
       ),
     );
     await _refreshStatus();
+  }
+
+  Map? _packageById(String id) {
+    final packages = _status?['packages'] as List? ?? const [];
+    for (final item in packages) {
+      if (item is Map && item['id']?.toString() == id) return item;
+    }
+    return null;
+  }
+
+  Future<void> _updateAndroidClient(Map item) async {
+    if (item['updateAvailable'] != true) return;
+    if (item['updateReady'] != true) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _DownloadProgressDialog(
+          id: 'android',
+          platform: item['platform']?.toString() ?? 'PAD / Android',
+        ),
+      );
+      await _refreshStatus();
+      if (!mounted) return;
+      if (_packageById('android')?['updateReady'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('更新包仍在下载或校验，请稍后再次点击“更新”。')),
+        );
+        return;
+      }
+    }
+    await _installDownloadedAndroidUpdate(openPermissionSettings: true);
+  }
+
+  Future<void> _installDownloadedAndroidUpdate({
+    required bool openPermissionSettings,
+  }) async {
+    final result = await gFFI.invokeMethod(
+      'client_distribution_install_android_update',
+      {'openPermissionSettings': openPermissionSettings},
+    );
+    if (!mounted) return;
+    final status = result is Map ? result['status']?.toString() ?? '' : '';
+    final message =
+        result is Map ? result['message']?.toString() ?? '无法启动升级' : '无法启动升级';
+    if (status == 'permission_required' && openPermissionSettings) {
+      _resumeAndroidUpdate = true;
+    }
+    if (status != 'launched') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   Future<void> _copyUrl(String url) async {
@@ -408,6 +470,15 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                                 .titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
+                          if (selectedBackupPackage?['id'] == 'android' &&
+                              (selectedBackupPackage?['installedVersion']
+                                      ?.toString()
+                                      .isNotEmpty ??
+                                  false))
+                            Text(
+                              '（本机版本 ${selectedBackupPackage?['installedVersion']}）',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
                           const SizedBox(height: 7),
                           _AddressBox(
                             url: backupUrl,
@@ -506,6 +577,9 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
                     (item) => _PackageRow(
                       item: item is Map ? item : const <String, dynamic>{},
                       onTap: () => _downloadPackage(
+                        item is Map ? item : const <String, dynamic>{},
+                      ),
+                      onUpdate: () => _updateAndroidClient(
                         item is Map ? item : const <String, dynamic>{},
                       ),
                     ),
@@ -641,10 +715,15 @@ class _AddressBox extends StatelessWidget {
 }
 
 class _PackageRow extends StatelessWidget {
-  const _PackageRow({required this.item, required this.onTap});
+  const _PackageRow({
+    required this.item,
+    required this.onTap,
+    required this.onUpdate,
+  });
 
   final Map item;
   final VoidCallback onTap;
+  final VoidCallback onUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -656,35 +735,59 @@ class _PackageRow extends StatelessWidget {
     final downloaded = (item['downloaded'] as num?)?.toDouble() ?? 0;
     final total = (item['total'] as num?)?.toDouble() ?? 0;
     final downloading = state == 'downloading' || state == 'verifying';
+    final updateAvailable =
+        item['id'] == 'android' && item['updateAvailable'] == true;
+    final installedVersion = item['installedVersion']?.toString() ?? '';
     final progress = total > 0 ? (downloaded / total).clamp(0.0, 1.0) : null;
     return ListTile(
       onTap: available ? null : onTap,
       contentPadding: EdgeInsets.zero,
       leading: _platformIcon(context, platform, available),
-      title: Text(platform),
+      title: Row(
+        children: [
+          Flexible(child: Text(platform)),
+          if (item['id'] == 'android' && installedVersion.isNotEmpty) ...[
+            const SizedBox(width: 7),
+            Text(
+              '（本机版本 $installedVersion）',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text([detail, if (version.isNotEmpty) '版本 $version'].join(' · ')),
+          Text(
+            updateAvailable
+                ? '$detail · 当前 $installedVersion → 最新 $version'
+                : [detail, if (version.isNotEmpty) '版本 $version'].join(' · '),
+          ),
         ],
       ),
-      trailing: available
-          ? const Icon(Icons.check_circle_outline, color: Colors.green)
-          : downloading
-              ? _CircularDownloadProgress(
-                  value: state == 'verifying' ? null : progress,
-                  label: state == 'verifying'
-                      ? '校验'
-                      : '${((progress ?? 0) * 100).floor()}%',
-                )
-              : const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('点击下载'),
-                    SizedBox(width: 3),
-                    Icon(Icons.download_outlined),
-                  ],
-                ),
+      trailing: updateAvailable && !downloading
+          ? FilledButton.icon(
+              onPressed: onUpdate,
+              icon: const Icon(Icons.system_update_alt, size: 18),
+              label: const Text('更新'),
+            )
+          : available
+              ? const Icon(Icons.check_circle_outline, color: Colors.green)
+              : downloading
+                  ? _CircularDownloadProgress(
+                      value: state == 'verifying' ? null : progress,
+                      label: state == 'verifying'
+                          ? '校验'
+                          : '${((progress ?? 0) * 100).floor()}%',
+                    )
+                  : const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('点击下载'),
+                        SizedBox(width: 3),
+                        Icon(Icons.download_outlined),
+                      ],
+                    ),
     );
   }
 

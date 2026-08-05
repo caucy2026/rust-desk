@@ -441,6 +441,10 @@ abstract class BasePeersView extends StatelessWidget {
       case PeerTabIndex.group:
         peers = gFFI.groupModel.peersModel;
         break;
+      case PeerTabIndex.connectionHistory:
+        // Connection history owns its dedicated non-peer list widget and must
+        // never be routed through BasePeersView.
+        return const SizedBox.shrink();
     }
     return _PeersView(
         peers: peers,

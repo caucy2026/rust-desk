@@ -226,11 +226,14 @@ class ClientPackageSync private constructor(private val context: Context) {
 
     fun packageStatus(): List<Map<String, Any?>> {
         val targets = readManifest().associateBy { it.definition.id }
+        val installedVersion = installedPadVersion()
         return definitions.map { definition ->
             val target = targets[definition.id]
             val currentProgress = synchronized(progressLock) { progress[definition.id] }
             val resolved = resolvePackage(definition.id)
             val latestReady = resolved?.isLatest == true
+            val updateAvailable = definition.id == "android" && target != null &&
+                ClientVersionPolicy.isUpdateAvailable(target.version, installedVersion)
             mapOf(
                 "id" to definition.id,
                 "platform" to definition.platform,
@@ -239,6 +242,9 @@ class ClientPackageSync private constructor(private val context: Context) {
                 "available" to latestReady,
                 "fallbackAvailable" to (resolved != null && !latestReady),
                 "servingVersion" to (resolved?.target?.version ?: ""),
+                "installedVersion" to if (definition.id == "android") installedVersion else "",
+                "updateAvailable" to updateAvailable,
+                "updateReady" to (updateAvailable && latestReady),
                 // The URL has already passed the HTTPS host allow-list while
                 // parsing the manifest. Flutter only displays/copies it; the
                 // local HTTP server remains the source of cached packages.
@@ -288,6 +294,12 @@ class ClientPackageSync private constructor(private val context: Context) {
     }
 
     fun resolveDownloadFile(id: String): File? = resolvePackage(id)?.file
+
+    fun resolveAndroidUpdate(): ResolvedClientPackage? {
+        val target = packageForId("android") ?: return null
+        if (!ClientVersionPolicy.isUpdateAvailable(target.version, installedPadVersion())) return null
+        return resolvePackage("android")?.takeIf { it.isLatest }
+    }
 
     fun currentAndroidFileName(): String =
         packageForId("android")?.takeIf { it.version == installedPadVersion() }?.fileName
@@ -481,24 +493,11 @@ class ClientPackageSync private constructor(private val context: Context) {
     private fun rejectStaleGithubFallback(packages: List<RemoteClientPackage>) {
         val android = packages.firstOrNull { it.definition.id == "android" } ?: return
         if (URL(android.url).host != "api.github.com") return
-        if (compareVersions(android.version, installedPadVersion()) < 0) {
+        if (ClientVersionPolicy.compare(android.version, installedPadVersion()) < 0) {
             throw IllegalStateException(
                 "GitHub备用清单版本${android.version}早于当前PAD ${installedPadVersion()}，已拒绝回退",
             )
         }
-    }
-
-    private fun compareVersions(left: String, right: String): Int {
-        val leftParts = Regex("\\d+").findAll(left).map { it.value.toLongOrNull() ?: 0L }.toList()
-        val rightParts = Regex("\\d+").findAll(right).map { it.value.toLongOrNull() ?: 0L }.toList()
-        val count = maxOf(leftParts.size, rightParts.size)
-        for (index in 0 until count) {
-            val result = (leftParts.getOrElse(index) { 0L }).compareTo(
-                rightParts.getOrElse(index) { 0L },
-            )
-            if (result != 0) return result
-        }
-        return 0
     }
 
     private fun saveManifest(text: String): List<RemoteClientPackage> {

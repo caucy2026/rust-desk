@@ -147,6 +147,23 @@ class KeyboardProxyActivity : Activity() {
                 KeyboardProxyManager.release("display_mismatch")
                 return
             }
+            val imeVisible = lastLoggedImeVisible == true ||
+                ViewCompat.getRootWindowInsets(window.decorView)
+                    ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (imeVisible) {
+                lastLoggedImeVisible = true
+                KeyboardProxyManager.onImeVisibilityChanged(requestId, true)
+                return
+            }
+            if (imeRequestAttempts >= MAX_IME_REQUEST_ATTEMPTS) {
+                Log.e(
+                    TAG,
+                    "IME did not become visible after $imeRequestAttempts attempts " +
+                        "display=$actualDisplayId request=$requestId"
+                )
+                KeyboardProxyManager.close("ime_not_visible", requestId)
+                return
+            }
             if (!editText.isFocused) {
                 editText.requestFocus()
             }
@@ -167,9 +184,10 @@ class KeyboardProxyActivity : Activity() {
                     "windowFocus=${editText.hasWindowFocus()} viewFocus=${editText.isFocused} " +
                     "display=${display?.displayId} request=$requestId"
             )
-            if (!accepted && imeRequestAttempts < MAX_IME_REQUEST_ATTEMPTS) {
-                editText.postDelayed(this, IME_RETRY_DELAY_MS)
-            }
+            // showSoftInput(true) only means Android accepted the request. On a
+            // secondary display the IME may still fail to acquire the real window
+            // focus, so keep verifying actual insets until they become visible.
+            editText.postDelayed(this, IME_RETRY_DELAY_MS)
         }
     }
 

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_root="$(cd "$(dirname "$0")" && pwd)"
+flutter_version="$(tr -d '[:space:]' < "$project_root/.flutter-version")"
+flutter_sdk="${KEMI_FLUTTER_SDK:-$project_root/.toolchains/flutter}"
+flutter_bin="$flutter_sdk/bin/flutter"
+
+if [[ ! -x "$flutter_bin" ]]; then
+  echo "KEMI Flutter SDK $flutter_version is not installed at: $flutter_sdk" >&2
+  echo "Install that version in .toolchains/flutter, then run ./flutterw again." >&2
+  exit 1
+fi
+
+installed_version=""
+if [[ -f "$flutter_sdk/version" ]]; then
+  installed_version="$(tr -d '[:space:]' < "$flutter_sdk/version")"
+fi
+if [[ "$installed_version" != "$flutter_version" ]]; then
+  echo "KEMI requires Flutter $flutter_version, but $flutter_sdk contains ${installed_version:-an unknown version}." >&2
+  echo "Replace .toolchains/flutter with the pinned SDK before building." >&2
+  exit 1
+fi
+
+cd "$project_root/flutter"
+exec "$flutter_bin" "$@"

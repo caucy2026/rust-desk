@@ -206,6 +206,9 @@ class RemoteActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+                "get_app_resource_usage" -> {
+                    result.success(AndroidResourceMonitor.snapshot(this@RemoteActivity))
+                }
                 "keyboard_proxy_open" -> {
                     result.success(
                         KeyboardProxyManager.open(
@@ -220,6 +223,7 @@ class RemoteActivity : FlutterActivity() {
                         KeyboardProxyManager.prepare(
                             this@RemoteActivity,
                             mChannel,
+                            call.argument<String>("sessionId").orEmpty(),
                             call.argument<Boolean>("deferDefaultDisplay") == true
                         )
                     )
@@ -230,7 +234,10 @@ class RemoteActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "keyboard_proxy_release" -> {
-                    KeyboardProxyManager.release()
+                    KeyboardProxyManager.release(
+                        expectedSessionId = call.argument<String>("sessionId"),
+                        source = this@RemoteActivity
+                    )
                     result.success(true)
                 }
                 "launch_file_transfer_on_opposite_display" -> {
@@ -324,7 +331,7 @@ class RemoteActivity : FlutterActivity() {
         Log.d(TAG, "onDestroy")
         physicalMouseRightButton.setActive(false)
         flutterMethodChannel = null
-        KeyboardProxyManager.release("activity_destroyed")
+        KeyboardProxyManager.release("activity_destroyed", source = this)
         SessionState.notifyConnectionState(false, null)
         SessionState.reset()
         super.onDestroy()

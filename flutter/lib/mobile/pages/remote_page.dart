@@ -29,6 +29,236 @@ import '../widgets/custom_scale_widget.dart';
 
 final initText = '1' * 1024;
 
+class _AndroidResourceUsageDialog extends StatefulWidget {
+  const _AndroidResourceUsageDialog();
+
+  @override
+  State<_AndroidResourceUsageDialog> createState() =>
+      _AndroidResourceUsageDialogState();
+}
+
+class _AndroidResourceUsageDialogState
+    extends State<_AndroidResourceUsageDialog> {
+  Timer? _refreshTimer;
+  Map<dynamic, dynamic>? _usage;
+  String _error = '';
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => unawaited(_refresh()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final value = await gFFI
+          .invokeMethod('get_app_resource_usage', null)
+          .timeout(const Duration(seconds: 2));
+      if (!mounted) return;
+      setState(() {
+        _usage = value is Map ? value : null;
+        _error = _usage == null ? '系统未返回资源数据' : '';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = '资源采样失败，请关闭后重试');
+      }
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  int _intValue(String key) => (_usage?[key] as num?)?.toInt() ?? 0;
+
+  double _doubleValue(String key) => (_usage?[key] as num?)?.toDouble() ?? 0;
+
+  String _formatBytes(int bytes) {
+    final mib = bytes / (1024 * 1024);
+    if (mib >= 1024) return '${(mib / 1024).toStringAsFixed(2)} GB';
+    return '${mib.toStringAsFixed(mib < 10 ? 1 : 0)} MB';
+  }
+
+  String _formatUptime(int seconds) {
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final remainSeconds = seconds % 60;
+    if (hours > 0) return '$hours小时${minutes.toString().padLeft(2, '0')}分';
+    if (minutes > 0) {
+      return '$minutes分${remainSeconds.toString().padLeft(2, '0')}秒';
+    }
+    return '$remainSeconds秒';
+  }
+
+  Widget _metric(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            value,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final usage = _usage;
+    final sampleReady = usage?['sampleReady'] == true;
+    final systemUsed = _intValue('systemUsedMemoryBytes');
+    final systemTotal = _intValue('systemTotalMemoryBytes');
+    final systemRatio = systemTotal > 0
+        ? (systemUsed / systemTotal).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+    final lowMemory = usage?['lowMemory'] == true;
+    final direct = gFFI.ffiModel.direct;
+    final streamType = gFFI.ffiModel.cachedPeerData.streamType;
+    final relayAllowed =
+        bind.mainGetLocalOption(key: kOptionKemiDualScreenPad) == 'Y';
+    final coreCount = _intValue('logicalCoreCount').clamp(1, 1 << 16);
+    final cumulativeCpu = _doubleValue('cpuPercent');
+    final deviceCpu = (cumulativeCpu / coreCount).clamp(0.0, 100.0);
+    final codec = gFFI.qualityMonitorModel.data.codecFormat ?? '-';
+    final decoderBackend =
+        gFFI.qualityMonitorModel.data.decoderBackend ?? '等待视频流上报';
+    final hardwareCodecEnabled = option2bool(kOptionEnableHwcodec,
+        bind.mainGetOptionSync(key: kOptionEnableHwcodec));
+    final decoderText = decoderBackend.contains('MediaCodec')
+        ? 'Android MediaCodec（硬件）'
+        : decoderBackend.contains('hardware')
+            ? '硬件解码（$decoderBackend）'
+            : decoderBackend.contains('Software')
+                ? '软件解码（$decoderBackend）'
+                : decoderBackend;
+    final connectionType = direct == null
+        ? '正在连接'
+        : direct
+            ? 'P2P 直连${streamType.isEmpty ? '' : ' · $streamType'}'
+            : '中继${streamType.isEmpty ? '' : ' · $streamType'}';
+
+    return AlertDialog(
+      title: const Text('资源占用'),
+      content: SizedBox(
+        width: 390,
+        child: SingleChildScrollView(
+          child: usage == null
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Center(
+                    child: _error.isEmpty
+                        ? const CircularProgressIndicator()
+                        : Text(_error),
+                  ),
+                )
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('当前连接', style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 5),
+                    _metric(context, '连接方式', connectionType),
+                    _metric(
+                      context,
+                      '中继策略',
+                      relayAllowed ? '双屏 PAD · 直连失败可中继' : '仅 P2P 直连',
+                    ),
+                    const Divider(height: 24),
+                    Text('KEMI 当前占用',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 5),
+                    _metric(
+                      context,
+                      'CPU（整机占比）',
+                      sampleReady ? '${deviceCpu.toStringAsFixed(1)}%' : '采样中…',
+                    ),
+                    _metric(
+                      context,
+                      'CPU（多核累计）',
+                      sampleReady
+                          ? '${cumulativeCpu.toStringAsFixed(1)}%'
+                          : '采样中…',
+                    ),
+                    _metric(context, '视频编码', codec),
+                    _metric(context, '硬件解码设置',
+                        hardwareCodecEnabled ? '已开启' : '已关闭'),
+                    _metric(context, '实际解码器', decoderText),
+                    _metric(context, 'PSS 内存',
+                        _formatBytes(_intValue('memoryBytes'))),
+                    _metric(context, 'Native 内存',
+                        _formatBytes(_intValue('nativeMemoryBytes'))),
+                    _metric(context, 'Java 堆',
+                        '${_formatBytes(_intValue('javaHeapBytes'))} / ${_formatBytes(_intValue('javaHeapLimitBytes'))}'),
+                    _metric(context, '其他内存',
+                        _formatBytes(_intValue('otherMemoryBytes'))),
+                    const Divider(height: 24),
+                    Text('PAD 系统内存',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 10),
+                    LinearProgressIndicator(
+                      value: systemRatio,
+                      minHeight: 7,
+                      color: lowMemory ? Colors.redAccent : MyTheme.accent,
+                      backgroundColor: Colors.grey.withAlpha(51),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      '已使用 ${_formatBytes(systemUsed)} / ${_formatBytes(systemTotal)}'
+                      '${lowMemory ? '（系统内存偏低）' : ''}',
+                    ),
+                    const Divider(height: 24),
+                    _metric(
+                        context, '逻辑核心', '${_intValue('logicalCoreCount')} 个'),
+                    _metric(context, '本进程运行时间',
+                        _formatUptime(_intValue('processUptimeSeconds'))),
+                    const SizedBox(height: 10),
+                    Text(
+                      '数据每秒刷新，仅在此窗口打开时采样。多核累计 162% 表示约占用 1.62 个核心；整机占比会再除以逻辑核心数。硬件解码只负责视频解码，网络、Flutter 绘制与缩放仍会使用 CPU。',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Colors.grey.shade600),
+                    ),
+                    if (_error.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(_error,
+                          style: const TextStyle(color: Colors.redAccent)),
+                    ],
+                  ],
+                ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+}
+
 // Workaround for Android (default input method, Microsoft SwiftKey keyboard) when using physical keyboard.
 // When connecting a physical keyboard, `KeyEvent.physicalKey.usbHidUsage` are wrong is using Microsoft SwiftKey keyboard.
 // https://github.com/flutter/flutter/issues/159384
@@ -66,6 +296,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   bool? _keyboardCloseIntent;
 
   Timer? _timer;
+  Timer? _keyboardProxyWatchdog;
   bool _showBar = !isWebDesktop;
   bool _showGestureHelp = false;
   String _value = '';
@@ -146,14 +377,20 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           // Authentication can run on either the primary or a secondary display.
           // Preparing KeyboardProxyActivity before peer info is ready invalidates
           // the password field's Flutter InputConnection on multi-display Android.
-          unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+          unawaited(gFFI.invokeMethod(
+            "keyboard_proxy_prepare",
+            {"sessionId": sessionId.toString()},
+          ));
         }
         _initWaylandKeyboardGateIfNeeded();
       }
     });
     if (gFFI.ffiModel.pi.isSet.value) {
       if (isAndroid) {
-        unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+        unawaited(gFFI.invokeMethod(
+          "keyboard_proxy_prepare",
+          {"sessionId": sessionId.toString()},
+        ));
       }
       _initWaylandKeyboardGateIfNeeded();
     }
@@ -165,7 +402,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (isAndroid) {
       unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", false));
       keyboardProxyController.removeListener(_onKeyboardProxyChanged);
-      unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
+      _keyboardProxyWatchdog?.cancel();
+      unawaited(gFFI.invokeMethod(
+        "keyboard_proxy_release",
+        {"sessionId": sessionId.toString()},
+      ));
       keyboardProxyController.reset();
     }
     if (!_handoffToFileTransfer) {
@@ -235,6 +476,40 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void _onKeyboardProxyChanged() {
+    _keyboardProxyWatchdog?.cancel();
+    final snapshot = keyboardProxyController.value;
+    if (snapshot.isTransitioning) {
+      final expectedState = snapshot.state;
+      final expectedRequestId = snapshot.requestId;
+      final expectedSessionId = sessionId.toString();
+      final timeout = expectedState == KeyboardProxyState.opening
+          ? const Duration(seconds: 9)
+          : const Duration(seconds: 4);
+      _keyboardProxyWatchdog = Timer(timeout, () async {
+        if (!mounted ||
+            keyboardProxyController.value.state != expectedState ||
+            keyboardProxyController.value.requestId != expectedRequestId) {
+          return;
+        }
+        try {
+          await gFFI.invokeMethod(
+            "keyboard_proxy_release",
+            {"sessionId": expectedSessionId},
+          ).timeout(const Duration(seconds: 2));
+        } catch (_) {
+          // Reset the Flutter-side lock even if the platform channel is gone.
+        }
+        if (!mounted ||
+            keyboardProxyController.value.state != expectedState ||
+            keyboardProxyController.value.requestId != expectedRequestId) {
+          return;
+        }
+        keyboardProxyController.reset();
+        showToast(expectedState == KeyboardProxyState.opening
+            ? '键盘启动超时，请再次点击'
+            : '键盘关闭超时，状态已恢复');
+      });
+    }
     if (mounted) setState(() {});
   }
 
@@ -244,7 +519,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _handoffToFileTransfer = true;
     try {
       if (isAndroid) {
-        unawaited(gFFI.invokeMethod("keyboard_proxy_release", null));
+        unawaited(gFFI.invokeMethod(
+          "keyboard_proxy_release",
+          {"sessionId": sessionId.toString()},
+        ));
         keyboardProxyController.reset();
       }
       // Reuse the current connection token for the parallel transfer session.
@@ -294,7 +572,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       if (isAndroid) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            unawaited(gFFI.invokeMethod("keyboard_proxy_prepare", null));
+            unawaited(gFFI.invokeMethod(
+              "keyboard_proxy_prepare",
+              {"sessionId": sessionId.toString()},
+            ));
           }
         });
       }
@@ -555,7 +836,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (isAndroid) {
       final currentSessionId = sessionId.toString();
       if (!keyboardProxyController.tryBeginOpen(currentSessionId)) return;
-      gFFI.invokeMethod("keyboard_proxy_open", {"sessionId": currentSessionId});
+      unawaited(_requestKeyboardProxyOpen(currentSessionId));
       return;
     }
 
@@ -573,6 +854,60 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         _mobileFocusNode.requestFocus();
       });
     });
+  }
+
+  Future<void> _requestKeyboardProxyOpen(
+    String currentSessionId, {
+    bool allowStaleSessionRetry = true,
+  }) async {
+    try {
+      final result = await gFFI.invokeMethod(
+        "keyboard_proxy_open",
+        {"sessionId": currentSessionId},
+      ).timeout(const Duration(seconds: 2));
+      final accepted = result is Map && result['accepted'] == true;
+      final reason = result is Map ? result['reason'] as String? ?? '' : '';
+      if (!accepted &&
+          reason == 'stale_session_released' &&
+          allowStaleSessionRetry) {
+        final retryAfterMs = result is Map
+            ? (result['retryAfterMs'] as num?)?.toInt() ?? 2200
+            : 2200;
+        await Future<void>.delayed(Duration(milliseconds: retryAfterMs));
+        if (!mounted ||
+            sessionId.toString() != currentSessionId ||
+            keyboardProxyController.value.state != KeyboardProxyState.opening) {
+          return;
+        }
+        await _requestKeyboardProxyOpen(
+          currentSessionId,
+          allowStaleSessionRetry: false,
+        );
+        return;
+      }
+      if (!accepted &&
+          mounted &&
+          keyboardProxyController.value.state == KeyboardProxyState.opening) {
+        keyboardProxyController.reset();
+        showToast('键盘请求未被接受，请再次点击');
+      }
+    } catch (_) {
+      if (!mounted ||
+          keyboardProxyController.value.state != KeyboardProxyState.opening) {
+        return;
+      }
+      try {
+        await gFFI.invokeMethod(
+          "keyboard_proxy_release",
+          {"sessionId": currentSessionId},
+        );
+      } catch (_) {}
+      if (mounted &&
+          keyboardProxyController.value.state == KeyboardProxyState.opening) {
+        keyboardProxyController.reset();
+        showToast('键盘启动失败，请再次点击');
+      }
+    }
   }
 
   void _openKeyboardAfterBarCollapse() {
@@ -1052,11 +1387,27 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             },
           )
         : null;
+    final resourceUsageMenu = isAndroid
+        ? TTextMenu(
+            child: const Text('资源占用'),
+            trailingIcon: const Icon(Icons.speed, size: 20),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const _AndroidResourceUsageDialog(),
+            ),
+          )
+        : null;
     final menus = toolbarControls(context, id, gFFI);
-    final combinedMenus = <TTextMenu>[...mobileActionMenus, ...menus];
-    if (transferFileMenu != null) {
-      combinedMenus.add(transferFileMenu);
-    }
+    final localMenus = <TTextMenu>[
+      if (transferFileMenu != null) transferFileMenu,
+      if (resourceUsageMenu != null) resourceUsageMenu,
+    ];
+    final combinedMenus = <TTextMenu>[
+      ...mobileActionMenus,
+      ...menus,
+      ...localMenus,
+    ];
+    final localMenuStart = mobileActionMenus.length + menus.length;
 
     final List<PopupMenuEntry<int>> more = [
       ...mobileActionMenus
@@ -1073,12 +1424,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               child: e.value.getChild(),
               value: e.key + mobileActionMenus.length))
           .toList(),
-      if (transferFileMenu != null && combinedMenus.length > 1)
-        PopupMenuDivider(),
-      if (transferFileMenu != null)
-        PopupMenuItem<int>(
-            child: transferFileMenu.getChild(),
-            value: combinedMenus.length - 1),
+      if (localMenus.isNotEmpty && localMenuStart > 0) PopupMenuDivider(),
+      ...localMenus.asMap().entries.map(
+            (e) => PopupMenuItem<int>(
+              child: e.value.getChild(),
+              value: localMenuStart + e.key,
+            ),
+          ),
     ];
     () async {
       var index = await showMenu(

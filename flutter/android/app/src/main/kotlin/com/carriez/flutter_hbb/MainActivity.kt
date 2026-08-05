@@ -34,6 +34,8 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.media.MediaCodecInfo
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible
+import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
 import android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420SemiPlanar
 import android.media.MediaCodecList
@@ -173,7 +175,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
         physicalMouseRightButton.setActive(false)
-        KeyboardProxyManager.release("activity_destroyed")
+        KeyboardProxyManager.release("activity_destroyed", source = this)
         clientDistributionServer.stop()
         mainService?.let {
             unbindService(serviceConnection)
@@ -317,6 +319,17 @@ class MainActivity : FlutterActivity() {
                     val id = call.arguments as? String
                     result.success(id?.let(clientPackageSync::syncOneAsync) ?: false)
                 }
+                "client_distribution_install_android_update" -> {
+                    val openSettings =
+                        (call.arguments as? Map<*, *>)?.get("openPermissionSettings") == true
+                    result.success(
+                        AndroidSelfUpdater.launch(
+                            this@MainActivity,
+                            clientPackageSync,
+                            openSettings,
+                        )
+                    )
+                }
                 "client_distribution_stop" -> {
                     clientDistributionServer.stop()
                     result.success(true)
@@ -414,6 +427,16 @@ class MainActivity : FlutterActivity() {
                         "sessionId" to (SessionState.currentSessionId ?: "")
                     ))
                 }
+                "is_dual_screen_pad" -> {
+                    result.success(DeviceRole.isDualScreenPad(this@MainActivity))
+                }
+                "get_app_resource_usage" -> {
+                    result.success(AndroidResourceMonitor.snapshot(this@MainActivity))
+                }
+                "get_available_storage_bytes" -> {
+                    val path = (call.arguments as? Map<*, *>)?.get("path") as? String
+                    result.success(path?.let(AndroidStorageSpace::availableBytes))
+                }
                 "close_remote" -> {
                     // 关闭副屏 RemoteActivity
                     val remoteChannel = SessionState.remoteMethodChannel
@@ -443,6 +466,7 @@ class MainActivity : FlutterActivity() {
                         KeyboardProxyManager.prepare(
                             this@MainActivity,
                             requireNotNull(flutterMethodChannel),
+                            call.argument<String>("sessionId").orEmpty(),
                             call.argument<Boolean>("deferDefaultDisplay") == true
                         )
                     )
@@ -453,7 +477,10 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "keyboard_proxy_release" -> {
-                    KeyboardProxyManager.release()
+                    KeyboardProxyManager.release(
+                        expectedSessionId = call.argument<String>("sessionId"),
+                        source = this@MainActivity
+                    )
                     result.success(true)
                 }
                 else -> {
@@ -554,7 +581,12 @@ class MainActivity : FlutterActivity() {
             codecObject.put("hw", hw)
             var mime_type = ""
             codec.supportedTypes.forEach { type ->
-                if (listOf("video/avc", "video/hevc").contains(type)) { // "video/x-vnd.on2.vp8", "video/x-vnd.on2.vp9", "video/av01"
+                if (listOf(
+                        "video/avc",
+                        "video/hevc",
+                        "video/x-vnd.on2.vp9"
+                    ).contains(type)
+                ) {
                     mime_type = type;
                 }
             }
@@ -575,7 +607,11 @@ class MainActivity : FlutterActivity() {
                 codecObject.put("surface", surface)
                 val nv12 = caps.colorFormats.contains(COLOR_FormatYUV420SemiPlanar)
                 codecObject.put("nv12", nv12)
-                if (!(nv12 || surface)) {
+                val i420 = caps.colorFormats.contains(COLOR_FormatYUV420Planar)
+                codecObject.put("i420", i420)
+                val flexible = caps.colorFormats.contains(COLOR_FormatYUV420Flexible)
+                codecObject.put("flexible", flexible)
+                if (!(nv12 || i420 || flexible || surface)) {
                     return@forEach
                 }
                 codecObject.put("min_bitrate", caps.videoCapabilities.bitrateRange.lower / 1000)
@@ -585,7 +621,7 @@ class MainActivity : FlutterActivity() {
                         codecObject.put("low_latency", caps.isFeatureSupported(MediaCodecInfo.CodecCapabilities.FEATURE_LowLatency))
                     }
                 }
-                if (!codec.isEncoder) {
+                if (codec.isEncoder && !(nv12 || surface)) {
                     return@forEach
                 }
                 codecArray.put(codecObject)

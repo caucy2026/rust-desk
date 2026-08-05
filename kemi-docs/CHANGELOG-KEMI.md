@@ -2,6 +2,40 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 八十四、2026-08-05 1.4.55+160 PAD文件安全删除、空间门禁与自更新标识
+
+- 文件传输改为PAD/对方左右双栏浏览，目录加载成功或页面关闭时强制清空旧选择，修复切目录后不可见项目仍被带入下一次传输的问题；Android“所有文件访问”改为打开专用授权页。
+- 新增持久化的“远端传入本机”登记。只有传输成功并登记的PAD本地文件或文件夹显示删除入口；PAD原有内容和对方设备内容始终不可删除。文件必须路径、类型、大小和可用mtime仍匹配；文件夹以成功接收的根目录为授权边界，允许递归删除其全部内容。
+- 删除收到的文件夹后，同时清除该根目录及所有子项的删除授权；以后即使同路径被本机重新创建，也不能继续删除。明确边界：用户后来放入该“已接收文件夹”的新内容也会随根目录递归删除，这符合“远端传来的整个目录可删除”的产品语义。
+- 对方传到PAD前递归计算源大小，并读取Android目标卷可用空间；传输量大于剩余空间一半时禁止发送，恰好一半允许。无法可靠测量时PAD端拒绝；PAD传Mac及Mac作为目标时不应用此限制。
+- 客户端页只在云端Android版本严格高于已安装版本时显示“更新”；PAD/Android行在云端版本旁新增小字“（本机版本 xxxxx）”。安装仍使用固定签名APK和Android系统安装器。
+- 产品版本统一为`1.4.55`，PAD build为`160`。固定签名arm64 APK为25,202,278字节，SHA-256为`706e6d73f11ff2e002812923f180490f85283395088e1e33a3f00e99b8da581c`；包名`com.newlinksz.kemi.remote`，v1/v2签名有效，证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 8项文件策略单测全部通过；版本比较4个正反用例通过；定向Flutter analyze无error/warning，仅保留3条既有弃用info。上传前云端仍为`1.4.49+154`，因此当前更高版本本机不出现升级按钮是正确结果；上传后的正向下载、安装和重启回读留给远端设备闭环。
+- `BIN/release`按PAD热修订批次更新：只替换真实重建的`KEMI-PAD.apk`，Mac/Windows/Linux继续保持已验收的1.4.49字节，清单明确标注混合批次，禁止把旧桌面包冒充1.4.55。
+
+## 八十三、2026-08-05 1.4.53+158 Android VP9 MediaCodec硬件解码
+
+- 根因确认：此前PAD虽然系统声明支持VP9，但Android原生库只使用`flutter,hwcodec`构建；该路径只覆盖H264/H265，VP9固定进入libvpx软件解码，所以“硬解设置已开启”和“设备支持VP9”都不能改变实际后端。
+- Android `MediaCodecList`能力桥接加入`video/x-vnd.on2.vp9`，并上报解码器名称、真实硬件标记及I420/NV12/Flexible/Surface输出能力。Rust只选择系统确认的硬件组件和可安全读取的I420/NV12 ByteBuffer，不把`OMX.google`软件组件或无法判断像素布局的Surface/Flexible组件冒充硬解。
+- 重写实验性的MediaCodec解码路径：按实际屏幕尺寸配置厂商组件，处理输出格式变化、stride、slice-height和crop，支持I420/NV12到Flutter ARGB/ABGR转换，传递每帧PTS，并处理一个消息中的全部视频帧。
+- VP9硬解创建或运行失败时自动释放MediaCodec并切回libvpx，避免不兼容设备黑屏；资源监控上报实际创建的`Android MediaCodec hardware (<组件名>)`或`Software VP9`，不再根据开关猜测。
+- Android arm64 Rust Release使用`flutter,hwcodec,mediacodec`完整编译通过；固定Flutter 3.22.3、Gradle 7.6.4和KEMI正式签名构建`1.4.53+158`成功。包名为`com.newlinksz.kemi.remote`，仅包含arm64-v8a，v1/v2签名有效，证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 真机只在`192.168.3.63`的Display 2副屏验收：实际远程流为VP9，系统创建`OMX.uapi.video.decoder.vp9`，配置输入1920×1280、实际输出1920×1080 NV12（color-format 21），画面尺寸、颜色与动态刷新正常，证明不是仅完成能力枚举而是真正进入厂商硬解。
+- 连续观察期间设备记录外部PID执行`Force stopping com.newlinksz.kemi.remote`，同一时刻另一外部PID也强停KEMI Email，Android crash缓冲区为空；这是设备外部测试/管理动作，不计为MediaCodec崩溃。硬解被强停前持续正常，系统随后按固件策略预启动新进程。
+- 详细实现、回退边界和验收证据同步到`connection-history-and-resource-monitor.md`。最终候选为`BIN/KEMI-远程桌面-PAD-1.4.53+158-release.apk`，大小24,545,396字节，SHA-256为`46da46668335d7baff995ad01fb7ccad022ab9ce72b86b764ef0c59d3a0c6945`；本轮不覆盖尚未同源码重建的`BIN/release`正式四端批次。
+
+## 八十二、2026-08-05 1.4.52+157 首页入口、连接记录与真实解码监控
+
+- 源码、Flutter、GitHub四端工作流、PKGBUILD和RPM版本统一升级为`1.4.52`，PAD构建号为`157`，不再用相同的`1.4.51+156`文件名覆盖不同代码。
+- 修复无账号模式把通讯录和可访问设备入口一并隐藏的问题；保留两个入口，当前开源服务端下显示能力说明，不恢复无效登录按钮。旧五标签的可见性和排序可无损迁移，第六项“连接记录”默认追加到末尾。
+- 新增跨重启持久化连接记录，记录发起时间、远端ID/主机名、连接状态、`connection_ready`确认的P2P/中继及TCP/UDP等实际流类型、时长和失败原因；支持单条删除与二次确认清空，最多200条。
+- PAD资源监控把CPU拆分为整机占比和多核累计，明确162%表示约1.62个核心；新增协商编码、硬解设置和实际Decoder后端，避免把“开关已开”误认为“当前必然硬解”。
+- Rust macOS `cargo check --locked --features flutter --lib`与Android arm64 `flutter,hwcodec` Release原生库编译通过；真机验收固定只在`192.168.3.63`的Display 2副屏进行。
+- 固定签名arm64 Release APK为24,535,635字节，SHA-256为`b9c902c7541e3cd47bbb9ec81d7cc1e4909376962fede34820ff4a0223b9720e`；包名`com.newlinksz.kemi.remote`、版本`1.4.52+157`、v1/v2签名有效，固定证书SHA-256为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- APK覆盖安装后明确使用`am start --display 2`启动，系统回读Display 2为当前焦点且版本为`1.4.52+157`。副屏连接本机`238638760`实测为`P2P直连·TCP`，H265实际Decoder为`FFmpeg hardware`；资源窗口同时显示整机CPU 2.5%和多核累计20.1%。断开后记录主机名、开始时间、两分钟时长和`P2P·TCP`，强制结束应用并重新启动到Display 2后记录仍完整保留。
+- 候选归档为`BIN/KEMI-远程桌面-PAD-1.4.52+157-release.apk`，不覆盖`BIN/release/KEMI-PAD.apk`，避免在Mac、Windows、Linux尚未按同一源码重建前制造半批次。
+- 详细设计和验收口径见`connection-history-and-resource-monitor.md`。
+
 ## 八十一、2026-08-04 1.4.51相对稳定候选收口与KEMI-SEND地址约定
 
 - PAD `1.4.51+156`固定签名arm64 Release构建成功，文件为24,149,566字节，SHA-256为`3da2ff1a1ea985dfbea388430e680d2a069f413bd79de8f1055a5871d276d7c9`；包名`com.newlinksz.kemi.remote`、版本码156、v1/v2签名有效，证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。候选归档为`BIN/KEMI-远程桌面-PAD-1.4.51+156-release.apk`，没有单独覆盖正式`BIN/release`六文件。

@@ -81,6 +81,7 @@ pub struct Remote<T: InvokeUiSession> {
     peer_info: ParsedPeerInfo,
     video_threads: HashMap<usize, VideoThread>,
     chroma: Arc<RwLock<Option<Chroma>>>,
+    decoder_backend: Arc<RwLock<Option<String>>>,
     last_record_state: bool,
     sent_close_reason: bool,
 }
@@ -130,6 +131,7 @@ impl<T: InvokeUiSession> Remote<T> {
             peer_info: Default::default(),
             video_threads: Default::default(),
             chroma: Default::default(),
+            decoder_backend: Default::default(),
             last_record_state: false,
             sent_close_reason: false,
         }
@@ -331,11 +333,14 @@ impl<T: InvokeUiSession> Remote<T> {
                             } else {
                                 Some(self.video_format.clone())
                             };
+                            let decoder_backend =
+                                self.decoder_backend.read().unwrap().clone();
                             self.handler.update_quality_status(QualityStatus {
                                 speed: Some(speed),
                                 fps,
                                 chroma,
                                 codec_format,
+                                decoder_backend,
                                 ..Default::default()
                             });
                         }
@@ -2444,6 +2449,7 @@ impl<T: InvokeUiSession> Remote<T> {
             video_queue,
             decode_fps,
             self.chroma.clone(),
+            self.decoder_backend.clone(),
             discard_queue,
             move |display: usize,
                   data: &mut scrap::ImageRgb,

@@ -193,6 +193,10 @@ class FileTransferActivity : FlutterActivity() {
                         }
                     }
                     "enable_soft_keyboard" -> result.success(true)
+                    "get_available_storage_bytes" -> {
+                        val path = (call.arguments as? Map<*, *>)?.get("path") as? String
+                        result.success(path?.let(AndroidStorageSpace::availableBytes))
+                    }
                     GET_VALUE -> {
                         if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {
                             result.success(isSupportVoiceCall())

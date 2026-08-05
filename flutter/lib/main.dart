@@ -207,6 +207,7 @@ void runMobileApp() async {
   await initEnv(kAppTypeMain);
   checkUpdate();
   if (isAndroid) androidChannelInit();
+  if (isAndroid) await _syncAndroidRelayPolicy();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   // Render immediately — splash handles its own animation + timing.
   runApp(App());
@@ -220,6 +221,22 @@ void runMobileApp() async {
   stateGlobal.essentialDataLoaded.value = true;
   gFFI.userModel.refreshCurrentUser();
   await initUniLinks();
+}
+
+Future<void> _syncAndroidRelayPolicy() async {
+  var isDualScreenPad = false;
+  try {
+    isDualScreenPad = await gFFI
+            .invokeMethod('is_dual_screen_pad', null)
+            .timeout(const Duration(seconds: 2)) ==
+        true;
+  } catch (_) {
+    // Fail closed: an unidentified Android device is P2P-only.
+  }
+  await bind.mainSetLocalOption(
+    key: kOptionKemiDualScreenPad,
+    value: isDualScreenPad ? 'Y' : 'N',
+  );
 }
 
 /// Dedicated Dart entrypoint for [FileTransferActivity]. It deliberately does
