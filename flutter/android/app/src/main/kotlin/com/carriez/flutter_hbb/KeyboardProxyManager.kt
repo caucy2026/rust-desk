@@ -337,6 +337,19 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
+    fun onHostStopped(
+        activity: KeyboardProxyActivity,
+        activityRequestId: Long,
+        reason: String,
+    ) {
+        if (proxyActivity.get() !== activity) return
+        if (activityRequestId != requestId && activityRequestId != preparingRequestId) return
+        Log.i(TAG, "Discard stopped keyboard host request=$activityRequestId reason=$reason")
+        proxyActivity.clear()
+        finishHidden(reason, false)
+    }
+
+    @Synchronized
     fun release(
         reason: String = "release_requested",
         expectedSessionId: String? = null,

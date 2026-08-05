@@ -1387,6 +1387,17 @@ class _FileManagerViewState extends State<FileManagerView> {
         icon: Icon(Icons.more_vert),
         itemBuilder: (context) {
           return [
+            if (_isShareableLocalFile(entry))
+              const PopupMenuItem(
+                value: "share_file",
+                child: Row(
+                  children: [
+                    Icon(Icons.share_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('分享'),
+                  ],
+                ),
+              ),
             if (_isInstallableLocalApk(entry))
               const PopupMenuItem(
                 value: "install_apk",
@@ -1424,7 +1435,9 @@ class _FileManagerViewState extends State<FileManagerView> {
           ];
         },
         onSelected: (v) async {
-          if (v == "install_apk") {
+          if (v == "share_file") {
+            await _shareLocalFile(entry);
+          } else if (v == "install_apk") {
             await _installLocalApk(entry);
           } else if (v == "delete") {
             if (!widget.canDelete(entry)) {
@@ -1457,6 +1470,27 @@ class _FileManagerViewState extends State<FileManagerView> {
       isLocal &&
       entry.isFile &&
       entry.name.toLowerCase().endsWith('.apk');
+
+  bool _isShareableLocalFile(Entry entry) =>
+      isAndroid && isLocal && entry.isFile;
+
+  Future<void> _shareLocalFile(Entry entry) async {
+    if (!_isShareableLocalFile(entry)) return;
+    try {
+      final raw = await gFFI.invokeMethod(
+        'share_local_file',
+        {'path': entry.path},
+      );
+      final result = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : const <String, dynamic>{};
+      final message = result['message']?.toString();
+      if (message != null && message.isNotEmpty && mounted) showToast(message);
+    } catch (error) {
+      debugPrint('[FileManager] share file failed: $error');
+      if (mounted) showToast('无法打开系统分享面板');
+    }
+  }
 
   Future<void> _installLocalApk(Entry entry) async {
     if (!_isInstallableLocalApk(entry)) return;

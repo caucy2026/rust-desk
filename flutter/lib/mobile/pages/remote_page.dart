@@ -587,6 +587,19 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _openFileTransferFromToolbar() async {
+    try {
+      final currentSessionId = gFFI.sessionId;
+      final connToken = bind.sessionGetConnToken(sessionId: currentSessionId);
+      debugPrint(
+          'Transfer file: id=${widget.id} sessionId=$currentSessionId connToken=$connToken');
+      await _openFileTransferFromRemote(widget.id, connToken: connToken);
+    } catch (error) {
+      debugPrint('Transfer file action failed: $error');
+      showToast(translate('Failed'));
+    }
+  }
+
   // For client side
   // When swithing from other app to this app, try to sync clipboard.
   void trySyncClipboard() {
@@ -1216,6 +1229,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   ))
                         ]) +
                   [
+                    if (isAndroid)
+                      _bottomActionButton(
+                        label: '文件',
+                        icon: const Icon(Icons.folder_copy_outlined),
+                        onPressed: () =>
+                            unawaited(_openFileTransferFromToolbar()),
+                      ),
                     _bottomActionButton(
                       label: '更多',
                       icon: const Icon(Icons.more_vert),
@@ -1369,24 +1389,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final x = 120.0;
     final y = size.height;
     final mobileActionMenus = _getMobileActionMenus();
-    final transferFileMenu = isAndroid
-        ? TTextMenu(
-            child: Text(translate('Transfer file')),
-            onPressed: () async {
-              try {
-                final sessionId = gFFI.sessionId;
-                final connToken =
-                    bind.sessionGetConnToken(sessionId: sessionId);
-                debugPrint(
-                    'Transfer file: id=$id sessionId=$sessionId connToken=$connToken');
-                await _openFileTransferFromRemote(id, connToken: connToken);
-              } catch (e) {
-                debugPrint('Transfer file action failed: $e');
-                showToast(translate('Failed'));
-              }
-            },
-          )
-        : null;
     final resourceUsageMenu = isAndroid
         ? TTextMenu(
             child: const Text('资源占用'),
@@ -1399,7 +1401,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         : null;
     final menus = toolbarControls(context, id, gFFI);
     final localMenus = <TTextMenu>[
-      if (transferFileMenu != null) transferFileMenu,
       if (resourceUsageMenu != null) resourceUsageMenu,
     ];
     final combinedMenus = <TTextMenu>[

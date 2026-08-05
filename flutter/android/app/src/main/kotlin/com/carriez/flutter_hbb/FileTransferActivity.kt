@@ -207,6 +207,10 @@ class FileTransferActivity : FlutterActivity() {
                             )
                         )
                     }
+                    "share_local_file" -> {
+                        val path = (call.arguments as? Map<*, *>)?.get("path") as? String ?: ""
+                        result.success(AndroidSelfUpdater.shareLocalFile(this@FileTransferActivity, path))
+                    }
                     GET_VALUE -> {
                         if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {
                             result.success(isSupportVoiceCall())
@@ -217,6 +221,14 @@ class FileTransferActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && !isFinishing) {
+            Log.i(TAG, "File transfer host stopped; finish hidden task=$taskId")
+            finishAndRemoveTask()
         }
     }
 

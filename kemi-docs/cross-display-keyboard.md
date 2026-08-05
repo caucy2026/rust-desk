@@ -1195,3 +1195,9 @@ Display 2认证 → 条件不命中           → 提前创建Display 0代理 �
 - 认证期不创建、置前或复用`KeyboardProxyActivity`；连接后的跨屏键盘行为保持不变。
 
 以后主屏和副屏都必须执行首次密码验收。认证期间日志只允许Flutter自身`showSoftInput`，不得出现`Preparing keyboard proxy`；认证完成后才允许出现代理prepare。最终产品验收还必须由用户真实输入密码并成功连接，不能只根据键盘可见或UI焦点判定通过。
+
+## 23. HOME后键盘与文件传输可重开（2026-08-05，PAD 1.4.57+162）
+
+旧键盘宿主在另一个屏幕按HOME后进入`onStop`，但`release()`先设为`closing`并等待已退后台IME的隐藏回调；回调可能永远不到，后续`open()`因此一直返回busy。现在停止的宿主由`onHostStopped()`同步清成`hidden`、解除Activity/Display/channel所有权并结束任务，不等待IME回调。预创建但尚未激活的宿主同样处理。
+
+文件传输的独立`singleInstance`任务过去在HOME后仍存活但不可见，下一次启动可能只命中隐藏实例。现在非配置变更导致的`onStop`会结束该辅助任务并由Flutter dispose关闭独立文件FFI；远控视频Session继续运行。验收必须覆盖：键盘HOME后连续重开、文件页HOME后连续重开、远控画面不断开、右键和首次密码输入不回归。

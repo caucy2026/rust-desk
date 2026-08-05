@@ -764,10 +764,14 @@ class KeyboardProxyActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        if (active && !closeRequested && !releaseRequested) {
+        if (!closeRequested && !releaseRequested && !isChangingConfigurations) {
             val reason = if (userLeavePending) "home_pressed" else "keyboard_host_stopped"
-            Log.i(TAG, "Keyboard host stopped: release reason=$reason task=$taskId request=$requestId")
-            KeyboardProxyManager.release(reason)
+            Log.i(TAG, "Keyboard host stopped: discard reason=$reason task=$taskId request=$requestId")
+            finishReason = reason
+            active = false
+            releaseRequested = true
+            KeyboardProxyManager.onHostStopped(this, requestId, reason)
+            if (!isFinishing) finishAndRemoveTask()
         }
     }
 

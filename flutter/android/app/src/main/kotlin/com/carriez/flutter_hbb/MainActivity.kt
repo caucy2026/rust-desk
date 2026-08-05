@@ -340,6 +340,10 @@ class MainActivity : FlutterActivity() {
                         )
                     )
                 }
+                "share_local_file" -> {
+                    val path = (call.arguments as? Map<*, *>)?.get("path") as? String ?: ""
+                    result.success(AndroidSelfUpdater.shareLocalFile(this@MainActivity, path))
+                }
                 "client_distribution_stop" -> {
                     clientDistributionServer.stop()
                     result.success(true)

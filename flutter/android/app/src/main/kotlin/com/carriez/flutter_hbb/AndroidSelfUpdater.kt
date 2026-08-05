@@ -1,10 +1,12 @@
 package com.carriez.flutter_hbb
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -64,6 +66,45 @@ object AndroidSelfUpdater {
             return error("系统无法识别这个APK安装包")
         }
         return launchApkFile(activity, file, openPermissionSettings, null)
+    }
+
+    /** Shares one explicitly selected PAD-side file through Android's chooser. */
+    fun shareLocalFile(activity: Activity, path: String): Map<String, Any> {
+        val file = try {
+            File(path).canonicalFile
+        } catch (_: Exception) {
+            return error("文件路径无效")
+        }
+        if (!file.isFile || !file.canRead()) {
+            return error("文件不存在或不可读取")
+        }
+        val uri = try {
+            FileProvider.getUriForFile(
+                activity,
+                "${activity.packageName}.fileprovider",
+                file,
+            )
+        } catch (_: IllegalArgumentException) {
+            return error("该文件不在PAD可分享的本地存储范围内")
+        }
+        val extension = file.extension.lowercase()
+        val mimeType = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?: "application/octet-stream"
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(activity.contentResolver, file.name, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (sendIntent.resolveActivity(activity.packageManager) == null) {
+            return error("没有支持此文件类型的应用")
+        }
+        activity.startActivity(Intent.createChooser(sendIntent, "分享文件"))
+        return mapOf(
+            "status" to "launched",
+            "message" to "已打开系统分享面板",
+        )
     }
 
     private fun launchApkFile(
