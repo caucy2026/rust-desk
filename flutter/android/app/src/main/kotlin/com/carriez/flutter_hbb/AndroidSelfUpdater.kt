@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import java.io.File
 
 /** Launches Android's trusted package installer for a verified cached update. */
 object AndroidSelfUpdater {
@@ -37,11 +38,66 @@ object AndroidSelfUpdater {
             )
         }
 
-        val uri = FileProvider.getUriForFile(
-            activity,
-            "${activity.packageName}.fileprovider",
-            update.file,
+        return launchApkFile(
+            activity = activity,
+            file = update.file,
+            openPermissionSettings = openPermissionSettings,
+            version = update.target.version,
         )
+    }
+
+    /** Installs an APK explicitly selected from the PAD-side file list. */
+    fun launchLocalApk(
+        activity: Activity,
+        path: String,
+        openPermissionSettings: Boolean,
+    ): Map<String, Any> {
+        val file = try {
+            File(path).canonicalFile
+        } catch (_: Exception) {
+            return error("APK路径无效")
+        }
+        if (!file.isFile || !file.canRead() || !file.name.endsWith(".apk", ignoreCase = true)) {
+            return error("APK文件不存在、不可读取或格式不正确")
+        }
+        if (activity.packageManager.getPackageArchiveInfo(file.absolutePath, 0) == null) {
+            return error("系统无法识别这个APK安装包")
+        }
+        return launchApkFile(activity, file, openPermissionSettings, null)
+    }
+
+    private fun launchApkFile(
+        activity: Activity,
+        file: File,
+        openPermissionSettings: Boolean,
+        version: String?,
+    ): Map<String, Any> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !activity.packageManager.canRequestPackageInstalls()
+        ) {
+            if (openPermissionSettings) {
+                activity.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${activity.packageName}"),
+                    )
+                )
+            }
+            return mapOf(
+                "status" to "permission_required",
+                "message" to "请允许 KEMI 安装此来源的应用，返回后再次点击安装",
+            )
+        }
+
+        val uri = try {
+            FileProvider.getUriForFile(
+                activity,
+                "${activity.packageName}.fileprovider",
+                file,
+            )
+        } catch (_: IllegalArgumentException) {
+            return error("该APK不在PAD可安装的本地存储范围内")
+        }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -54,10 +110,13 @@ object AndroidSelfUpdater {
             )
         }
         activity.startActivity(intent)
-        return mapOf(
-            "status" to "launched",
-            "version" to update.target.version,
-            "message" to "已打开系统升级确认界面",
-        )
+        return buildMap<String, Any> {
+            put("status", "launched")
+            put("message", "已打开Android系统安装确认界面")
+            if (version != null) put("version", version)
+        }
     }
+
+    private fun error(message: String): Map<String, Any> =
+        mapOf("status" to "error", "message" to message)
 }

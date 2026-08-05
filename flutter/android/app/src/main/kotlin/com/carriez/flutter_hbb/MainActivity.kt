@@ -330,6 +330,16 @@ class MainActivity : FlutterActivity() {
                         )
                     )
                 }
+                "install_local_apk" -> {
+                    val arguments = call.arguments as? Map<*, *>
+                    result.success(
+                        AndroidSelfUpdater.launchLocalApk(
+                            this@MainActivity,
+                            arguments?.get("path") as? String ?: "",
+                            arguments?.get("openPermissionSettings") == true,
+                        )
+                    )
+                }
                 "client_distribution_stop" -> {
                     clientDistributionServer.stop()
                     result.success(true)

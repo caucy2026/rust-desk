@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 八十五、2026-08-05 1.4.56+161 PAD本地APK直接安装
+
+- 文件传输双栏仅在左侧PAD本地列表识别普通`.apk`文件，并在原菜单顶部增加“安装”；右侧对方文件、目录和其他扩展名保持原操作，不允许未经传回本机直接安装。
+- 点击后重新校验文件存在、可读、扩展名及Android包结构，再通过私有`FileProvider`只授权当前URI给Android系统安装器。KEMI不静默安装、不绕过系统确认；未授予“安装未知应用”时打开KEMI专属授权页，返回后再次点击安装。
+- 主界面同屏文件窗口和双屏独立`FileTransferActivity`均注册同一原生方法，避免副屏/对屏文件窗口出现`MissingPluginException`。
+- 版本提升为`1.4.56+161`。本批次只重新构建并替换PAD发布文件；Mac、Windows、Linux固定包继续保留1.4.49原字节，manifest必须继续标明PAD热修订混合批次。
+- Android arm64 Rust核心从仓库根目录完整重编译，APK内`librustdesk.so`与本轮目标文件SHA-256均为`2c7d1796fda5e621ef4bcfe00685e95a31ee965a75a2d907aa881fa3cd999092`；避免只更新APK外壳而继续携带旧核心。
+- 固定签名Release为24,593,361字节，SHA-256为`d383d1f06e783a1e463dba02aa81b42bbd5c7606c4c241ad7d2f476fa76a29a5`；包名`com.newlinksz.kemi.remote`、仅arm64-v8a、v1/v2签名有效，证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 构建期间发现全局Gradle 7.6.4 ZIP损坏，已保留到临时目录并从腾讯镜像重下后通过`unzip -t`；国内Flutter存储返回HTML伪POM，最终切换已实测返回正确510字节POM的官方`storage.googleapis.com`完成构建。两项均为缓存/镜像问题，不是源码冲突。
+
 ## 八十四、2026-08-05 1.4.55+160 PAD文件安全删除、空间门禁与自更新标识
 
 - 文件传输改为PAD/对方左右双栏浏览，目录加载成功或页面关闭时强制清空旧选择，修复切目录后不可见项目仍被带入下一次传输的问题；Android“所有文件访问”改为打开专用授权页。

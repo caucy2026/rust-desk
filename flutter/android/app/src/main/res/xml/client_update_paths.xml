@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Explicitly selected PAD-side APKs; provider is private and grants one URI per install. -->
+    <external-path
+        name="pad_local_apk"
+        path="." />
     <external-files-path
         name="verified_client_cache"
         path="client-cache/" />

@@ -197,6 +197,16 @@ class FileTransferActivity : FlutterActivity() {
                         val path = (call.arguments as? Map<*, *>)?.get("path") as? String
                         result.success(path?.let(AndroidStorageSpace::availableBytes))
                     }
+                    "install_local_apk" -> {
+                        val arguments = call.arguments as? Map<*, *>
+                        result.success(
+                            AndroidSelfUpdater.launchLocalApk(
+                                this@FileTransferActivity,
+                                arguments?.get("path") as? String ?: "",
+                                arguments?.get("openPermissionSettings") == true,
+                            )
+                        )
+                    }
                     GET_VALUE -> {
                         if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {
                             result.success(isSupportVoiceCall())

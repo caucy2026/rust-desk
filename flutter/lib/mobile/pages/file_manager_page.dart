@@ -1387,6 +1387,17 @@ class _FileManagerViewState extends State<FileManagerView> {
         icon: Icon(Icons.more_vert),
         itemBuilder: (context) {
           return [
+            if (_isInstallableLocalApk(entry))
+              const PopupMenuItem(
+                value: "install_apk",
+                child: Row(
+                  children: [
+                    Icon(Icons.install_mobile_outlined, size: 20),
+                    SizedBox(width: 8),
+                    Text('安装'),
+                  ],
+                ),
+              ),
             PopupMenuItem(
               enabled: widget.canDelete(entry),
               child: Text(translate("Delete")),
@@ -1412,8 +1423,10 @@ class _FileManagerViewState extends State<FileManagerView> {
               )
           ];
         },
-        onSelected: (v) {
-          if (v == "delete") {
+        onSelected: (v) async {
+          if (v == "install_apk") {
+            await _installLocalApk(entry);
+          } else if (v == "delete") {
             if (!widget.canDelete(entry)) {
               return;
             }
@@ -1437,6 +1450,30 @@ class _FileManagerViewState extends State<FileManagerView> {
             controller.renameAction(entry, isLocal);
           }
         });
+  }
+
+  bool _isInstallableLocalApk(Entry entry) =>
+      isAndroid &&
+      isLocal &&
+      entry.isFile &&
+      entry.name.toLowerCase().endsWith('.apk');
+
+  Future<void> _installLocalApk(Entry entry) async {
+    if (!_isInstallableLocalApk(entry)) return;
+    try {
+      final raw = await gFFI.invokeMethod(
+        'install_local_apk',
+        {'path': entry.path, 'openPermissionSettings': true},
+      );
+      final result = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : const <String, dynamic>{};
+      final message = result['message']?.toString();
+      if (message != null && message.isNotEmpty && mounted) showToast(message);
+    } catch (error) {
+      debugPrint('[FileManager] install APK failed: $error');
+      if (mounted) showToast('无法打开APK安装程序');
+    }
   }
 
   void _setDualPaneSelection(Entry entry, bool selected) {
