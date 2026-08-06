@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 八十七、2026-08-06 1.4.58+163 Android启动崩溃修复与原生符号门禁
+
+- PAD `1.4.57+162`真机启动100%崩溃，Java栈为`UnsatisfiedLinkError: cannot locate symbol sodium_base64_encoded_len`，发生在`MainApplication.onCreate()`加载`librustdesk.so`时，早于Flutter页面和本轮分享/HOME功能执行。
+- 根因是`flutter/ndk_arm64.sh`虽然已经要求libsodium使用NDK `llvm-ar/llvm-ranlib`，但只在调用方提前设置`ANDROID_NDK_HOME`时生效。本地版本重链接时没有该变量，macOS归档工具生成了缺少libsodium对象的缓存；Cargo与Gradle允许共享库携带未解析符号，所以编译、签名和APK内外哈希比较均通过，直到Android动态加载才失败。
+- 脚本现在会在Cargo启动前从`flutter/android/local.properties`解析SDK目录并锁定与CI一致的NDK r28c（`28.2.13676358`）；CI或显式环境仍可提供`ANDROID_NDK_HOME`。找不到固定NDK时直接失败，不再静默回退宿主机归档工具。
+- Rust核心构建结束后强制用NDK `llvm-readelf`扫描动态符号表；只要存在任意`UND sodium_*`，构建立即失败并禁止进入Flutter/Gradle打包。发布验证必须包含真机冷启动，不能再用“APK构建成功、签名正确、内外so哈希一致”代替动态加载验证。
+- 版本提升为`1.4.58+163`，只修复构建链和重打PAD，不改`1.4.57`已经完成的文件分享、HOME重开、工具栏及产品名逻辑。
+- 修复版固定签名arm64 APK为24,664,810字节，SHA-256为`1180d3d4ff2c1f9387665dcabcc502cf08d1ec1b3f3f9ed4be452629f433c536`；APK内Rust核心SHA-256为`ac30f9d82f548a1d514c29652487db0bbc50539320b22058aa9a85df88fafa77`，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 已覆盖安装到`192.168.3.63:5555`并在Display 2冷启动。系统回读`1.4.58+163`，进程持续存活、Activity为Resumed、约888ms完成Fully drawn，日志无`UnsatisfiedLinkError`、FATAL或native crash。
+
 ## 八十六、2026-08-05 1.4.57+162 文件分享、跨屏重开与远控工具栏调整
 
 - 文件传输左侧PAD本地列表对所有普通文件增加“分享”，根据扩展名解析MIME并通过Android `ACTION_SEND`系统选择器交给支持该类型的应用；文件夹、右侧远端文件和原有传输/删除/安装操作保持不变。
