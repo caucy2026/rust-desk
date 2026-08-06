@@ -4,7 +4,7 @@
 
 传输记录不是文件系统快照，而是用户已经执行过的传输动作。用户可以看清上次从哪里传到哪里，并对仍然存在的源文件一键再次执行同一路径传输。
 
-当前交付版本：`1.4.57+162`。
+当前交付版本：`1.4.62+167`。
 
 ### PAD本地文件分享（1.4.57）
 
@@ -135,3 +135,39 @@ closed → opening → open → closing → closed
 3. 副屏连续点击两次，确认第二次关闭文件会话和Activity，但远控视频不断开。
 4. 再次打开后点击主屏关闭图标，确认副屏在不轮询的情况下恢复白色。
 5. 关闭后核对没有存活的`FileTransferActivity`和独立文件Session；远程键盘、鼠标左右键保持原行为。
+
+## 8. Android Download完整访问与设备授权（1.4.62现场闭环）
+
+### 8.1 症状与根因
+
+Android 11及以上启用分区存储。即使Manifest声明了`READ_EXTERNAL_STORAGE`、`WRITE_EXTERNAL_STORAGE`和`requestLegacyExternalStorage`，targetSdk 33的KEMI在没有“所有文件访问”时仍可能只枚举到本应用可访问的项目。典型现象是系统文件应用能看到Download中的APK、XML和目录，KEMI双栏左侧却只显示目录；这不是列表缓存，也不能通过反复刷新解决。
+
+`1.4.62+167`真机证据：
+
+```text
+/storage/emulated/0/Download：系统实际5项
+FileModel同路径：entries=3
+MANAGE_EXTERNAL_STORAGE：default（未授权）
+```
+
+缺少的两项为自更新生成的`KEMI远程办公-1.4.61+166-备份-*.apk`和既有`kemi-commercial-home.xml`。备份文件实际存在，因此不能把“列表看不到”误判为备份失败。
+
+### 8.2 受控PAD部署授权
+
+KEMI已在Manifest声明`MANAGE_EXTERNAL_STORAGE`。对公司受控PAD，按`/Users/newlink/kemi/priv/xtqx.md`方案A使用AppOps授权，包名必须使用正式applicationId：
+
+```bash
+adb -s <PAD_IP>:5555 shell appops set \
+  com.newlinksz.kemi.remote MANAGE_EXTERNAL_STORAGE allow
+
+adb -s <PAD_IP>:5555 shell appops get \
+  com.newlinksz.kemi.remote MANAGE_EXTERNAL_STORAGE
+```
+
+有效输出必须是`MANAGE_EXTERNAL_STORAGE: allow`。`dumpsys package`中的普通运行时权限字段可能仍显示`granted=false`，特殊权限以AppOps结果和实际文件枚举为准。跨屏工具另需`SYSTEM_ALERT_WINDOW: allow`，两项用途不同，不能互相代替。
+
+授权后关闭并重新打开文件窗口，强制创建新的本地目录快照；现场日志由`entries=3`恢复为`entries=5`，APK和XML均显示。新设备、卸载重装、清除系统特殊权限或执行`appops reset`后必须重新授权；同包名同签名覆盖升级通常保留，但部署和验收不能只依赖“通常”。
+
+### 8.3 产品代码后续边界
+
+当前`1.4.62`底栏文件按钮打开跨屏窗口时没有主动检查该特殊权限，因此未授权设备会静默显示不完整列表。后续代码修复应在打开窗口前使用Android原生`Environment.isExternalStorageManager()`核验，未授权时明确提示“当前只能看到部分文件”并引导到本应用的所有文件访问页；返回后复核、重新读取Download。未完成这项产品引导前，受控PAD发布清单必须保留上述AppOps部署步骤。

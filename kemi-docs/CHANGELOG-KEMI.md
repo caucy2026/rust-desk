@@ -11,6 +11,8 @@
 - 根因修复：旧文件卡片虽然视觉上只有90%×78%，Android Activity仍是全屏透明输入层，透明区域会遮住主屏桌面。现在原生窗口本身固定为显示屏90%×78%、居中、透明且带`FLAG_NOT_TOUCH_MODAL`；Flutter文件卡片填满该窗口，视觉尺寸不变，窗口外触摸直接交给主屏桌面或其他应用。
 - 真机`192.168.3.63:5555`副屏完成三条闭环：第一次点击文件后按钮绿色带背景，原生Frame为`[96,93]-[1824,1091]`即1728×998且窗口flag包含`NOT_TOUCH_MODAL`；第二次点击日志为`toolbar_toggle → close_button → activity_destroyed`；主屏点击关闭图标日志为`close_button → activity_destroyed`且副屏按钮恢复白色。主屏启动Krita也证明窗口外区域未被KEMI截获，文件窗口相应进入`hidden`。测试期间远控画面保持连接。
 - 按固定NDK重编Android arm64 Rust核心并通过libsodium符号门禁，固定签名Release构建成功。最终APK为24,578,271字节，SHA-256 `edc393c3b498818ffecf2a585a7d537c16b9a427dc100668c1869acb2385e926`；包名`com.newlinksz.kemi.remote`、版本`1.4.62+167`、`minSdk=22`，v1/v2签名有效，固定证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。本轮正式归档到`BIN/`并只替换`BIN/release/KEMI-PAD.apk`，桌面三端保持原字节；重新生成`SHA256SUMS.txt`与`release-manifest.json`后，管理员只需依次上传`KEMI-PAD`、`SHA256SUMS`、`release-manifest`。
+- Newlink三个固定接口已回读到本批次：线上APK、`SHA256SUMS.txt`和`release-manifest.json`与`BIN/release`逐字节一致，manifest批次为`1.4.62+167-pad-file-window`并绑定源码`5f4779b424ac22c7aa2fbd10916bf595cdde0237`。真机先安装固定签名`1.4.61+166`，客户端发现云端`1.4.62+167`后选择“是，先备份”，系统安装完成并回读`1.4.62+167`；公共Download生成24,579,994字节的`KEMI远程办公-1.4.61+166-备份-*.apk`，与1.4.61归档大小一致。至此“发现更新→下载校验→备份旧包→系统安装→新版本启动”闭环通过；“否，直接升级”仍留作下一批次独立验收。
+- 升级后现场发现KEMI的Download列表只有3个目录，系统文件应用却能看到5项。ADB证据为系统目录存在3个目录、备份APK和XML，而`FileModel`同路径只返回3项，`MANAGE_EXTERNAL_STORAGE` AppOps为`default`；这不是缓存或文件丢失，而是Android 11+分区存储过滤其他普通文件。按`priv/xtqx.md`的方案A对真实包名执行`adb shell appops set com.newlinksz.kemi.remote MANAGE_EXTERNAL_STORAGE allow`，保持既有`SYSTEM_ALERT_WINDOW: allow`；关闭并重开文件窗口后日志从`entries=3`恢复为`entries=5`，XML和备份APK均可见。该命令是受控PAD的设备部署步骤，没有修改APK签名、包名或源码。
 
 ## 九十、2026-08-06 1.4.61+166 连接密码对屏输入稳定收口
 

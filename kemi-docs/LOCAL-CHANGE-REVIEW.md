@@ -2,7 +2,7 @@
 
 ## 0. 当前发布快照：1.4.62+167（2026-08-06）
 
-> 比较基线：GitHub `backup/master = af4cd82db0878e1533af6d1f0ac2c698970288fd`；目标为本文所在最终提交。推送完成后两端应完全同哈希、工作树应为空。
+> 功能基线：GitHub `backup/master = 5f4779b424ac22c7aa2fbd10916bf595cdde0237`；本次仅补充发布和设备权限的现场证据，不修改该稳定功能基线。
 
 相对该云端基线，本地包含跨屏键盘HOME宿主复用、首页数字ID键盘、连接密码对屏输入和`1.4.60`自升级前可选备份；当前在已冻结的`1.4.61`基础上完成文件按钮状态同步与非模态跨屏窗口，并独立提升为`1.4.62+167`。文件分享、手动安装其他APK、传输策略、VP9、鼠标协议和桌面客户端逻辑均未改写。
 
@@ -20,9 +20,9 @@
 | HOME重开 | 键盘和文件宿主HOME后均停驻复用；双屏设备一次性检查跨屏恢复权限 | 高；Android 12 HOME会触发全局app-switch限制，缺少`SYSTEM_ALERT_WINDOW`时Native必须拒绝并引导授权，不能伪报已打开；最终包键盘task 554与文件task 555重开已通过 |
 | 构建发布 | 项目隔离Flutter、固定NDK、Android签名门禁、源码产品1.4.62/PAD build167、显示名KEMI远程办公 | 高；全局Flutter会污染`.dart_tool`，分析/pub/build必须使用同一项目工具链。包名和证书未变，桌面三个固定包保持原字节，正式PAD发布只更新PAD与两份清单 |
 
-验证：1.4.59跨屏HOME闭环和用户确认的1.4.61密码对屏输入基线继续有效。本轮按固定NDK重编Android arm64核心，未解析`sodium_*`门禁通过；最终`1.4.62+167`固定签名Release为24,578,271字节、SHA-256 `edc393c3b498818ffecf2a585a7d537c16b9a427dc100668c1869acb2385e926`，包名`com.newlinksz.kemi.remote`、`minSdk=22`、v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。真机副屏完成文件按钮开/关、主屏关闭回传、HOME隐藏同步和窗口外桌面点击四条回归，测试期间远控画面保持连接。遵照效率优先，本轮不重复运行无关全量回归；自升级备份“是/否”与Downloads真实落盘在云端存在更高版本后做正向升级验收。
+验证：1.4.59跨屏HOME闭环和用户确认的1.4.61密码对屏输入基线继续有效。本轮按固定NDK重编Android arm64核心，未解析`sodium_*`门禁通过；最终`1.4.62+167`固定签名Release为24,578,271字节、SHA-256 `edc393c3b498818ffecf2a585a7d537c16b9a427dc100668c1869acb2385e926`，包名`com.newlinksz.kemi.remote`、`minSdk=22`、v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。真机副屏完成文件按钮开/关、主屏关闭回传、HOME隐藏同步和窗口外桌面点击四条回归。Newlink线上三文件与本地release逐字节一致，真机`1.4.61+166 → 1.4.62+167`选择“是，先备份”的远程升级闭环通过，备份APK真实落入公共Download；“否，直接升级”仍待下一批次独立验收。
 
-发布状态：本轮形成PAD正式热修订混合快照。`BIN/release/KEMI-PAD.apk`更新为`1.4.62+167`，Mac/Windows/Linux三个固定包保持已验收的原字节；`SHA256SUMS.txt`和`release-manifest.json`随PAD重新生成并明确记录混合批次。管理员依次上传`KEMI-PAD`、`SHA256SUMS`、`release-manifest`后，再以低版本PAD完成远端发现、下载、备份选择和系统安装闭环。
+发布状态：PAD正式热修订混合快照已经上线。`KEMI-PAD`、`SHA256SUMS`和`release-manifest`三个固定接口均回读为`1.4.62+167-pad-file-window`批次；Mac/Windows/Linux三个固定包保持已验收的原字节。受控PAD还需按`file-transfer-history.md`第8节授予`MANAGE_EXTERNAL_STORAGE`，否则Download会被Android分区存储静默过滤成不完整列表。
 
 ## 历史候选快照：1.4.51+156（2026-08-04）
 

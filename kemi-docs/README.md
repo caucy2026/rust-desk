@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD发布候选为 **1.4.62+167**；`BIN/release`更新后桌面三端仍保持各自已验收版本，Newlink云端批次以`release-manifest.json`实际内容为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD正式发布为 **1.4.62+167**；桌面三端仍保持各自已验收版本，Newlink云端批次以`release-manifest.json`实际内容为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ## 当前项目总结（2026-08-06）
 
 - 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
 - Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
 - 当前PAD源码`1.4.62+167`在稳定鼠标/跨屏键盘基线上，加入连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁、客户端自更新前可选备份当前APK、本地APK安装与普通文件系统分享；首页远程ID和连接密码均可使用另一屏键盘，数字ID、本地密码和远程输入三种事件严格隔离。文件按钮与另一屏窗口状态同步，打开为绿色带背景，再点关闭；文件窗口是90%×78%的真实非模态窗口，窗口外主屏桌面仍可操作。Android 12双屏设备需一次性授予“显示在其他应用上层”，这里只把它作为跨屏任务恢复许可，不创建悬浮图标。详细边界分别见`connection-history-and-resource-monitor.md`、`file-transfer-history.md`、`cross-display-keyboard.md`和`client-distribution.md`。
-- 本地待上传批次中PAD为`1.4.62+167`，桌面三端仍保持各自已验收的`1.4.49`字节；`BIN/release`清单明确标为PAD热修订混合快照。管理员依次覆盖`KEMI-PAD`、`SHA256SUMS`、`release-manifest`后云端才完成切换；后续完整四端发布仍需同一提交重新构建Mac/Windows/Linux。
+- Newlink云端已发布PAD `1.4.62+167`，三个固定接口回读文件与本地release逐字节一致；真机从1.4.61选择备份后升级成功。桌面三端仍保持各自已验收的`1.4.49`字节，清单明确标为PAD热修订混合快照；后续完整四端发布仍需同一提交重新构建Mac/Windows/Linux。受控PAD的Download完整访问部署步骤见`file-transfer-history.md`第8节。
 - GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 
 ### 核心定制功能
@@ -17,7 +17,7 @@
 | 功能 | 说明 |
 |------|------|
 | **双屏适配** | Android PAD 主屏键控 + 副屏远控画面，跨屏触摸与键盘转发 |
-| **文件传输** | 60% × 60% 圆角浮窗，独立 Session 与远控视频并行，Android 默认 Download |
+| **文件传输** | 双屏PAD使用90% × 78%真实非模态窗口，单屏保留原浮窗回退；独立Session与远控视频并行，Android默认Download |
 | **远端目录记忆** | 再次打开文件传输时，优先恢复对方上次可用目录；无效时按初始目录与根目录回退 |
 | **传输记录** | 按方向、源目录和目标目录归组；同一路径不重复，完成后可“再次传输”，源或目标失效时原位提示 |
 | **远控操作栏** | 44px 高、48px 宽的中文图文按钮；“输入”打开手势说明，整格按钮统一水波纹与高亮反馈 |
