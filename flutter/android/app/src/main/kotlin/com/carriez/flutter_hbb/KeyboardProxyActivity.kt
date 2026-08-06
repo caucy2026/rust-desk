@@ -3,6 +3,7 @@ package com.carriez.flutter_hbb
 import android.app.Activity
 import android.app.ActivityManager
 import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -30,6 +31,8 @@ class KeyboardProxyActivity : Activity() {
         private const val EXTRA_REQUEST_ID = "request_id"
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_TARGET_DISPLAY_ID = "target_display_id"
+        private const val EXTRA_INPUT_MODE = "input_mode"
+        private const val LAUNCH_REQUEST_CODE = 0x4b50
         private const val IME_RETRY_DELAY_MS = 350L
         private const val IME_LOSS_CLASSIFY_DELAY_MS = 120L
         private const val IME_RESTORE_DELAY_MS = 80L
@@ -45,12 +48,14 @@ class KeyboardProxyActivity : Activity() {
             source: Activity,
             requestId: Long,
             sessionId: String,
-            targetDisplayId: Int
+            targetDisplayId: Int,
+            inputMode: String = "remote"
         ) {
             val intent = Intent(source, KeyboardProxyActivity::class.java).apply {
                 putExtra(EXTRA_REQUEST_ID, requestId)
                 putExtra(EXTRA_SESSION_ID, sessionId)
                 putExtra(EXTRA_TARGET_DISPLAY_ID, targetDisplayId)
+                putExtra(EXTRA_INPUT_MODE, inputMode)
                 addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
             val sourceDisplayId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
@@ -66,13 +71,28 @@ class KeyboardProxyActivity : Activity() {
             val options = ActivityOptions.makeBasic().apply {
                 launchDisplayId = targetDisplayId
             }
-            source.startActivity(intent, options.toBundle())
+            val pendingIntent = PendingIntent.getActivity(
+                source,
+                LAUNCH_REQUEST_CODE + targetDisplayId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            pendingIntent.send(
+                source,
+                0,
+                null,
+                null,
+                null,
+                null,
+                options.toBundle()
+            )
         }
     }
 
     private var requestId = 0L
     private var sessionId = ""
     private var expectedDisplayId = Display.DEFAULT_DISPLAY
+    private var inputMode = "remote"
     private var finishReason = "activity_destroyed"
     private lateinit var rootView: FrameLayout
     private lateinit var editText: EditText
@@ -167,6 +187,15 @@ class KeyboardProxyActivity : Activity() {
             if (!editText.isFocused) {
                 editText.requestFocus()
             }
+            if (!editText.hasWindowFocus()) {
+                // HOME temporarily sets appSwitchAllowed=false for the whole device on
+                // this dual-screen Android 12 ROM. The first explicit toolbar tap can
+                // therefore be ignored even though Display 2 remains foreground. Keep
+                // restoring the already-owned task during the bounded IME retry window;
+                // once the system cooldown expires, the same request completes without
+                // a second user tap.
+                requestTaskFocus("ime_retry_${imeRequestAttempts + 1}")
+            }
             val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
             inputMethodManager.restartInput(editText)
             imeRequestAttempts++
@@ -239,6 +268,7 @@ class KeyboardProxyActivity : Activity() {
         super.onCreate(savedInstanceState)
         requestId = intent.getLongExtra(EXTRA_REQUEST_ID, 0L)
         sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        inputMode = intent.getStringExtra(EXTRA_INPUT_MODE).orEmpty().ifEmpty { "remote" }
         val targetDisplayId = intent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
         expectedDisplayId = targetDisplayId
         val actualDisplayId = display?.displayId ?: -1
@@ -395,8 +425,7 @@ class KeyboardProxyActivity : Activity() {
             isCursorVisible = false
             isFocusable = true
             isFocusableInTouchMode = true
-            inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE
-            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            applyInputMode()
 
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -454,9 +483,45 @@ class KeyboardProxyActivity : Activity() {
         }
     }
 
-    fun activate(newRequestId: Long, newSessionId: String) {
+    override fun onNewIntent(newIntent: Intent) {
+        super.onNewIntent(newIntent)
+        setIntent(newIntent)
+        val newRequestId = newIntent.getLongExtra(EXTRA_REQUEST_ID, 0L)
+        val newSessionId = newIntent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+        val newInputMode = newIntent.getStringExtra(EXTRA_INPUT_MODE)
+            .orEmpty()
+            .ifEmpty { "remote" }
+        val newTargetDisplayId = newIntent.getIntExtra(EXTRA_TARGET_DISPLAY_ID, -1)
+        val actualDisplayId = display?.displayId ?: -1
+        if (newRequestId == 0L || actualDisplayId != newTargetDisplayId) {
+            Log.e(
+                TAG,
+                "Reject relaunch request=$newRequestId actual=$actualDisplayId " +
+                    "expected=$newTargetDisplayId"
+            )
+            finishReason = "relaunch_failed"
+            finishAndRemoveTask()
+            return
+        }
         requestId = newRequestId
         sessionId = newSessionId
+        inputMode = newInputMode
+        expectedDisplayId = newTargetDisplayId
+        finishReason = "activity_destroyed"
+        Log.i(
+            TAG,
+            "Received relaunch request=$requestId display=$actualDisplayId task=$taskId"
+        )
+        if (!KeyboardProxyManager.onActivityReady(this, requestId, actualDisplayId)) {
+            finishReason = "relaunch_rejected"
+            finishAndRemoveTask()
+        }
+    }
+
+    fun activate(newRequestId: Long, newSessionId: String, newInputMode: String = "remote") {
+        requestId = newRequestId
+        sessionId = newSessionId
+        inputMode = newInputMode
         finishReason = "activity_destroyed"
         active = true
         closeRequested = false
@@ -483,6 +548,7 @@ class KeyboardProxyActivity : Activity() {
         editText.removeCallbacks(classifyImeHidden)
         editText.removeCallbacks(finishAfterHideTimeout)
         editText.removeCallbacks(protectImeDuringPrimaryMouse)
+        editText.applyInputMode()
         editText.isFocusable = true
         editText.isFocusableInTouchMode = true
         editText.requestFocus()
@@ -580,7 +646,7 @@ class KeyboardProxyActivity : Activity() {
         ViewCompat.requestApplyInsets(view)
     }
 
-    fun parkForReuse(reason: String) {
+    fun parkForReuse(reason: String, reassertTask: Boolean = true) {
         finishReason = reason
         active = false
         closeRequested = false
@@ -603,7 +669,7 @@ class KeyboardProxyActivity : Activity() {
         editText.clearFocus()
         editText.isFocusable = false
         rootView.requestFocus()
-        if (lostWindowFocus) {
+        if (lostWindowFocus && reassertTask) {
             // Some IMEs return to the launcher while their hide animation is completing.
             // Reassert the already-existing task during that same user gesture, then make
             // the transparent window non-interactive after ActivityTaskManager has had a
@@ -764,14 +830,38 @@ class KeyboardProxyActivity : Activity() {
 
     override fun onStop() {
         super.onStop()
-        if (!closeRequested && !releaseRequested && !isChangingConfigurations) {
+        if (active && !closeRequested && !releaseRequested && !isChangingConfigurations) {
+            if (!userLeavePending && KeyboardProxyManager.isOpening(this, requestId)) {
+                // HOME and the user's opposite-display toolbar tap can race. The tap may
+                // activate this parked host just before Android delivers the previous
+                // HOME onStop callback. Keep the opening request alive so requestIme can
+                // retry moveTaskToFront after the ROM's app-switch cooldown expires.
+                Log.i(
+                    TAG,
+                    "Ignore stale host stop while restoring task=$taskId request=$requestId"
+                )
+                return
+            }
             val reason = if (userLeavePending) "home_pressed" else "keyboard_host_stopped"
-            Log.i(TAG, "Keyboard host stopped: discard reason=$reason task=$taskId request=$requestId")
+            Log.i(TAG, "Keyboard host stopped: park reason=$reason task=$taskId request=$requestId")
             finishReason = reason
             active = false
-            releaseRequested = true
             KeyboardProxyManager.onHostStopped(this, requestId, reason)
-            if (!isFinishing) finishAndRemoveTask()
+            parkForReuse(reason, reassertTask = false)
+        }
+    }
+
+    private fun EditText.applyInputMode() {
+        if (inputMode == "numeric_id") {
+            inputType = EditorInfo.TYPE_CLASS_NUMBER
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        } else {
+            inputType = EditorInfo.TYPE_CLASS_TEXT or EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE
+            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        }
+        if (::editText.isInitialized) {
+            val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            inputMethodManager.restartInput(this)
         }
     }
 

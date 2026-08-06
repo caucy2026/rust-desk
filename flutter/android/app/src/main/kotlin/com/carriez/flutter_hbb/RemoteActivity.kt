@@ -209,12 +209,22 @@ class RemoteActivity : FlutterActivity() {
                 "get_app_resource_usage" -> {
                     result.success(AndroidResourceMonitor.snapshot(this@RemoteActivity))
                 }
+                "is_dual_screen_pad" -> {
+                    result.success(DeviceRole.isDualScreenPad(this@RemoteActivity))
+                }
+                "check_cross_display_restore_permission" -> {
+                    result.success(canRestoreCrossDisplayTools(this@RemoteActivity))
+                }
+                "request_cross_display_restore_permission" -> {
+                    requestCrossDisplayRestorePermission(this@RemoteActivity, result)
+                }
                 "keyboard_proxy_open" -> {
                     result.success(
                         KeyboardProxyManager.open(
                             this@RemoteActivity,
                             mChannel,
-                            call.argument<String>("sessionId").orEmpty()
+                            call.argument<String>("sessionId").orEmpty(),
+                            call.argument<String>("inputMode").orEmpty()
                         )
                     )
                 }

@@ -75,6 +75,9 @@ protobuf {
 
 android {
     compileSdkVersion 34
+    // Keep local and CI packaging on the same NDK used by ndk_arm64.sh.
+    // Without this pin AGP 7 falls back to r23 and may stop before Kotlin/AOT.
+    ndkVersion "28.2.13676358"
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
 

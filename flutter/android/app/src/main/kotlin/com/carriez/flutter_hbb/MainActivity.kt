@@ -447,6 +447,12 @@ class MainActivity : FlutterActivity() {
                 "get_app_resource_usage" -> {
                     result.success(AndroidResourceMonitor.snapshot(this@MainActivity))
                 }
+                "check_cross_display_restore_permission" -> {
+                    result.success(canRestoreCrossDisplayTools(this@MainActivity))
+                }
+                "request_cross_display_restore_permission" -> {
+                    requestCrossDisplayRestorePermission(this@MainActivity, result)
+                }
                 "get_available_storage_bytes" -> {
                     val path = (call.arguments as? Map<*, *>)?.get("path") as? String
                     result.success(path?.let(AndroidStorageSpace::availableBytes))
@@ -471,7 +477,8 @@ class MainActivity : FlutterActivity() {
                         KeyboardProxyManager.open(
                             this@MainActivity,
                             requireNotNull(flutterMethodChannel),
-                            call.argument<String>("sessionId").orEmpty()
+                            call.argument<String>("sessionId").orEmpty(),
+                            call.argument<String>("inputMode").orEmpty()
                         )
                     )
                 }

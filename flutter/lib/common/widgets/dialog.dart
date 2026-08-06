@@ -949,13 +949,23 @@ _connectDialog(
       bool remember,
       ValueChanged<bool?>? onChanged,
     ) {
-      return CheckboxListTile(
-        contentPadding: const EdgeInsets.all(0),
-        dense: true,
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(desc),
-        value: remember,
-        onChanged: onChanged,
+      return InkWell(
+        onTap: onChanged == null ? null : () => onChanged(!remember),
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: Checkbox(value: remember, onChanged: onChanged),
+              ),
+              const SizedBox(width: 4),
+              Expanded(child: Text(desc, maxLines: 2)),
+            ],
+          ),
+        ),
       );
     }
 

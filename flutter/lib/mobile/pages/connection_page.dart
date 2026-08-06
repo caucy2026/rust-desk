@@ -15,6 +15,7 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../consts.dart';
 import '../../models/model.dart';
+import '../../models/keyboard_proxy_model.dart';
 import '../../models/platform_model.dart';
 import 'home_page.dart';
 
@@ -47,6 +48,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
   final AllPeersLoader _allPeersLoader = AllPeersLoader();
 
   StreamSubscription? _uniLinksSubscription;
+  bool _useCrossDisplayIdKeyboard = false;
 
   // https://github.com/flutter/flutter/issues/157244
   Iterable<Peer> _autocompleteOpts = [];
@@ -75,6 +77,43 @@ class _ConnectionPageState extends State<ConnectionPage> {
       });
     }
     Get.put<TextEditingController>(_idEditingController);
+    if (isAndroid) {
+      unawaited(_loadCrossDisplayIdKeyboard());
+    }
+  }
+
+  Future<void> _loadCrossDisplayIdKeyboard() async {
+    final enabled = await gFFI.invokeMethod('is_dual_screen_pad', null) == true;
+    if (!mounted) return;
+    setState(() => _useCrossDisplayIdKeyboard = enabled);
+    if (enabled) {
+      await gFFI.invokeMethod('keyboard_proxy_prepare', {
+        'sessionId': kLocalIdKeyboardSession,
+      });
+    }
+  }
+
+  Future<void> _openCrossDisplayIdKeyboard() async {
+    if (!_useCrossDisplayIdKeyboard) return;
+    if (localIdKeyboardController.value.isVisible) return;
+    if (!await ensureCrossDisplayToolRestorePermission(context)) return;
+    if (!mounted) return;
+    if (!localIdKeyboardController.tryBeginOpen(kLocalIdKeyboardSession)) {
+      return;
+    }
+    try {
+      final result = await gFFI.invokeMethod('keyboard_proxy_open', {
+        'sessionId': kLocalIdKeyboardSession,
+        'inputMode': 'numeric_id',
+      });
+      if (result is! Map || result['accepted'] != true) {
+        localIdKeyboardController.reset();
+        showToast(translate('Failed to open keyboard'));
+      }
+    } catch (_) {
+      localIdKeyboardController.reset();
+      showToast(translate('Failed to open keyboard'));
+    }
   }
 
   @override
@@ -100,6 +139,11 @@ class _ConnectionPageState extends State<ConnectionPage> {
   /// Connects to the selected peer.
   void onConnect() {
     var id = _idController.id;
+    if (localIdKeyboardController.value.state != KeyboardProxyState.hidden) {
+      unawaited(gFFI.invokeMethod('keyboard_proxy_close', {
+        'requestId': localIdKeyboardController.value.requestId,
+      }));
+    }
     connect(context, id);
   }
 
@@ -225,8 +269,11 @@ class _ConnectionPageState extends State<ConnectionPage> {
                         minFontSize: 18,
                         autocorrect: false,
                         enableSuggestions: false,
-                        keyboardType: TextInputType.visiblePassword,
-                        // keyboardType: TextInputType.number,
+                        keyboardType: TextInputType.number,
+                        readOnly: _useCrossDisplayIdKeyboard,
+                        onTap: _useCrossDisplayIdKeyboard
+                            ? _openCrossDisplayIdKeyboard
+                            : null,
                         onChanged: (String text) {
                           _idController.id = text;
                         },
@@ -361,6 +408,12 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   @override
   void dispose() {
+    if (localIdKeyboardController.value.state != KeyboardProxyState.hidden) {
+      unawaited(gFFI.invokeMethod('keyboard_proxy_release', {
+        'sessionId': kLocalIdKeyboardSession,
+      }));
+      localIdKeyboardController.reset();
+    }
     _uniLinksSubscription?.cancel();
     _idController.dispose();
     _idFocusNode.removeListener(onFocusChanged);

@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 
 import '../../common.dart';
+import '../../common/formatter/id_formatter.dart';
 import '../../common/widgets/dialog.dart';
 import '../../consts.dart';
 import '../../models/keyboard_proxy_model.dart';
@@ -837,10 +838,66 @@ void androidChannelInit() {
           }
         case "keyboard_proxy_state":
           {
-            keyboardProxyController.handleState(
-              arguments,
-              currentSessionId: gFFI.sessionId.toString(),
-            );
+            if (arguments['inputMode'] == 'numeric_id') {
+              localIdKeyboardController.handleState(
+                arguments,
+                currentSessionId: kLocalIdKeyboardSession,
+              );
+            } else {
+              keyboardProxyController.handleState(
+                arguments,
+                currentSessionId: gFFI.sessionId.toString(),
+              );
+            }
+            break;
+          }
+        case "local_id_keyboard_commit_text":
+          {
+            if (localIdKeyboardController.acceptsInput(
+                arguments, kLocalIdKeyboardSession)) {
+              final incoming = (arguments['text'] as String? ?? '')
+                  .replaceAll(RegExp(r'[^0-9]'), '');
+              if (incoming.isNotEmpty &&
+                  Get.isRegistered<IDTextEditingController>() &&
+                  Get.isRegistered<TextEditingController>()) {
+                final idController = Get.find<IDTextEditingController>();
+                final editingController = Get.find<TextEditingController>();
+                idController.id = '${idController.id}$incoming';
+                editingController.value = TextEditingValue(
+                  text: idController.id,
+                  selection: TextSelection.collapsed(
+                    offset: idController.id.length,
+                  ),
+                );
+              }
+            }
+            break;
+          }
+        case "local_id_keyboard_key":
+          {
+            if (localIdKeyboardController.acceptsInput(
+                arguments, kLocalIdKeyboardSession)) {
+              final key = arguments['key'] as String? ?? '';
+              if (key == 'VK_BACK' &&
+                  Get.isRegistered<IDTextEditingController>() &&
+                  Get.isRegistered<TextEditingController>()) {
+                final idController = Get.find<IDTextEditingController>();
+                final editingController = Get.find<TextEditingController>();
+                final text = idController.id;
+                idController.id =
+                    text.isEmpty ? '' : text.substring(0, text.length - 1);
+                editingController.value = TextEditingValue(
+                  text: idController.id,
+                  selection: TextSelection.collapsed(
+                    offset: idController.id.length,
+                  ),
+                );
+              } else if (key == 'VK_RETURN') {
+                unawaited(gFFI.invokeMethod('keyboard_proxy_close', {
+                  'requestId': localIdKeyboardController.value.requestId,
+                }));
+              }
+            }
             break;
           }
         case "keyboard_proxy_commit_text":

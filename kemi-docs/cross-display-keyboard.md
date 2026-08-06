@@ -1201,3 +1201,53 @@ Display 2认证 → 条件不命中           → 提前创建Display 0代理 �
 旧键盘宿主在另一个屏幕按HOME后进入`onStop`，但`release()`先设为`closing`并等待已退后台IME的隐藏回调；回调可能永远不到，后续`open()`因此一直返回busy。现在停止的宿主由`onHostStopped()`同步清成`hidden`、解除Activity/Display/channel所有权并结束任务，不等待IME回调。预创建但尚未激活的宿主同样处理。
 
 文件传输的独立`singleInstance`任务过去在HOME后仍存活但不可见，下一次启动可能只命中隐藏实例。现在非配置变更导致的`onStop`会结束该辅助任务并由Flutter dispose关闭独立文件FFI；远控视频Session继续运行。验收必须覆盖：键盘HOME后连续重开、文件页HOME后连续重开、远控画面不断开、右键和首次密码输入不回归。
+
+## 24. 首页数字键盘与HOME后同宿主复用（2026-08-06，PAD 1.4.59+164）
+
+### 24.1 对第23节键盘结论的修正
+
+`1.4.57`把停止的键盘宿主清成`hidden`并调用`finishAndRemoveTask()`，解决了Manager长期busy，却引入了更底层的问题：厂商Android不保证允许Display 2前台Activity再次启动Display 0的`singleInstance` Activity。现场日志表现为新request进入`opening`，但没有`onActivityReady()`，8秒后固定`open_timeout`；断开重连也不能绕过系统跨屏后台启动限制。
+
+最终规则改为：
+
+```text
+HOME导致已激活KeyboardProxyActivity.onStop
+        ↓
+Manager同步发布hidden，但保留Activity/channel/owner
+        ↓
+宿主清焦点并设置NOT_FOCUSABLE + NOT_TOUCHABLE，停驻在原task
+        ↓
+用户再次点击键盘
+        ↓
+activate同一宿主、清除停驻flags、moveTaskToFront、重新请求IME
+```
+
+HOME路径不得`finish()`或`finishAndRemoveTask()`，也不得在HOME手势内马上`moveTaskToFront`，否则分别会造成无法重建或把用户刚打开的Launcher抢走。`onStop()`只处理`active=true`的宿主；尚未显示的预创建宿主保持停驻。远程页退出、App真正后台、Display移除和显式release仍完整销毁。
+
+现场进一步确认，这台Android 12 ROM在HOME后会暂时把全局`appSwitchAllowed`设为false。即使副屏KEMI仍是前台，`PendingIntent.send()`和`ActivityManager.moveTaskToFront()`也可能被静默拦截。双屏客户端因此必须在首次使用跨屏工具时检查`SYSTEM_ALERT_WINDOW`：未授权先显示中文用途说明，再由用户进入系统页授权；该权限只作为Android后台Activity启动例外，不创建悬浮窗。Native层缺少权限时必须返回`cross_display_permission_required`，不能让Flutter进入假`opening`。IME重试还要持续复核窗口焦点，并忽略“HOME回调晚于副屏点击”的旧`onStop`竞态。
+
+文件传输采用同一原则：`FileTransferActivity`在HOME后保留原task和独立FlutterEngine，下一次仅在peer与目标Display一致时更新连接参数并置前原task；显式关闭才销毁。这样不会把文件窗口留成不可见的`singleInstance`，也不会重复创建文件FFI会话。
+
+### 24.2 首页远程ID数字模式
+
+双屏首页在确认设备角色后调用`keyboard_proxy_prepare`，提前在另一屏创建非交互宿主，从而避开第一次点击时的跨屏后台启动拒绝。点击远程ID输入框时传入`inputMode=numeric_id`：
+
+- Android EditText使用`TYPE_CLASS_NUMBER`和`IME_ACTION_DONE`；
+- `commitText`和退格分别走`local_id_keyboard_commit_text/local_id_keyboard_key`；
+- Dart只接受当前本地ID伪session及匹配requestId的事件，过滤非数字并同步ID模型和实际输入框；
+- 不调用`sessionInputString`，因此首页数字不会发送到任何远端；
+- 单屏设备不创建跨屏宿主，直接使用本屏`TextInputType.number`。
+
+ConnectionPage销毁时按本地伪session执行release，认证和远程会话不会复用本地ID所有权；远程认证阶段仍严格遵守第22节，不提前创建会抢密码InputConnection的远程键盘宿主。
+
+### 24.3 真机证据
+
+`192.168.3.63:5555`只在Display 2启动`1.4.59+164`：首页预创建日志为`source=2 target=0`，宿主实际在Display 0。首次点击ID后系统`editorInfo inputType=2`，Manager进入`visible`。Display 0按HOME后依次记录：
+
+```text
+Keyboard host stopped: park reason=home_pressed task=508 request=2
+state=hidden reason=home_pressed
+Parked keyboard proxy for reuse
+```
+
+最终包先在未授权状态验证一次性流程：说明弹在Display 2，厂商权限列表也留在Display 2；选择“KEMI远程办公”后原点击自动继续，不要求再点键盘。随后键盘页HOME后0.4秒再次点击恢复同一`task=554`并到达`visible`；文件页HOME后同样恢复同一`task=555`。系统日志明确出现`allowed because SYSTEM_ALERT_WINDOW permission is granted`，没有`open_timeout`、重复Activity、FATAL或进程重启。以后验收至少覆盖首页ID、远程键盘和文件页三类调用方：停驻复用路径核对taskId保持不变，显式release后的重建路径核对Display保持正确，并分别覆盖“HOME后立即点击”和“正常关闭后重开”，不能只看Flutter按钮状态。

@@ -100,3 +100,5 @@ class KeyboardProxyController extends ValueNotifier<KeyboardProxySnapshot> {
 }
 
 final keyboardProxyController = KeyboardProxyController();
+const kLocalIdKeyboardSession = '__kemi_local_id__';
+final localIdKeyboardController = KeyboardProxyController();

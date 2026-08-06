@@ -2,6 +2,19 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 八十八、2026-08-06 1.4.59+164 首页数字键盘与HOME后宿主复用
+
+- 双屏PAD首页点击“远程 ID”后不再在当前屏请求普通文本键盘。首页确认设备为双屏后，先在另一屏预创建不可聚焦、不可触摸的键盘宿主；点击输入框时以`numeric_id`模式激活，Android上报`inputType=2`，数字只回填本机ID控制器，不会误发给远端会话。单屏设备继续在本屏使用普通数字键盘。
+- 修正`1.4.57`对HOME问题的不完整处理：删除`singleInstance`键盘任务虽然能清除busy状态，但厂商Android会拒绝随后从Display 2重建Display 0 Activity，于是新请求连续`open_timeout`。现在HOME只把现有宿主停驻为非交互状态，Manager同步回到`hidden`并保留Activity/channel/owner；下一次点击复用同一task。仅真正退出页面、进程后台、显示移除或显式release才销毁宿主。
+- `KeyboardProxyActivity.onStop()`只处理已激活宿主，预创建但尚未显示的宿主不会再被误删除；HOME路径不调用`finishAndRemoveTask()`，也不会在HOME手势内把透明任务重新抢到前台。
+- 实机进一步确认HOME会把Android 12厂商ROM的全局`appSwitchAllowed`短暂置为false；此时`startActivity`、`PendingIntent`和`moveTaskToFront`都会被静默拦截。双屏设备现在一次性检查`SYSTEM_ALERT_WINDOW`，未授权时显示中文用途说明并引导用户授权；该权限只作为跨屏键盘/文件任务恢复的后台启动例外，不创建悬浮图标。Native层在缺少权限时返回`cross_display_permission_required`，避免Flutter误报打开中；IME与文件任务仍保留有限重试处理生命周期竞态。
+- 文件传输`singleInstance`宿主也改为HOME后停驻，下一次点击复用同一peer、同一Display和同一task；只更新连接参数并把原任务置前，不重复创建FlutterEngine或独立FFI会话。显式关闭文件页仍完整释放资源。
+- 密码对话框仍保持“记住密码”位于密码框下方，但把原48px以上的`CheckboxListTile`改为36px紧凑整行可点区域，减少自动聚焦密码框后复选项被滚出默认视口的概率；语义和默认值不变。
+- 远控底栏“文件”图标单独从默认24px缩小为18px，按钮宽度、文字、排序和点击区域均不变。
+- Android Gradle显式锁定NDK `28.2.13676358`，与`ndk_arm64.sh`和CI一致。现场确认全局Flutter 3.41会污染`.dart_tool`并与Gradle 7.6.4不兼容；本次最终构建固定使用项目隔离Flutter 3.24.5，重新生成依赖索引后再以`--no-pub`打包，未提交离线解析造成的锁文件降级。
+- 真机`192.168.3.63:5555`覆盖安装并只在Display 2冷启动，系统回读`1.4.59+164`。未授权状态首次点击会在副屏显示中文说明，进入厂商权限列表选择“KEMI远程办公”后，原点击自动继续并在主屏显示键盘。最终包中主屏HOME后0.4秒从副屏点击键盘，原`task=554`在约0.20秒内恢复为`visible`；文件页HOME后同样零等待点击，原`task=555`一次置前成功。两条路径均无`open_timeout`、重复Activity或FATAL。
+- 固定签名arm64 APK为24,578,154字节，SHA-256为`0a8b787e776565be64159c01ddf0d82cb4692bf9dc1fb35a854a88cdb86e79c6`；包名`com.newlinksz.kemi.remote`，显示名`KEMI远程办公`，`minSdk=22`，v1/v2签名有效，证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。真机`base.apk`哈希与交付APK完全一致。
+
 ## 八十七、2026-08-06 1.4.58+163 Android启动崩溃修复与原生符号门禁
 
 - PAD `1.4.57+162`真机启动100%崩溃，Java栈为`UnsatisfiedLinkError: cannot locate symbol sodium_base64_encoded_len`，发生在`MainApplication.onCreate()`加载`librustdesk.so`时，早于Flutter页面和本轮分享/HOME功能执行。

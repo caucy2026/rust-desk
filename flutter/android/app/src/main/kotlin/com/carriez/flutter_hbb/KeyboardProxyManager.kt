@@ -35,6 +35,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     private var displayManager: DisplayManager? = null
     private var preparingRequestId = 0L
     private var lastSourcePointerEventAtMs = 0L
+    private var inputMode = "remote"
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
@@ -53,7 +54,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         if (state == "opening") {
             val source = ownerActivity.get()
             if (source != null && !source.isFinishing && !source.isDestroyed) {
-                launchIfCurrent(source, requestId, sessionId, targetDisplayId)
+                launchIfCurrent(source, requestId, sessionId, targetDisplayId, inputMode)
             } else {
                 finishHidden("prepare_source_lost", false)
             }
@@ -116,7 +117,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         manager.registerDisplayListener(this, mainHandler)
         Log.i(TAG, "Preparing keyboard proxy source=$sourceId target=$targetId request=$prepareId")
         try {
-            KeyboardProxyActivity.launch(source, prepareId, "", targetId)
+            KeyboardProxyActivity.launch(source, prepareId, "", targetId, "remote")
             mainHandler.removeCallbacks(prepareTimeout)
             mainHandler.postDelayed(prepareTimeout, PREPARE_TIMEOUT_MS)
         } catch (error: Exception) {
@@ -130,7 +131,12 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    fun open(source: Activity, methodChannel: MethodChannel, requestedSessionId: String): Map<String, Any> {
+    fun open(
+        source: Activity,
+        methodChannel: MethodChannel,
+        requestedSessionId: String,
+        requestedInputMode: String = "remote"
+    ): Map<String, Any> {
         if (state != "hidden") {
             if (requestedSessionId.isNotEmpty() && ownerSessionId.isNotEmpty() &&
                 requestedSessionId != ownerSessionId
@@ -162,7 +168,16 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val sourceId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
         val targetId = findTargetDisplay(manager, sourceId)
+        if (sourceId != targetId && !canRestoreCrossDisplayTools(source)) {
+            Log.w(TAG, "Cross-display restore permission is required")
+            return mapOf(
+                "accepted" to false,
+                "requestId" to requestId,
+                "reason" to "cross_display_permission_required"
+            )
+        }
         val newRequestId = requestIds.incrementAndGet()
+        val normalizedInputMode = if (requestedInputMode == "numeric_id") "numeric_id" else "remote"
 
         requestId = newRequestId
         sessionId = requestedSessionId
@@ -171,6 +186,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         channel = methodChannel
         ownerActivity = WeakReference(source)
         ownerSessionId = requestedSessionId
+        inputMode = normalizedInputMode
         state = "opening"
         lastSourcePointerEventAtMs = 0L
         displayManager = manager
@@ -183,7 +199,16 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         if (existing != null && !existing.isFinishing && !existing.isDestroyed &&
             existing.display?.displayId == targetId
         ) {
-            existing.activate(newRequestId, requestedSessionId)
+            // HOME leaves the reusable host behind the launcher on the target display.
+            // Starting it again (including through a PendingIntent) is rejected by this
+            // dual-screen Android 12 build as a background cross-display launch. Restore
+            // the already-owned task directly; this call is made from the user's explicit
+            // keyboard tap while the source Activity is foreground on the other display.
+            Log.i(
+                TAG,
+                "Reuse parked keyboard task=${existing.taskId} target=$targetId request=$newRequestId"
+            )
+            existing.activate(newRequestId, requestedSessionId, normalizedInputMode)
         } else {
             if (preparingRequestId != 0L) {
                 // Keep the preparation request valid while promoting the explicit open.
@@ -194,7 +219,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
                     "Promote unfinished preparation=$preparingRequestId with open request=$newRequestId"
                 )
             }
-            launchIfCurrent(source, newRequestId, requestedSessionId, targetId)
+            launchIfCurrent(source, newRequestId, requestedSessionId, targetId, normalizedInputMode)
         }
         return mapOf("accepted" to true, "requestId" to newRequestId)
     }
@@ -229,7 +254,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             mainHandler.removeCallbacks(prepareTimeout)
         }
         if (state == "opening") {
-            mainHandler.post { activity.activate(requestId, sessionId) }
+            mainHandler.post { activity.activate(requestId, sessionId, inputMode) }
         }
         return true
     }
@@ -295,7 +320,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             "commit_text request=$activityRequestId session=$activitySessionId len=${text.length}"
         )
         channel?.invokeMethod(
-            "keyboard_proxy_commit_text",
+            if (inputMode == "numeric_id") "local_id_keyboard_commit_text" else "keyboard_proxy_commit_text",
             mapOf("requestId" to requestId, "sessionId" to sessionId, "text" to text)
         )
     }
@@ -312,7 +337,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     ) {
         if (activityRequestId != requestId || activitySessionId != sessionId || state != "visible") return
         channel?.invokeMethod(
-            "keyboard_proxy_key",
+            if (inputMode == "numeric_id") "local_id_keyboard_key" else "keyboard_proxy_key",
             mapOf(
                 "requestId" to requestId,
                 "sessionId" to sessionId,
@@ -344,10 +369,13 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     ) {
         if (proxyActivity.get() !== activity) return
         if (activityRequestId != requestId && activityRequestId != preparingRequestId) return
-        Log.i(TAG, "Discard stopped keyboard host request=$activityRequestId reason=$reason")
-        proxyActivity.clear()
-        finishHidden(reason, false)
+        Log.i(TAG, "Park stopped keyboard host request=$activityRequestId reason=$reason")
+        finishHidden(reason, true)
     }
+
+    @Synchronized
+    fun isOpening(activity: KeyboardProxyActivity, activityRequestId: Long): Boolean =
+        proxyActivity.get() === activity && requestId == activityRequestId && state == "opening"
 
     @Synchronized
     fun release(
@@ -422,10 +450,22 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     }
 
     @Synchronized
-    private fun launchIfCurrent(source: Activity, launchRequestId: Long, launchSessionId: String, launchDisplayId: Int) {
+    private fun launchIfCurrent(
+        source: Activity,
+        launchRequestId: Long,
+        launchSessionId: String,
+        launchDisplayId: Int,
+        launchInputMode: String
+    ) {
         if (launchRequestId != requestId || state != "opening") return
         try {
-            KeyboardProxyActivity.launch(source, launchRequestId, launchSessionId, launchDisplayId)
+            KeyboardProxyActivity.launch(
+                source,
+                launchRequestId,
+                launchSessionId,
+                launchDisplayId,
+                launchInputMode
+            )
         } catch (error: Exception) {
             Log.e(TAG, "Failed to launch keyboard proxy", error)
             finishHidden("launch_failed", false)
@@ -439,6 +479,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             "sourceDisplayId" to sourceDisplayId,
             "targetDisplayId" to targetDisplayId,
             "sessionId" to if (sessionId.isNotEmpty()) sessionId else ownerSessionId,
+            "inputMode" to inputMode,
             "reason" to reason
         )
         Log.i(TAG, "state=$state reason=$reason source=$sourceDisplayId target=$targetDisplayId request=$requestId")

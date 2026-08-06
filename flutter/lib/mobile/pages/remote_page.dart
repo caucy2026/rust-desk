@@ -518,6 +518,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (_handoffToFileTransfer) return;
     _handoffToFileTransfer = true;
     try {
+      if (isAndroid &&
+          !await ensureCrossDisplayToolRestorePermission(context)) {
+        return;
+      }
+      if (!mounted) return;
       if (isAndroid) {
         unawaited(gFFI.invokeMethod(
           "keyboard_proxy_release",
@@ -847,9 +852,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void _openKeyboardUnlocked() {
     inputModel.keyboardInputAllowed = true;
     if (isAndroid) {
-      final currentSessionId = sessionId.toString();
-      if (!keyboardProxyController.tryBeginOpen(currentSessionId)) return;
-      unawaited(_requestKeyboardProxyOpen(currentSessionId));
+      unawaited(_openAndroidKeyboardWithPermission());
       return;
     }
 
@@ -867,6 +870,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         _mobileFocusNode.requestFocus();
       });
     });
+  }
+
+  Future<void> _openAndroidKeyboardWithPermission() async {
+    if (!await ensureCrossDisplayToolRestorePermission(context)) return;
+    if (!mounted) return;
+    final currentSessionId = sessionId.toString();
+    if (!keyboardProxyController.tryBeginOpen(currentSessionId)) return;
+    await _requestKeyboardProxyOpen(currentSessionId);
   }
 
   Future<void> _requestKeyboardProxyOpen(
@@ -1232,7 +1243,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     if (isAndroid)
                       _bottomActionButton(
                         label: '文件',
-                        icon: const Icon(Icons.folder_copy_outlined),
+                        icon: const Icon(Icons.folder_copy_outlined, size: 18),
                         onPressed: () =>
                             unawaited(_openFileTransferFromToolbar()),
                       ),

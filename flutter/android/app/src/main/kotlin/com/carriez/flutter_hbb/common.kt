@@ -86,6 +86,26 @@ fun requestPermission(context: Context, type: String, channel: MethodChannel?) {
         }
 }
 
+fun canRestoreCrossDisplayTools(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+
+fun requestCrossDisplayRestorePermission(
+    context: Context,
+    result: MethodChannel.Result
+) {
+    if (canRestoreCrossDisplayTools(context)) {
+        result.success(true)
+        return
+    }
+    XXPermissions.with(context)
+        .permission(SYSTEM_ALERT_WINDOW)
+        .request { _, all ->
+            Handler(Looper.getMainLooper()).post {
+                result.success(all && canRestoreCrossDisplayTools(context))
+            }
+        }
+}
+
 fun startAction(context: Context, action: String) {
     try {
         context.startActivity(Intent(action).apply {

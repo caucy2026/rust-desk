@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -1532,6 +1531,57 @@ class AccessibilityListener extends StatelessWidget {
           }
         },
         child: child);
+  }
+}
+
+Future<bool> ensureCrossDisplayToolRestorePermission(
+    BuildContext context) async {
+  if (!isAndroid) return true;
+  try {
+    final dualScreen =
+        await gFFI.invokeMethod('is_dual_screen_pad', null) == true;
+    if (!dualScreen) return true;
+    final granted = await gFFI.invokeMethod(
+            'check_cross_display_restore_permission', null) ==
+        true;
+    if (granted) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('允许跨屏工具恢复'),
+        content: const Text(
+          '为了在主屏按 HOME 后，仍能从副屏重新打开键盘和文件传输，'
+          '请允许 KEMI远程办公“显示在其他应用上层”。此权限仅用于恢复跨屏工具，'
+          '不会重新启用悬浮图标。进入系统页面后，请点“KEMI远程办公”完成允许。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('暂不允许'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去授权'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return false;
+
+    final allowed = await gFFI
+            .invokeMethod('request_cross_display_restore_permission', null)
+            .timeout(const Duration(seconds: 120)) ==
+        true;
+    if (!allowed) {
+      showToast('未获得跨屏工具恢复权限，主屏 HOME 后可能无法重新打开');
+    }
+    return allowed;
+  } catch (error) {
+    debugPrint('Cross-display restore permission failed: $error');
+    showToast('跨屏工具权限检查失败，请稍后重试');
+    return false;
   }
 }
 
