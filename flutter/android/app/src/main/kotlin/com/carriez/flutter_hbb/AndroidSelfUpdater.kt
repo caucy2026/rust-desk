@@ -2,13 +2,19 @@ package com.carriez.flutter_hbb
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** Launches Android's trusted package installer for a verified cached update. */
 object AndroidSelfUpdater {
@@ -16,6 +22,7 @@ object AndroidSelfUpdater {
         activity: Activity,
         packageSync: ClientPackageSync,
         openPermissionSettings: Boolean,
+        backupCurrentApk: Boolean,
     ): Map<String, Any> {
         val update = packageSync.resolveAndroidUpdate()
             ?: return mapOf(
@@ -40,12 +47,28 @@ object AndroidSelfUpdater {
             )
         }
 
-        return launchApkFile(
+        val backup = if (backupCurrentApk) backupInstalledApk(activity) else null
+        if (backup != null && !backup.ok) {
+            return mapOf(
+                "status" to "backup_failed",
+                "message" to backup.message,
+            )
+        }
+
+        val launchResult = launchApkFile(
             activity = activity,
             file = update.file,
             openPermissionSettings = openPermissionSettings,
             version = update.target.version,
         )
+        return if (backup != null && launchResult["status"] == "launched") {
+            launchResult + mapOf(
+                "backupFileName" to backup.fileName,
+                "message" to "当前版本已备份到下载目录，已打开Android系统安装确认界面",
+            )
+        } else {
+            launchResult
+        }
     }
 
     /** Installs an APK explicitly selected from the PAD-side file list. */
@@ -160,4 +183,77 @@ object AndroidSelfUpdater {
 
     private fun error(message: String): Map<String, Any> =
         mapOf("status" to "error", "message" to message)
+
+    private data class BackupResult(
+        val ok: Boolean,
+        val fileName: String = "",
+        val message: String = "",
+    )
+
+    private fun backupInstalledApk(activity: Activity): BackupResult {
+        val source = File(activity.applicationInfo.sourceDir)
+        if (!source.isFile || !source.canRead()) {
+            return BackupResult(false, message = "当前安装包不可读取，未开始升级")
+        }
+        if (!activity.applicationInfo.splitSourceDirs.isNullOrEmpty()) {
+            return BackupResult(false, message = "当前版本是拆分安装包，无法备份为单个APK，未开始升级")
+        }
+
+        val packageInfo = activity.packageManager.getPackageInfo(activity.packageName, 0)
+        val versionName = packageInfo.versionName?.ifBlank { "unknown" } ?: "unknown"
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val fileName = "KEMI远程办公-$versionName+$versionCode-备份-$timestamp.apk"
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                backupWithMediaStore(activity, source, fileName)
+            } else {
+                backupToLegacyDownloads(source, fileName)
+            }
+            BackupResult(true, fileName = fileName)
+        } catch (error: Exception) {
+            BackupResult(
+                false,
+                message = "备份当前版本失败：${error.message ?: "无法写入下载目录"}；未开始升级",
+            )
+        }
+    }
+
+    private fun backupWithMediaStore(activity: Activity, source: File, fileName: String) {
+        val resolver = activity.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("无法创建备份文件")
+        try {
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                source.inputStream().use { input -> input.copyTo(output) }
+            } ?: throw IllegalStateException("无法写入备份文件")
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun backupToLegacyDownloads(source: File, fileName: String) {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!downloads.exists() && !downloads.mkdirs()) {
+            throw IllegalStateException("无法创建下载目录")
+        }
+        source.copyTo(File(downloads, fileName), overwrite = false)
+    }
 }

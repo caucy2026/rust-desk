@@ -33,6 +33,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
   var _starting = true;
   var _refreshWifiNameOnResume = false;
   var _resumeAndroidUpdate = false;
+  var _resumeAndroidUpdateBackupCurrentApk = false;
   var _selectedBackupPackageId = 'windows';
   Timer? _statusTimer;
   Timer? _cloudRefreshTimer;
@@ -64,7 +65,10 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
       unawaited(
         Future<void>.delayed(
           const Duration(milliseconds: 350),
-          () => _installDownloadedAndroidUpdate(openPermissionSettings: false),
+          () => _installDownloadedAndroidUpdate(
+            openPermissionSettings: false,
+            backupCurrentApk: _resumeAndroidUpdateBackupCurrentApk,
+          ),
         ),
       );
     }
@@ -147,15 +151,48 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         return;
       }
     }
-    await _installDownloadedAndroidUpdate(openPermissionSettings: true);
+    if (!mounted) return;
+    final backupCurrentApk = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('升级前备份当前版本？'),
+          content: const Text(
+            '是否把当前安装的 KEMI远程办公 APK 备份到“下载”目录？\n\n'
+            '选择“是”会先备份再升级；选择“否”会直接升级。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('否，直接升级'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('是，先备份'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || backupCurrentApk == null) return;
+    await _installDownloadedAndroidUpdate(
+      openPermissionSettings: true,
+      backupCurrentApk: backupCurrentApk,
+    );
   }
 
   Future<void> _installDownloadedAndroidUpdate({
     required bool openPermissionSettings,
+    required bool backupCurrentApk,
   }) async {
     final result = await gFFI.invokeMethod(
       'client_distribution_install_android_update',
-      {'openPermissionSettings': openPermissionSettings},
+      {
+        'openPermissionSettings': openPermissionSettings,
+        'backupCurrentApk': backupCurrentApk,
+      },
     );
     if (!mounted) return;
     final status = result is Map ? result['status']?.toString() ?? '' : '';
@@ -163,6 +200,7 @@ class _ClientDownloadPageState extends State<ClientDownloadPage>
         result is Map ? result['message']?.toString() ?? '无法启动升级' : '无法启动升级';
     if (status == 'permission_required' && openPermissionSettings) {
       _resumeAndroidUpdate = true;
+      _resumeAndroidUpdateBackupCurrentApk = backupCurrentApk;
     }
     if (status != 'launched') {
       ScaffoldMessenger.of(context).showSnackBar(

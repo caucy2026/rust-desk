@@ -322,11 +322,14 @@ class MainActivity : FlutterActivity() {
                 "client_distribution_install_android_update" -> {
                     val openSettings =
                         (call.arguments as? Map<*, *>)?.get("openPermissionSettings") == true
+                    val backupCurrentApk =
+                        (call.arguments as? Map<*, *>)?.get("backupCurrentApk") == true
                     result.success(
                         AndroidSelfUpdater.launch(
                             this@MainActivity,
                             clientPackageSync,
                             openSettings,
+                            backupCurrentApk,
                         )
                     )
                 }
