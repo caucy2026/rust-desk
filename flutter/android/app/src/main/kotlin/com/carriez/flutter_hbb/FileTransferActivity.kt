@@ -12,13 +12,17 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.util.DisplayMetrics
 import android.view.Display
+import android.view.Gravity
+import android.view.WindowManager
 import com.hjq.permissions.XXPermissions
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.lang.ref.WeakReference
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Hosts the mobile file-transfer card on the display opposite the active
@@ -37,6 +41,56 @@ class FileTransferActivity : FlutterActivity() {
         private const val EXTRA_CONN_TOKEN = "conn_token"
         private const val LAUNCH_REQUEST_CODE = 0x4b46
         private var liveActivity = WeakReference<FileTransferActivity>(null)
+        private val stateChannels = CopyOnWriteArrayList<WeakReference<MethodChannel>>()
+
+        fun registerStateChannel(channel: MethodChannel) {
+            stateChannels.removeAll { it.get() == null || it.get() === channel }
+            stateChannels.add(WeakReference(channel))
+            channel.invokeMethod("file_transfer_window_state", currentState())
+        }
+
+        fun unregisterStateChannel(channel: MethodChannel?) {
+            if (channel == null) return
+            stateChannels.removeAll { it.get() == null || it.get() === channel }
+        }
+
+        fun currentState(): Map<String, Any> {
+            val activity = liveActivity.get()
+            return if (activity == null || activity.isFinishing || activity.isDestroyed) {
+                mapOf("state" to "closed", "open" to false, "peerId" to "")
+            } else {
+                mapOf(
+                    "state" to if (activity.parked) "hidden" else "open",
+                    "open" to !activity.parked,
+                    "peerId" to activity.peerId,
+                    "displayId" to (activity.display?.displayId ?: Display.DEFAULT_DISPLAY)
+                )
+            }
+        }
+
+        private fun publishState(
+            state: String,
+            open: Boolean,
+            peerId: String,
+            displayId: Int,
+            reason: String
+        ) {
+            val payload = mapOf(
+                "state" to state,
+                "open" to open,
+                "peerId" to peerId,
+                "displayId" to displayId,
+                "reason" to reason
+            )
+            stateChannels.removeAll { it.get() == null }
+            stateChannels.forEach { reference ->
+                try {
+                    reference.get()?.invokeMethod("file_transfer_window_state", payload)
+                } catch (error: Exception) {
+                    Log.w(TAG, "Unable to publish file-transfer state", error)
+                }
+            }
+        }
 
         fun launchOnOppositeDisplay(
             source: Activity,
@@ -44,7 +98,8 @@ class FileTransferActivity : FlutterActivity() {
             password: String?,
             isSharedPassword: Boolean?,
             forceRelay: Boolean,
-            connToken: String?
+            connToken: String?,
+            toggle: Boolean = false
         ): Map<String, Any> {
             val displayManager =
                 source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -83,6 +138,17 @@ class FileTransferActivity : FlutterActivity() {
 
             return try {
                 if (reusing && existing != null) {
+                    if (toggle && existing.isInteractive()) {
+                        existing.requestCloseFromRemote()
+                        return mapOf(
+                            "accepted" to true,
+                            "open" to false,
+                            "state" to "closing",
+                            "reused" to true,
+                            "sourceDisplayId" to sourceDisplayId,
+                            "targetDisplayId" to targetDisplayId
+                        )
+                    }
                     existing.reactivate(
                         password,
                         isSharedPassword,
@@ -96,6 +162,8 @@ class FileTransferActivity : FlutterActivity() {
                     )
                     return mapOf(
                         "accepted" to true,
+                        "open" to true,
+                        "state" to "opening",
                         "reused" to true,
                         "sourceDisplayId" to sourceDisplayId,
                         "targetDisplayId" to targetDisplayId
@@ -137,6 +205,8 @@ class FileTransferActivity : FlutterActivity() {
                 )
                 mapOf(
                     "accepted" to true,
+                    "open" to true,
+                    "state" to "opening",
                     "reused" to reusing,
                     "sourceDisplayId" to sourceDisplayId,
                     "targetDisplayId" to targetDisplayId
@@ -160,6 +230,14 @@ class FileTransferActivity : FlutterActivity() {
     private var connToken: String? = null
     private var fileTransferChannel: MethodChannel? = null
     private var platformChannel: MethodChannel? = null
+    private var parked = false
+    private val forceCloseHandler = Handler(Looper.getMainLooper())
+    private val forceClose = Runnable {
+        if (!isFinishing && !isDestroyed) {
+            Log.w(TAG, "Force close file-transfer host after graceful-close timeout")
+            finishAndRemoveTask()
+        }
+    }
     private val taskRestoreHandler = Handler(Looper.getMainLooper())
     private var taskRestoreDeadlineMs = 0L
     private var taskRestoreAttempt = 0
@@ -206,6 +284,8 @@ class FileTransferActivity : FlutterActivity() {
         connToken = intent.getStringExtra(EXTRA_CONN_TOKEN)
         super.onCreate(savedInstanceState)
 
+        configureFloatingWindow()
+
         val actualDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
         if (actualDisplayId != expectedDisplayId || peerId.isEmpty()) {
             Log.e(
@@ -218,6 +298,8 @@ class FileTransferActivity : FlutterActivity() {
         }
         Log.i(TAG, "File transfer Activity ready display=$actualDisplayId peer=$peerId")
         liveActivity = WeakReference(this)
+        parked = false
+        publishState("open", true, peerId, actualDisplayId, "activity_ready")
     }
 
     override fun onNewIntent(newIntent: Intent) {
@@ -258,6 +340,14 @@ class FileTransferActivity : FlutterActivity() {
         isSharedPassword = newIsSharedPassword
         forceRelay = newForceRelay
         connToken = newConnToken
+        parked = false
+        publishState(
+            "opening",
+            true,
+            peerId,
+            display?.displayId ?: expectedDisplayId,
+            "reactivate"
+        )
         taskRestoreHandler.removeCallbacks(restoreParkedTask)
         taskRestoreAttempt = 0
         taskRestoreDeadlineMs = SystemClock.elapsedRealtime() + 7_000L
@@ -267,6 +357,14 @@ class FileTransferActivity : FlutterActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
+            parked = false
+            publishState(
+                "open",
+                true,
+                peerId,
+                display?.displayId ?: expectedDisplayId,
+                "window_focus"
+            )
             taskRestoreHandler.removeCallbacks(restoreParkedTask)
             if (taskRestoreAttempt > 0) {
                 Log.i(
@@ -297,6 +395,13 @@ class FileTransferActivity : FlutterActivity() {
                         )
                     )
                     "finish_activity" -> {
+                        publishState(
+                            "closing",
+                            false,
+                            peerId,
+                            display?.displayId ?: expectedDisplayId,
+                            "close_button"
+                        )
                         finish()
                         result.success(true)
                     }
@@ -375,16 +480,68 @@ class FileTransferActivity : FlutterActivity() {
             // is rejected as a background cross-display start. The next explicit tap
             // restores this existing task through REORDER_TASKS instead.
             Log.i(TAG, "File transfer host stopped; keep parked task=$taskId peer=$peerId")
+            parked = true
+            publishState(
+                "hidden",
+                false,
+                peerId,
+                display?.displayId ?: expectedDisplayId,
+                "host_stopped"
+            )
         }
     }
 
     override fun onDestroy() {
         taskRestoreHandler.removeCallbacks(restoreParkedTask)
+        forceCloseHandler.removeCallbacks(forceClose)
+        publishState(
+            "closed",
+            false,
+            peerId,
+            display?.displayId ?: expectedDisplayId,
+            "activity_destroyed"
+        )
         if (liveActivity.get() === this) liveActivity.clear()
         fileTransferChannel?.setMethodCallHandler(null)
         platformChannel?.setMethodCallHandler(null)
         fileTransferChannel = null
         platformChannel = null
         super.onDestroy()
+    }
+
+    private fun isInteractive(): Boolean = !parked
+
+    private fun requestCloseFromRemote() {
+        publishState(
+            "closing",
+            false,
+            peerId,
+            display?.displayId ?: expectedDisplayId,
+            "toolbar_toggle"
+        )
+        try {
+            fileTransferChannel?.invokeMethod("request_close", null)
+            forceCloseHandler.removeCallbacks(forceClose)
+            forceCloseHandler.postDelayed(forceClose, 4_000L)
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to request graceful file-transfer close", error)
+            finishAndRemoveTask()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun configureFloatingWindow() {
+        val metrics = DisplayMetrics()
+        display?.getRealMetrics(metrics)
+        val fullWidth = metrics.widthPixels.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val fullHeight = metrics.heightPixels.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+        window.setGravity(Gravity.CENTER)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+        window.setLayout(
+            (fullWidth * 0.90f).toInt(),
+            (fullHeight * 0.78f).toInt()
+        )
+        Log.i(TAG, "Floating transfer window=${(fullWidth * 0.90f).toInt()}x${(fullHeight * 0.78f).toInt()} display=${display?.displayId}")
     }
 }

@@ -85,6 +85,7 @@ class MainActivity : FlutterActivity() {
             channelTag
         )
         initFlutterChannel(flutterMethodChannel!!)
+        FileTransferActivity.registerStateChannel(flutterMethodChannel!!)
         thread {
             try {
                 setCodecInfo()
@@ -174,6 +175,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.e(logTag, "onDestroy")
+        FileTransferActivity.unregisterStateChannel(flutterMethodChannel)
         physicalMouseRightButton.setActive(false)
         KeyboardProxyManager.release("activity_destroyed", source = this)
         clientDistributionServer.stop()
@@ -418,9 +420,27 @@ class MainActivity : FlutterActivity() {
                             args?.get("password") as? String,
                             args?.get("is_shared_password") as? Boolean,
                             args?.get("force_relay") as? Boolean ?: false,
-                            args?.get("conn_token") as? String
+                            args?.get("conn_token") as? String,
+                            toggle = false
                         )
                     )
+                }
+                "toggle_file_transfer_on_opposite_display" -> {
+                    val args = call.arguments as? Map<*, *>
+                    result.success(
+                        FileTransferActivity.launchOnOppositeDisplay(
+                            this@MainActivity,
+                            args?.get("peer_id") as? String ?: "",
+                            args?.get("password") as? String,
+                            args?.get("is_shared_password") as? Boolean,
+                            args?.get("force_relay") as? Boolean ?: false,
+                            args?.get("conn_token") as? String,
+                            toggle = true
+                        )
+                    )
+                }
+                "get_file_transfer_window_state" -> {
+                    result.success(FileTransferActivity.currentState())
                 }
                 // ===== 双屏: 主屏键盘输入转发到远程 =====
                 "send_key_string" -> {

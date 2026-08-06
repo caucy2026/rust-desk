@@ -132,7 +132,7 @@
             android:exported="false"
             android:hardwareAccelerated="true"
             android:launchMode="singleInstance"
-            android:theme="@style/KeyboardProxyTheme"
+            android:theme="@style/FileTransferWindowTheme"
             android:windowSoftInputMode="adjustResize" />
 
         <service

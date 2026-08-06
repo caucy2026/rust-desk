@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_breadcrumb/flutter_breadcrumb.dart';
 import 'package:flutter_hbb/models/file_model.dart';
@@ -25,7 +26,9 @@ class FileManagerPage extends StatefulWidget {
       this.connToken,
       this.returnToRemoteOnClose = false,
       this.isOverlay = false,
-      this.onOverlayClose})
+      this.onOverlayClose,
+      this.fillOverlayWindow = false,
+      this.externalCloseRequest})
       : super(key: key);
   final String id;
   final String? password;
@@ -38,6 +41,8 @@ class FileManagerPage extends StatefulWidget {
   /// Used when shown as an overlay on top of the remote desktop.
   final bool isOverlay;
   final Future<void> Function()? onOverlayClose;
+  final bool fillOverlayWindow;
+  final ValueListenable<int>? externalCloseRequest;
 
   @override
   State<StatefulWidget> createState() => _FileManagerPageState();
@@ -114,6 +119,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       receivedLocalFiles: _receivedLocalFiles,
     )..load();
     model.jobController.onTransferJobChanged = _historyStore.updateFromJob;
+    widget.externalCloseRequest?.addListener(_onExternalCloseRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       try {
@@ -142,6 +148,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   @override
   void dispose() {
+    widget.externalCloseRequest?.removeListener(_onExternalCloseRequest);
     model.jobController.onTransferJobChanged = null;
     if (_connectionClosed) {
       _ffi.dialogManager.dismissAll();
@@ -399,13 +406,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
         ));
 
     if (widget.isOverlay) {
+      final width = widget.fillOverlayWindow
+          ? double.infinity
+          : MediaQuery.of(context).size.width * (dualPane ? 0.90 : 0.60);
+      final height = widget.fillOverlayWindow
+          ? double.infinity
+          : MediaQuery.of(context).size.height * (dualPane ? 0.78 : 0.60);
       return SafeArea(
         child: Center(
           child: Container(
-            width: MediaQuery.of(context).size.width * (dualPane ? 0.90 : 0.60),
-            height:
-                MediaQuery.of(context).size.height * (dualPane ? 0.78 : 0.60),
-            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            width: width,
+            height: height,
+            margin: widget.fillOverlayWindow
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: Theme.of(context).scaffoldBackgroundColor,
               borderRadius: BorderRadius.circular(16),
@@ -613,6 +627,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
       debugPrint('[FileManagerPage] close cross-display window failed: $error');
       if (mounted) showToast(translate('Failed'));
     }
+  }
+
+  void _onExternalCloseRequest() {
+    if (!mounted || !widget.isOverlay) return;
+    unawaited(_closeCrossDisplayWindow());
   }
 
   Future<bool> _startRecordedTransfer(FileController source,

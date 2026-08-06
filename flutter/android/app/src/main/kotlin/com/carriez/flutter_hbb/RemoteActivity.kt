@@ -156,6 +156,7 @@ class RemoteActivity : FlutterActivity() {
         // ===== mChannel: 双屏键盘代理 (Flutter 调用 gFFI.invokeMethod 走此通道) =====
         val mChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mChannel")
         flutterMethodChannel = mChannel
+        FileTransferActivity.registerStateChannel(mChannel)
         mChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "check_permission" -> {
@@ -259,9 +260,27 @@ class RemoteActivity : FlutterActivity() {
                             args?.get("password") as? String,
                             args?.get("is_shared_password") as? Boolean,
                             args?.get("force_relay") as? Boolean ?: false,
-                            args?.get("conn_token") as? String
+                            args?.get("conn_token") as? String,
+                            toggle = false
                         )
                     )
+                }
+                "toggle_file_transfer_on_opposite_display" -> {
+                    val args = call.arguments as? Map<*, *>
+                    result.success(
+                        FileTransferActivity.launchOnOppositeDisplay(
+                            this@RemoteActivity,
+                            args?.get("peer_id") as? String ?: "",
+                            args?.get("password") as? String,
+                            args?.get("is_shared_password") as? Boolean,
+                            args?.get("force_relay") as? Boolean ?: false,
+                            args?.get("conn_token") as? String,
+                            toggle = true
+                        )
+                    )
+                }
+                "get_file_transfer_window_state" -> {
+                    result.success(FileTransferActivity.currentState())
                 }
                 else -> {
                     // 其他 mChannel 调用在 RemoteActivity 中无需处理
@@ -340,6 +359,7 @@ class RemoteActivity : FlutterActivity() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy")
         physicalMouseRightButton.setActive(false)
+        FileTransferActivity.unregisterStateChannel(flutterMethodChannel)
         flutterMethodChannel = null
         KeyboardProxyManager.release("activity_destroyed", source = this)
         SessionState.notifyConnectionState(false, null)

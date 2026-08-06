@@ -97,3 +97,41 @@ kemi-transfer-history-v1
 - 验收至少覆盖两个方向、真实目录浏览、一次真实文件传输、关闭后远控画面继续、单屏回退五项。Android `dumpsys activity activities` 中应看到两个屏幕各自承载独立 Activity，关闭后只移除 `FileTransferActivity`。
 
 `1.4.46+121`已在`192.168.3.46:5555`完成PAD → Mac真实传输和进程重启持久化验证；`1.4.46+122`进一步取消自动数量淘汰，并以PAD整机重启作为交付验收。详细证据记录在`CHANGELOG-KEMI.md`第六十四节。
+
+## 7. 文件按钮状态与非模态原生窗口（1.4.62+167）
+
+### 7.1 为什么视觉浮窗仍会挡住桌面
+
+旧实现的`FileManagerPage`只把Flutter卡片绘制为屏幕90%×78%，承载它的`FileTransferActivity`仍是1920×1280全屏透明窗口。透明像素并不等于不存在窗口，因此主屏桌面虽然可见，触摸仍先进入KEMI的全屏输入层。
+
+现在`FileTransferActivity`使用独立`FileTransferWindowTheme`，原生Window本身设为显示屏90%×78%、居中、透明、不变暗，并增加`FLAG_NOT_TOUCH_MODAL`。1920×1280真机上的实际窗口属性必须是：
+
+```text
+Requested w=1728 h=998
+mFrame=[96,93][1824,1091]
+flags include NOT_TOUCH_MODAL
+```
+
+专用Flutter入口把文件卡片填满这个小窗口，所以卡片外观和可用面积保持不变；窗口外区域由Android直接分发给桌面或其他应用。主屏操作其他应用后，文件Activity允许进入停驻`hidden`，不能抢回前台或继续遮挡输入。
+
+### 7.2 副屏按钮与主屏生命周期
+
+文件窗口状态只允许以下五种：
+
+```text
+closed → opening → open → closing → closed
+                    ↓
+                  hidden  （HOME或主屏切换到其他应用）
+```
+
+打开时副屏文件图标为绿色并带半透明绿色背景；`closed/hidden`为白色透明背景；过渡中显示进度环并禁用重复点击。Native主动向MainActivity或RemoteActivity对应的FlutterEngine发送`file_transfer_window_state`，RemotePage启动时再用`get_file_transfer_window_state`补查，不能用本地按钮猜测窗口是否存在。
+
+副屏第二次点击时，Native向文件窗口专用FlutterEngine发送`request_close`；`FileManagerPage`依次执行`model.close()`、独立`FFI.close()`，最后调用`finish_activity`。四秒Native超时只用于Flutter异常时兜底，正常日志必须出现`close_button`再出现`activity_destroyed`。主屏关闭图标走同一顺序，副屏状态自动恢复；不得直接`finishAndRemoveTask()`而跳过传输会话释放。
+
+### 7.3 最小回归
+
+1. 第一次点击副屏“文件”，确认按钮绿色带背景、主屏窗口尺寸正确。
+2. 点击窗口外主屏桌面，确认桌面能响应、文件按钮变回白色；再次点击可恢复或重开。
+3. 副屏连续点击两次，确认第二次关闭文件会话和Activity，但远控视频不断开。
+4. 再次打开后点击主屏关闭图标，确认副屏在不轮询的情况下恢复白色。
+5. 关闭后核对没有存活的`FileTransferActivity`和独立文件Session；远程键盘、鼠标左右键保持原行为。

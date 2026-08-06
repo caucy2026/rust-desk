@@ -2,13 +2,13 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前相对稳定源码：1.4.61+166；`BIN/release` PAD：1.4.59+164
+## 当前PAD发布候选：1.4.62+167；桌面三端保持已验收字节
 
-Newlink云端实际版本必须以在线`release-manifest`回读为准，不能依据本地源码猜测。当前本地`BIN/release`是PAD `1.4.59+164`热修订快照，Mac/Windows/Linux保持各自已验收字节，两份清单按真实文件生成；相对稳定的`1.4.61+166`先保存为`BIN/`版本化归档，本轮不覆盖正式六文件。
+Newlink云端实际版本必须以在线`release-manifest`回读为准，不能依据本地源码猜测。本轮正式释放只更新PAD为`1.4.62+167`并重算两份清单；Mac/Windows/Linux必须保持已有字节和哈希。`1.4.60+165`及`1.4.61+166`均保存在`BIN/`版本化归档，不拿历史包覆盖固定上传文件。
 
 客户端页Android条目同时显示云端版本和小字“（本机版本 xxxxx）”。只有数值比较确认云端`versionName + versionCode`严格高于本机时才显示“更新”；相同或更旧版本不显示。点击后下载清单指定的固定签名APK，核对大小和SHA-256；安装前询问是否把当前已安装APK备份到系统“下载”目录。选“是”先备份再打开系统安装器，选“否”直接打开系统安装器，两条路径都不跳转RustDesk官网。未知来源授权往返必须保留选择，不能重复备份。
 
-`1.4.61+166`尚未进入上传区，管理员本轮无需上传任何文件。后续正式释放时仍只允许上传实际重建并验收的`KEMI-PAD`、`SHA256SUMS`并最后上传`release-manifest`；桌面三个云端对象不得覆盖。远端验收除下载、系统安装和重启回读外，还要分别验证“是：Downloads存在当前旧版备份”和“否：不新增备份但照常升级”。
+本轮管理员只需覆盖`KEMI-PAD`、`SHA256SUMS`并最后覆盖`release-manifest`，不上传桌面三个对象。上传后必须回读三个固定接口，并从旧PAD完成“检测`1.4.62+167`→可选备份→系统安装→重启回读”的远端升级闭环。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 
@@ -137,7 +137,7 @@ BIN/release/
 
 | 平台 | 版本来源 | 当前`BIN/release/`内容 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.49`、`versionCode=154`，清单写 `1.4.49+154` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.62`、`versionCode=167`，清单写 `1.4.62+167` |
 | macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.49`、`CFBundleVersion=154` |
 | Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |
 | Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |

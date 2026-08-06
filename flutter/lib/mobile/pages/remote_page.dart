@@ -19,6 +19,7 @@ import '../../common/widgets/overlay.dart';
 import '../../common/widgets/dialog.dart';
 import '../../common/widgets/remote_input.dart';
 import '../../models/input_model.dart';
+import '../../models/file_transfer_window_model.dart';
 import '../../models/keyboard_proxy_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
@@ -353,6 +354,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (isAndroid) {
       unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", true));
       keyboardProxyController.addListener(_onKeyboardProxyChanged);
+      fileTransferWindowController.addListener(_onFileTransferWindowChanged);
+      unawaited(_syncFileTransferWindowState());
     }
     gFFI.chatModel
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
@@ -396,6 +399,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (isAndroid) {
       unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", false));
       keyboardProxyController.removeListener(_onKeyboardProxyChanged);
+      fileTransferWindowController.removeListener(_onFileTransferWindowChanged);
       _keyboardProxyWatchdog?.cancel();
       unawaited(gFFI.invokeMethod(
         "keyboard_proxy_release",
@@ -507,6 +511,22 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  void _onFileTransferWindowChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _syncFileTransferWindowState() async {
+    try {
+      final raw =
+          await gFFI.invokeMethod('get_file_transfer_window_state', null);
+      if (raw is Map) {
+        fileTransferWindowController.handleNativeState(raw);
+      }
+    } catch (_) {
+      fileTransferWindowController.reset();
+    }
+  }
+
   Future<void> _openFileTransferFromRemote(String id,
       {String? connToken}) async {
     if (_handoffToFileTransfer) return;
@@ -517,7 +537,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         return;
       }
       if (!mounted) return;
-      if (isAndroid) {
+      final currentFileWindow = fileTransferWindowController.value;
+      final closingCurrentWindow = isAndroid &&
+          currentFileWindow.peerId == id &&
+          currentFileWindow.isOpen;
+      if (isAndroid && !closingCurrentWindow) {
         unawaited(gFFI.invokeMethod(
           "keyboard_proxy_release",
           {"sessionId": sessionId.toString()},
@@ -528,8 +552,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       final token = connToken ?? bind.sessionGetConnToken(sessionId: sessionId);
 
       if (isAndroid) {
+        if (closingCurrentWindow) {
+          fileTransferWindowController.markClosing(id);
+        } else {
+          fileTransferWindowController.markOpening(id);
+        }
         final launchResult = await gFFI.invokeMethod(
-          'launch_file_transfer_on_opposite_display',
+          'toggle_file_transfer_on_opposite_display',
           {
             'peer_id': id,
             'password': widget.password,
@@ -539,10 +568,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           },
         );
         if (launchResult is Map && launchResult['accepted'] == true) {
+          fileTransferWindowController.handleNativeState(launchResult);
           debugPrint(
-              'File transfer opened on display ${launchResult['targetDisplayId']}');
+              'File transfer state=${launchResult['state']} display=${launchResult['targetDisplayId']}');
           return;
         }
+        fileTransferWindowController.reset();
       }
 
       // Single-display fallback. FileManagerPage owns a separate transfer
@@ -1076,6 +1107,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     required VoidCallback? onPressed,
     Color color = Colors.white,
     Color? disabledColor,
+    Color backgroundColor = Colors.transparent,
   }) {
     final actionColor = onPressed == null ? (disabledColor ?? color) : color;
     return SizedBox(
@@ -1086,7 +1118,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         button: true,
         enabled: onPressed != null,
         child: Material(
-          color: Colors.transparent,
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(6),
           child: InkWell(
             onTap: onPressed,
             borderRadius: BorderRadius.circular(6),
@@ -1134,6 +1167,21 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             ),
           )
         : const Icon(Icons.keyboard);
+    final fileWindow = fileTransferWindowController.value;
+    final fileWindowForPeer = fileWindow.peerId == widget.id;
+    final fileActive = isAndroid && fileWindowForPeer && fileWindow.isOpen;
+    final fileTransitioning =
+        isAndroid && fileWindowForPeer && fileWindow.isTransitioning;
+    final fileColor = fileActive ? Colors.greenAccent : Colors.white;
+    final fileIcon = fileTransitioning
+        ? SizedBox.square(
+            dimension: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: fileColor,
+            ),
+          )
+        : const Icon(Icons.folder_copy_outlined, size: 18);
     return BottomAppBar(
       elevation: 10,
       color: MyTheme.accent,
@@ -1237,9 +1285,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     if (isAndroid)
                       _bottomActionButton(
                         label: '文件',
-                        icon: const Icon(Icons.folder_copy_outlined, size: 18),
-                        onPressed: () =>
-                            unawaited(_openFileTransferFromToolbar()),
+                        color: fileColor,
+                        disabledColor: fileColor,
+                        backgroundColor: fileActive
+                            ? Colors.greenAccent.withOpacity(0.18)
+                            : Colors.transparent,
+                        icon: fileIcon,
+                        onPressed: fileTransitioning
+                            ? null
+                            : () => unawaited(_openFileTransferFromToolbar()),
                       ),
                     _bottomActionButton(
                       label: '更多',

@@ -266,11 +266,27 @@ class _CrossDisplayFileTransferAppState
   Map<String, dynamic>? _params;
   String? _loadError;
   bool _closing = false;
+  final ValueNotifier<int> _externalCloseRequest = ValueNotifier<int>(0);
 
   @override
   void initState() {
     super.initState();
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'request_close') {
+        _externalCloseRequest.value++;
+        return true;
+      }
+      throw MissingPluginException(
+          'Unknown file-transfer method ${call.method}');
+    });
     _loadParams();
+  }
+
+  @override
+  void dispose() {
+    _channel.setMethodCallHandler(null);
+    _externalCloseRequest.dispose();
+    super.dispose();
   }
 
   Future<void> _loadParams() async {
@@ -331,6 +347,8 @@ class _CrossDisplayFileTransferAppState
         connToken: connToken?.isNotEmpty == true ? connToken : null,
         isOverlay: true,
         onOverlayClose: _finishActivity,
+        fillOverlayWindow: true,
+        externalCloseRequest: _externalCloseRequest,
       );
     }
 

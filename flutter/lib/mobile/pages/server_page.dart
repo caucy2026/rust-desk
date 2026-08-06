@@ -13,6 +13,7 @@ import '../../common/formatter/id_formatter.dart';
 import '../../common/widgets/dialog.dart';
 import '../../consts.dart';
 import '../../models/keyboard_proxy_model.dart';
+import '../../models/file_transfer_window_model.dart';
 import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
 import 'home_page.dart';
@@ -851,6 +852,11 @@ void androidChannelInit() {
                 currentSessionId: gFFI.sessionId.toString(),
               );
             }
+            break;
+          }
+        case "file_transfer_window_state":
+          {
+            fileTransferWindowController.handleNativeState(arguments);
             break;
           }
         case "local_id_keyboard_commit_text":
