@@ -16,6 +16,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter_hbb/utils/http_service.dart' as http;
 
 import '../../common.dart';
+import '../../models/keyboard_proxy_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import 'address_book.dart';
@@ -393,6 +394,7 @@ class DialogTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
   final int? maxLength;
+  final VoidCallback? onTap;
 
   static const kUsernameTitle = 'Username';
   static const kUsernameIcon = Icon(Icons.account_circle_outlined);
@@ -411,6 +413,7 @@ class DialogTextField extends StatelessWidget {
       this.keyboardType,
       this.inputFormatters,
       this.maxLength,
+      this.onTap,
       required this.title,
       required this.controller})
       : super(key: key);
@@ -438,6 +441,7 @@ class DialogTextField extends StatelessWidget {
                 keyboardType: keyboardType,
                 inputFormatters: inputFormatters,
                 maxLength: maxLength,
+                onTap: onTap,
               ),
               if (errorText != null)
                 Align(
@@ -710,6 +714,7 @@ class PasswordWidget extends StatefulWidget {
     this.errorText,
     this.title,
     this.maxLength,
+    this.onFocus,
   }) : super(key: key);
 
   final TextEditingController controller;
@@ -719,6 +724,7 @@ class PasswordWidget extends StatefulWidget {
   final String? errorText;
   final String? title;
   final int? maxLength;
+  final VoidCallback? onFocus;
 
   @override
   State<PasswordWidget> createState() => _PasswordWidgetState();
@@ -733,6 +739,9 @@ class _PasswordWidgetState extends State<PasswordWidget> {
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) widget.onFocus?.call();
+    });
     if (widget.autoFocus) {
       _timer =
           Timer(Duration(milliseconds: 50), () => _focusNode.requestFocus());
@@ -783,6 +792,7 @@ class _PasswordWidgetState extends State<PasswordWidget> {
       errorText: widget.errorText,
       focusNode: _focusNode,
       maxLength: widget.maxLength,
+      onTap: widget.onFocus,
     );
   }
 }
@@ -869,6 +879,98 @@ _connectDialog(
   bool canRememberAccount = true,
 }) async {
   final errUsername = ''.obs;
+  final useCrossDisplayPasswordKeyboard =
+      isAndroid && await gFFI.invokeMethod('is_dual_screen_pad', null) == true;
+  final localPasswordSessionId =
+      '$kLocalPasswordKeyboardSessionPrefix$sessionId';
+  BuildContext? passwordDialogContext;
+
+  void replacePasswordSelection(TextEditingController controller, String text) {
+    final value = controller.value;
+    final start = value.selection.isValid
+        ? value.selection.start.clamp(0, value.text.length).toInt()
+        : value.text.length;
+    final end = value.selection.isValid
+        ? value.selection.end.clamp(0, value.text.length).toInt()
+        : value.text.length;
+    final nextText = value.text.replaceRange(start, end, text);
+    controller.value = value.copyWith(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + text.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  void deletePasswordSelection(TextEditingController controller) {
+    final value = controller.value;
+    final selection = value.selection;
+    final end = selection.isValid
+        ? selection.end.clamp(0, value.text.length).toInt()
+        : value.text.length;
+    final start = selection.isValid
+        ? selection.start.clamp(0, value.text.length).toInt()
+        : end;
+    if (start != end) {
+      replacePasswordSelection(controller, '');
+    } else if (start > 0) {
+      controller.value = value.copyWith(
+        text: value.text.replaceRange(start - 1, start, ''),
+        selection: TextSelection.collapsed(offset: start - 1),
+        composing: TextRange.empty,
+      );
+    }
+  }
+
+  Future<void> openCrossDisplayPasswordKeyboard(
+      TextEditingController controller) async {
+    if (!useCrossDisplayPasswordKeyboard) return;
+    attachLocalPasswordKeyboard(
+      sessionId: localPasswordSessionId,
+      onCommit: (text) => replacePasswordSelection(controller, text),
+      onKey: (key) {
+        if (key == 'VK_BACK') deletePasswordSelection(controller);
+      },
+    );
+    if (localPasswordKeyboardController.value.state !=
+        KeyboardProxyState.hidden) {
+      return;
+    }
+    final dialogContext = passwordDialogContext;
+    if (dialogContext == null ||
+        !await ensureCrossDisplayToolRestorePermission(dialogContext)) {
+      return;
+    }
+    if (!localPasswordKeyboardController.tryBeginOpen(localPasswordSessionId)) {
+      return;
+    }
+    final result = await gFFI.invokeMethod('keyboard_proxy_open', {
+      'sessionId': localPasswordSessionId,
+      'inputMode': 'local_password',
+    });
+    if (result is! Map || result['accepted'] != true) {
+      localPasswordKeyboardController.reset();
+      showToast(translate('Failed to open keyboard'));
+    }
+  }
+
+  Future<void> releaseCrossDisplayPasswordKeyboard() async {
+    if (!useCrossDisplayPasswordKeyboard) return;
+    final snapshot = localPasswordKeyboardController.value;
+    if (snapshot.state != KeyboardProxyState.hidden) {
+      await gFFI.invokeMethod('keyboard_proxy_close', {
+        'requestId': snapshot.requestId,
+      });
+      for (var attempt = 0;
+          localPasswordKeyboardController.value.state !=
+                  KeyboardProxyState.hidden &&
+              attempt < 12;
+          attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+    detachLocalPasswordKeyboard();
+  }
+
   var rememberPassword = false;
   if (passwordController != null) {
     rememberPassword =
@@ -888,7 +990,8 @@ _connectDialog(
   }
 
   dialogManager.dismissAll();
-  dialogManager.show((setState, close, context) {
+  await dialogManager.show((setState, close, context) {
+    passwordDialogContext = context;
     cancel() {
       close();
       closeConnection();
@@ -997,6 +1100,8 @@ _connectDialog(
           PasswordWidget(
             controller: osPasswordController,
             autoFocus: false,
+            onFocus: () => unawaited(
+                openCrossDisplayPasswordKeyboard(osPasswordController)),
           ),
           if (canRememberAccount)
             rememberWidget(
@@ -1022,6 +1127,8 @@ _connectDialog(
           PasswordWidget(
             controller: passwordController,
             autoFocus: osUsernameController == null,
+            onFocus: () =>
+                unawaited(openCrossDisplayPasswordKeyboard(passwordController)),
           ),
           rememberWidget(
             translate('Remember password'),
@@ -1068,6 +1175,7 @@ _connectDialog(
       onCancel: cancel,
     );
   });
+  await releaseCrossDisplayPasswordKeyboard();
 }
 
 void showWaitUacDialog(

@@ -137,13 +137,26 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   /// Callback for the connect button.
   /// Connects to the selected peer.
-  void onConnect() {
-    var id = _idController.id;
+  Future<void> onConnect() async {
+    final id = _idController.id;
     if (localIdKeyboardController.value.state != KeyboardProxyState.hidden) {
-      unawaited(gFFI.invokeMethod('keyboard_proxy_close', {
+      await gFFI.invokeMethod('keyboard_proxy_close', {
         'requestId': localIdKeyboardController.value.requestId,
-      }));
+      });
+      // Keep the opposite-display host parked so the password dialog can reuse
+      // it, but wait until the numeric-ID request is fully hidden first. Opening
+      // a new cross-display Activity after connect is rejected by this ROM.
+      for (var attempt = 0;
+          mounted &&
+              localIdKeyboardController.value.state !=
+                  KeyboardProxyState.hidden &&
+              attempt < 12;
+          attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      localIdKeyboardController.reset();
     }
+    if (!mounted) return;
     connect(context, id);
   }
 

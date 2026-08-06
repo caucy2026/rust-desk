@@ -1251,3 +1251,41 @@ Parked keyboard proxy for reuse
 ```
 
 最终包先在未授权状态验证一次性流程：说明弹在Display 2，厂商权限列表也留在Display 2；选择“KEMI远程办公”后原点击自动继续，不要求再点键盘。随后键盘页HOME后0.4秒再次点击恢复同一`task=554`并到达`visible`；文件页HOME后同样恢复同一`task=555`。系统日志明确出现`allowed because SYSTEM_ALERT_WINDOW permission is granted`，没有`open_timeout`、重复Activity、FATAL或进程重启。以后验收至少覆盖首页ID、远程键盘和文件页三类调用方：停驻复用路径核对taskId保持不变，显式release后的重建路径核对Display保持正确，并分别覆盖“HOME后立即点击”和“正常关闭后重开”，不能只看Flutter按钮状态。
+
+## 25. 连接密码复用对屏宿主（2026-08-06，PAD 1.4.61+166）
+
+### 25.1 问题边界
+
+第22节通过“认证前不创建远程键盘代理”保护了密码框的Flutter InputConnection，但它也意味着从副屏点击连接后，密码对话框只能依赖本屏系统输入法。如果首页数字键盘刚在另一屏使用过，厂商ROM又临时禁止跨屏Activity启动，密码阶段再次点击键盘可能长时间没有反应。正确目标不是提前创建远程键盘，而是复用首页已经存在的停驻宿主，并给密码输入建立隔离的本地通道。
+
+### 25.2 三种输入模式必须隔离
+
+同一个`KeyboardProxyActivity`现在支持三种明确模式：
+
+```text
+numeric_id      → local_id_keyboard_*       → 首页远程ID控制器
+local_password  → local_password_keyboard_* → 当前密码TextEditingController
+remote          → keyboard_proxy_*          → 已认证远程session
+```
+
+`local_password`使用`__kemi_local_password__:<session>`伪session和单独的`KeyboardProxyController`。文字按当前选择区插入；退格优先删除选择区，否则删除光标前一个字符。它不经过`sessionInputString`，所以认证前密码不会误发给远端桌面。对话框关闭时必须先请求关闭代理、有限等待状态回到`hidden`，然后清空回调和伪session。
+
+### 25.3 宿主交接顺序
+
+从首页连接到密码页的固定顺序为：
+
+1. 首页点击连接，关闭`numeric_id`并等待其状态真实变成`hidden`；
+2. 保留已经停驻在另一屏的Activity，避免ROM拒绝重新创建；
+3. 密码框获得焦点后，以`local_password`激活同一宿主；
+4. 用户提交或关闭密码对话框后，释放本地密码回调；
+5. 认证成功且收到第一帧后，才prepare正常`remote`模式。
+
+远程页销毁时释放当前实际宿主，而不是只按最初远程session过滤，因为宿主所有权可能经历数字ID、密码和远程三次切换。后续不得把密码事件合并到远程键盘Controller，也不得恢复“`pi.isSet`立刻prepare远程宿主”的旧逻辑；第一帧之前必须继续保护认证输入连接。
+
+### 25.4 稳定证据与回归边界
+
+用户确认`192.168.3.63:5555`当前行为相对稳定。确认时真机`base.apk`与本地11:05构建包完全一致，均为24,579,999字节，SHA-256 `027a10ee9581a1d45b3d322192a9d96eb709137c27e2c3b1d2718fc60835e535`。该包仍使用`1.4.60+165`元数据，因此最终归档提升为唯一版本`1.4.61+166`。
+
+版本统一后固定签名归档为`BIN/KEMI-远程办公-PAD-1.4.61+166-release.apk`，大小24,579,994字节，SHA-256 `29a2ee1c6610fdcec847c8130fbc952bec2f12f8135dd16a8f9ebb2405f02e6d`。业务代码与用户确认稳定的包一致，差异仅为唯一版本/构建号和随原生重编更新的构建时间；`BIN/release`保持原批次。
+
+以后最小回归只需覆盖：副屏首页输入ID→连接→密码框对屏输入及退格→取消一次；再连接并成功出第一帧→远程键盘打开/关闭；最后主屏HOME后从副屏重开键盘。密码阶段不得出现远程字符发送，第一帧后不得残留`local_password`回调，鼠标左右键和远程画面不得因键盘宿主切换而失效。

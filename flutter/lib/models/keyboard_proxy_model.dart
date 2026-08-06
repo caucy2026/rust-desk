@@ -102,3 +102,48 @@ class KeyboardProxyController extends ValueNotifier<KeyboardProxySnapshot> {
 final keyboardProxyController = KeyboardProxyController();
 const kLocalIdKeyboardSession = '__kemi_local_id__';
 final localIdKeyboardController = KeyboardProxyController();
+const kLocalPasswordKeyboardSessionPrefix = '__kemi_local_password__:';
+final localPasswordKeyboardController = KeyboardProxyController();
+
+String _localPasswordKeyboardSessionId = '';
+ValueChanged<String>? _localPasswordCommitHandler;
+ValueChanged<String>? _localPasswordKeyHandler;
+
+void attachLocalPasswordKeyboard({
+  required String sessionId,
+  required ValueChanged<String> onCommit,
+  required ValueChanged<String> onKey,
+}) {
+  _localPasswordKeyboardSessionId = sessionId;
+  _localPasswordCommitHandler = onCommit;
+  _localPasswordKeyHandler = onKey;
+}
+
+bool handleLocalPasswordKeyboardCommit(Map<dynamic, dynamic> arguments) {
+  if (!localPasswordKeyboardController.acceptsInput(
+      arguments, _localPasswordKeyboardSessionId)) {
+    return false;
+  }
+  final text = arguments['text'] as String? ?? '';
+  if (text.isEmpty) return false;
+  _localPasswordCommitHandler?.call(text);
+  return true;
+}
+
+bool handleLocalPasswordKeyboardKey(Map<dynamic, dynamic> arguments) {
+  if (!localPasswordKeyboardController.acceptsInput(
+      arguments, _localPasswordKeyboardSessionId)) {
+    return false;
+  }
+  final key = arguments['key'] as String? ?? '';
+  if (key.isEmpty) return false;
+  _localPasswordKeyHandler?.call(key);
+  return true;
+}
+
+void detachLocalPasswordKeyboard() {
+  _localPasswordKeyboardSessionId = '';
+  _localPasswordCommitHandler = null;
+  _localPasswordKeyHandler = null;
+  localPasswordKeyboardController.reset();
+}

@@ -843,6 +843,8 @@ void androidChannelInit() {
                 arguments,
                 currentSessionId: kLocalIdKeyboardSession,
               );
+            } else if (arguments['inputMode'] == 'local_password') {
+              localPasswordKeyboardController.handleState(arguments);
             } else {
               keyboardProxyController.handleState(
                 arguments,
@@ -898,6 +900,16 @@ void androidChannelInit() {
                 }));
               }
             }
+            break;
+          }
+        case "local_password_keyboard_commit_text":
+          {
+            handleLocalPasswordKeyboardCommit(arguments);
+            break;
+          }
+        case "local_password_keyboard_key":
+          {
+            handleLocalPasswordKeyboardKey(arguments);
             break;
           }
         case "keyboard_proxy_commit_text":

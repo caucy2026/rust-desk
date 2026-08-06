@@ -358,6 +358,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
+      if (isAndroid) {
+        // Authentication fields must retain Flutter's InputConnection. Create
+        // the reusable opposite-display keyboard host only after authentication
+        // succeeds and the first remote frame has arrived.
+        unawaited(gFFI.invokeMethod(
+          "keyboard_proxy_prepare",
+          {"sessionId": sessionId.toString()},
+        ));
+      }
       gFFI.recordingModel
           .updateStatus(bind.sessionGetIsRecording(sessionId: gFFI.sessionId));
       if (gFFI.recordingModel.start) {
@@ -373,25 +382,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     // clipboard-assisted text input. Physical keyboard events are not gated here.
     _waylandKeyboardGateWorker = ever(gFFI.ffiModel.pi.isSet, (bool isSet) {
       if (isSet) {
-        if (isAndroid) {
-          // Authentication can run on either the primary or a secondary display.
-          // Preparing KeyboardProxyActivity before peer info is ready invalidates
-          // the password field's Flutter InputConnection on multi-display Android.
-          unawaited(gFFI.invokeMethod(
-            "keyboard_proxy_prepare",
-            {"sessionId": sessionId.toString()},
-          ));
-        }
         _initWaylandKeyboardGateIfNeeded();
       }
     });
     if (gFFI.ffiModel.pi.isSet.value) {
-      if (isAndroid) {
-        unawaited(gFFI.invokeMethod(
-          "keyboard_proxy_prepare",
-          {"sessionId": sessionId.toString()},
-        ));
-      }
       _initWaylandKeyboardGateIfNeeded();
     }
   }
@@ -405,7 +399,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       _keyboardProxyWatchdog?.cancel();
       unawaited(gFFI.invokeMethod(
         "keyboard_proxy_release",
-        {"sessionId": sessionId.toString()},
+        null,
       ));
       keyboardProxyController.reset();
     }

@@ -2,13 +2,13 @@
 
 ## 项目简介
 
-**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前源码候选版本为 **1.4.60**，PAD构建号为 **1.4.60+165**；`BIN/release`已发布PAD仍为 **1.4.59+164**，Newlink云端批次以`release-manifest.json`实际内容为准，桌面三端不冒充新版本。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前相对稳定源码版本为 **1.4.61**，PAD构建号为 **1.4.61+166**；`BIN/release`已发布PAD仍为 **1.4.59+164**，Newlink云端批次以`release-manifest.json`实际内容为准，桌面三端不冒充新版本。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
 
 ## 当前项目总结（2026-08-06）
 
 - 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
 - Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
-- 当前PAD源码`1.4.60+165`在稳定鼠标/跨屏键盘基线上，加入连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁、客户端自更新前可选备份当前APK、本地APK安装与普通文件系统分享；首页远程ID使用另一屏的数字键盘，键盘与文件宿主在另一屏按HOME后停驻并复用。Android 12双屏设备需一次性授予“显示在其他应用上层”，这里只把它作为跨屏任务恢复许可，不创建悬浮图标。Android原生构建固定NDK并检查未解析libsodium符号。详细边界分别见`connection-history-and-resource-monitor.md`、`file-transfer-history.md`、`cross-display-keyboard.md`和`client-distribution.md`。
+- 当前PAD源码`1.4.61+166`在稳定鼠标/跨屏键盘基线上，加入连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁、客户端自更新前可选备份当前APK、本地APK安装与普通文件系统分享；首页远程ID和连接密码均可使用另一屏键盘，数字ID、本地密码和远程输入三种事件严格隔离，键盘与文件宿主在另一屏按HOME后停驻并复用。Android 12双屏设备需一次性授予“显示在其他应用上层”，这里只把它作为跨屏任务恢复许可，不创建悬浮图标。Android原生构建固定NDK并检查未解析libsodium符号。详细边界分别见`connection-history-and-resource-monitor.md`、`file-transfer-history.md`、`cross-display-keyboard.md`和`client-distribution.md`。
 - 上传前对外可下载四端仍是`1.4.49+154`。本次只重建PAD，`BIN/release`清单必须明确标为PAD热修订混合快照；后续完整四端发布仍需同一提交重新构建Mac/Windows/Linux。
 - GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 

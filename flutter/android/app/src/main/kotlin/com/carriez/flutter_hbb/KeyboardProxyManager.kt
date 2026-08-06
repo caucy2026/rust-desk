@@ -177,7 +177,10 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             )
         }
         val newRequestId = requestIds.incrementAndGet()
-        val normalizedInputMode = if (requestedInputMode == "numeric_id") "numeric_id" else "remote"
+        val normalizedInputMode = when (requestedInputMode) {
+            "numeric_id", "local_password" -> requestedInputMode
+            else -> "remote"
+        }
 
         requestId = newRequestId
         sessionId = requestedSessionId
@@ -320,7 +323,11 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             "commit_text request=$activityRequestId session=$activitySessionId len=${text.length}"
         )
         channel?.invokeMethod(
-            if (inputMode == "numeric_id") "local_id_keyboard_commit_text" else "keyboard_proxy_commit_text",
+            when (inputMode) {
+                "numeric_id" -> "local_id_keyboard_commit_text"
+                "local_password" -> "local_password_keyboard_commit_text"
+                else -> "keyboard_proxy_commit_text"
+            },
             mapOf("requestId" to requestId, "sessionId" to sessionId, "text" to text)
         )
     }
@@ -337,7 +344,11 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
     ) {
         if (activityRequestId != requestId || activitySessionId != sessionId || state != "visible") return
         channel?.invokeMethod(
-            if (inputMode == "numeric_id") "local_id_keyboard_key" else "keyboard_proxy_key",
+            when (inputMode) {
+                "numeric_id" -> "local_id_keyboard_key"
+                "local_password" -> "local_password_keyboard_key"
+                else -> "keyboard_proxy_key"
+            },
             mapOf(
                 "requestId" to requestId,
                 "sessionId" to sessionId,
