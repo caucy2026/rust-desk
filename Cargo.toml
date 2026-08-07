@@ -155,7 +155,9 @@ piet-coregraphics = "0.6"
 foreign-types = "0.3"
 # KEMI maps the existing direct TCP listener through PCP, NAT-PMP or UPnP IGD
 # on macOS. This is deliberately macOS-only for the first MAC + PAD rollout.
-igd-next = "0.16"
+# Keep 0.16.1 exact: 0.16.2 pulls attohttpc 0.30, which does not compile with
+# the Rust 1.75 toolchain used by the shared Flutter bridge workflow.
+igd-next = "=0.16.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
