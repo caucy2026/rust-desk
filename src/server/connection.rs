@@ -3468,8 +3468,48 @@ impl Connection {
                         }
                     }
                     Some(misc::Union::ChatMessage(c)) => {
-                        self.send_to_cm(ipc::Data::ChatMessage { text: c.text });
-                        self.chat_unanswered = true;
+                        if let Some(snapshot) = c
+                            .text
+                            .strip_prefix(crate::common::KEMI_DIAGNOSTIC_RESPONSE_V1)
+                        {
+                            match crate::common::save_kemi_remote_diagnostic(
+                                snapshot,
+                                self.inner.id,
+                            ) {
+                                Ok(path) => {
+                                    log::warn!(
+                                        "KEMI PAD diagnostic saved: conn_id={}, path={}",
+                                        self.inner.id,
+                                        path.display()
+                                    );
+                                    self.send_to_cm(ipc::Data::ChatMessage {
+                                        text: format!(
+                                            "{}{}",
+                                            crate::common::KEMI_DIAGNOSTIC_SAVED_V1,
+                                            self.inner.id
+                                        ),
+                                    });
+                                }
+                                Err(err) => {
+                                    log::error!(
+                                        "Failed to save KEMI PAD diagnostic: conn_id={}, error={}",
+                                        self.inner.id,
+                                        err
+                                    );
+                                    self.send_to_cm(ipc::Data::ChatMessage {
+                                        text: format!(
+                                            "{}{}",
+                                            crate::common::KEMI_DIAGNOSTIC_SAVE_FAILED_V1,
+                                            self.inner.id
+                                        ),
+                                    });
+                                }
+                            }
+                            self.chat_unanswered = false;
+                        } else {
+                            self.send_to_cm(ipc::Data::ChatMessage { text: c.text });
+                            self.chat_unanswered = true;
+                        }
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::Option(o)) => {

@@ -668,11 +668,29 @@ impl RendezvousMediator {
         }
         let relay_server = self.get_relay_server(ph.relay_server);
         // for ensure, websocket go relay directly
-        if ph.nat_type.enum_value() == Ok(NatType::SYMMETRIC)
-            || Config::get_nat_type() == NatType::SYMMETRIC as i32
+        // A mobile hotspot/cascaded router can report the initiating PAD as
+        // symmetric NAT. On macOS we may nevertheless have a stable inbound
+        // TCP 21118 mapping. Do not force relay before the initiator gets a
+        // chance to try that authenticated fixed-port candidate.
+        #[cfg(target_os = "macos")]
+        let kemi_fixed_mapping_ready = crate::kemi_p2p_portmap::is_ready();
+        #[cfg(not(target_os = "macos"))]
+        let kemi_fixed_mapping_ready = false;
+        let force_relay_for_nat =
+            (ph.nat_type.enum_value() == Ok(NatType::SYMMETRIC)
+                || Config::get_nat_type() == NatType::SYMMETRIC as i32)
+                && !kemi_fixed_mapping_ready;
+        if force_relay_for_nat
             || relay
             || (config::is_disable_tcp_listen() && ph.udp_port <= 0)
         {
+            log::debug!(
+                "Punch hole relay decision: peer_nat={:?}, local_nat={}, fixed_mapping_ready={}, relay={}",
+                ph.nat_type.enum_value(),
+                Config::get_nat_type(),
+                kemi_fixed_mapping_ready,
+                relay
+            );
             let uuid = Uuid::new_v4().to_string();
             return self
                 .create_relay(
@@ -834,7 +852,7 @@ impl RendezvousMediator {
     }
 }
 
-fn get_direct_port() -> i32 {
+pub(crate) fn get_direct_port() -> i32 {
     let mut port = Config::get_option("direct-access-port")
         .parse::<i32>()
         .unwrap_or(0);
@@ -848,10 +866,16 @@ async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
     loop {
-        let disabled = !option2bool(
-            OPTION_DIRECT_SERVER,
-            &Config::get_option(OPTION_DIRECT_SERVER),
-        ) || option2bool("stop-service", &Config::get_option("stop-service"));
+        let disabled = {
+            #[cfg(target_os = "macos")]
+            let direct_enabled = true;
+            #[cfg(not(target_os = "macos"))]
+            let direct_enabled = option2bool(
+                OPTION_DIRECT_SERVER,
+                &Config::get_option(OPTION_DIRECT_SERVER),
+            );
+            !direct_enabled || option2bool("stop-service", &Config::get_option("stop-service"))
+        };
         if !disabled && listener.is_none() {
             port = get_direct_port();
             match hbb_common::tcp::listen_any(port as _).await {
@@ -861,6 +885,8 @@ async fn direct_server(server: ServerPtr) {
                         "Direct server listening on: {:?}",
                         listener.as_ref().map(|l| l.local_addr())
                     );
+                    #[cfg(target_os = "macos")]
+                    crate::kemi_p2p_portmap::start(port as u16);
                 }
                 Err(err) => {
                     // to-do: pass to ui

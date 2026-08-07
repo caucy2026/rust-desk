@@ -4,7 +4,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-app_path="${1:-$repo_root/flutter/build/macos/Build/Products/Release/KEMI-远程桌面.app}"
+app_path="${1:-$repo_root/flutter/build/macos/Build/Products/Release/KEMI远程办公.app}"
 signing_identity="${KEMI_MACOS_CODESIGN_IDENTITY:-KEMI Local App Signing 2026}"
 
 if [[ ! -d "$app_path" ]]; then

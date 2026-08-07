@@ -1021,6 +1021,42 @@ class _CmControlPanel extends StatelessWidget {
         ),
         Row(
           children: [
+            if (client.type_() == ClientType.remote)
+              Expanded(
+                child: buildButton(
+                  context,
+                  color: MyTheme.accent,
+                  onClick: () async {
+                    showToast('正在向PAD获取本次连接诊断日志…');
+                    final result =
+                        await gFFI.chatModel.requestKemiDiagnostic(client.id);
+                    switch (result) {
+                      case KemiDiagnosticResult.saved:
+                        showToast('调试日志已获取');
+                        break;
+                      case KemiDiagnosticResult.saveFailed:
+                        showToast('调试日志获取失败：Mac无法保存日志');
+                        break;
+                      case KemiDiagnosticResult.timeout:
+                        showToast('调试日志获取失败：PAD未响应');
+                        break;
+                      case KemiDiagnosticResult.sendFailed:
+                        showToast('调试日志获取失败：请求未发送');
+                        break;
+                      case KemiDiagnosticResult.inProgress:
+                        showToast('正在获取调试日志，请稍候');
+                        break;
+                    }
+                  },
+                  text: '调试日志',
+                  icon: const Icon(
+                    Icons.bug_report_outlined,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                  textColor: Colors.white,
+                ),
+              ),
             Expanded(
               child: buildButton(context,
                   color: Colors.redAccent,

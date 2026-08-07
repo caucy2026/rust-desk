@@ -60,8 +60,154 @@ pub const PLATFORM_LINUX: &str = "Linux";
 pub const PLATFORM_MACOS: &str = "Mac OS";
 pub const PLATFORM_ANDROID: &str = "Android";
 
+// Authenticated in-session diagnostic control messages. They intentionally use
+// the existing encrypted session instead of opening a new server port.
+pub const KEMI_DIAGNOSTIC_REQUEST_V1: &str = "__KEMI_DIAGNOSTIC_REQUEST_V1__";
+pub const KEMI_DIAGNOSTIC_RESPONSE_V1: &str = "__KEMI_DIAGNOSTIC_RESPONSE_V1__";
+pub const KEMI_DIAGNOSTIC_SAVED_V1: &str = "__KEMI_DIAGNOSTIC_SAVED_V1__";
+pub const KEMI_DIAGNOSTIC_SAVE_FAILED_V1: &str = "__KEMI_DIAGNOSTIC_SAVE_FAILED_V1__";
+
 pub const TIMER_OUT: Duration = Duration::from_secs(1);
 pub const DEFAULT_KEEP_ALIVE: i32 = 60_000;
+
+/// Return a bounded, network-only tail of the current client log. This is used
+/// by an authenticated peer to diagnose P2P/relay selection without ADB. The
+/// filter deliberately excludes chat, clipboard, password and file contents.
+pub fn kemi_network_diagnostic_snapshot() -> String {
+    use std::io::{Read as _, Seek as _};
+
+    const READ_TAIL_BYTES: u64 = 256 * 1024;
+    const MAX_RESULT_BYTES: usize = 14 * 1024;
+    const MAX_RESULT_LINES: usize = 140;
+
+    let log_dir = Config::log_path();
+    let latest = std::fs::read_dir(&log_dir).ok().and_then(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let path = entry.path();
+                let metadata = entry.metadata().ok()?;
+                if !metadata.is_file() {
+                    return None;
+                }
+                Some((metadata.modified().ok()?, path))
+            })
+            .max_by_key(|(modified, _)| *modified)
+            .map(|(_, path)| path)
+    });
+
+    let mut header = format!(
+        "version={} build={} os={} udp_enabled={} ipv6_enabled={} log_dir={}",
+        crate::VERSION,
+        crate::BUILD_DATE,
+        std::env::consts::OS,
+        get_udp_punch_enabled(),
+        get_ipv6_punch_enabled(),
+        log_dir.display()
+    );
+    let Some(path) = latest else {
+        header.push_str("\nno persisted log file found");
+        return header;
+    };
+
+    header.push_str(&format!(
+        "\nlog_file={}",
+        path.file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_default()
+    ));
+    let Ok(mut file) = std::fs::File::open(&path) else {
+        header.push_str("\nfailed to open persisted log file");
+        return header;
+    };
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let offset = len.saturating_sub(READ_TAIL_BYTES);
+    if file.seek(std::io::SeekFrom::Start(offset)).is_err() {
+        header.push_str("\nfailed to seek persisted log file");
+        return header;
+    }
+    let mut bytes = Vec::with_capacity((len - offset) as usize);
+    if file.read_to_end(&mut bytes).is_err() {
+        header.push_str("\nfailed to read persisted log file");
+        return header;
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let text = if offset > 0 {
+        text.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+    } else {
+        &text
+    };
+    let keywords = [
+        "udp nat",
+        "udp punch",
+        "stun",
+        "punch attempt",
+        "punch hole",
+        "hole punched",
+        "rendezvous server",
+        "peer address",
+        "nat_type",
+        "direct connection",
+        "establish tcp",
+        "establish udp",
+        "establish relay",
+        "relay requested",
+        "failed to connect",
+        "handle intranet",
+    ];
+    let matching = text
+        .lines()
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            keywords.iter().any(|keyword| lower.contains(keyword))
+        })
+        .collect::<Vec<_>>();
+
+    let mut selected = Vec::new();
+    let mut selected_bytes = 0usize;
+    for line in matching.iter().rev().take(MAX_RESULT_LINES) {
+        if selected_bytes + line.len() + 1 > MAX_RESULT_BYTES {
+            break;
+        }
+        selected.push(*line);
+        selected_bytes += line.len() + 1;
+    }
+    selected.reverse();
+    if selected.is_empty() {
+        header.push_str("\nno matching network diagnostics in log tail");
+    } else {
+        header.push('\n');
+        header.push_str(&selected.join("\n"));
+    }
+    header
+}
+
+/// Persist a diagnostic returned by an authenticated remote client. Do not
+/// rely on the runtime logger here: release builds can filter `info!` records.
+/// A dedicated append-only file also keeps repeated field diagnostics easy to
+/// find without mixing them into heartbeat warnings.
+pub fn save_kemi_remote_diagnostic(snapshot: &str, conn_id: i32) -> ResultType<std::path::PathBuf> {
+    use std::io::Write as _;
+
+    let log_dir = Config::log_path();
+    std::fs::create_dir_all(&log_dir)?;
+    let path = log_dir.join("KEMI-PAD-DIAGNOSTIC.log");
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    writeln!(
+        file,
+        "[KEMI-REMOTE-DIAG-BEGIN] timestamp={} conn_id={}\n{}\n[KEMI-REMOTE-DIAG-END] conn_id={}",
+        timestamp, conn_id, snapshot, conn_id
+    )?;
+    file.flush()?;
+    Ok(path)
+}
 
 const MIN_VER_MULTI_UI_SESSION: &str = "1.2.4";
 
@@ -2371,9 +2517,9 @@ async fn stun_ipv4_test(stun_server: &str) -> ResultType<(SocketAddr, String)> {
 }
 
 static STUNS_V4: [&str; 3] = [
-    "stun.l.google.com:19302",
     "stun.cloudflare.com:3478",
     "stun.nextcloud.com:3478",
+    "stun.l.google.com:19302",
 ];
 
 static STUNS_V6: [&str; 3] = [
@@ -2400,6 +2546,35 @@ pub async fn test_nat_ipv4() -> ResultType<(SocketAddr, String)> {
             );
         }
     };
+}
+
+/// Query the public IPv4 mapping of the exact UDP socket that will later be
+/// used for hole punching. Using a separate STUN socket can report a different
+/// external port on cascaded or endpoint-dependent NATs.
+pub async fn test_nat_ipv4_with_socket(socket: &UdpSocket) -> ResultType<(SocketAddr, String)> {
+    use stunclient::StunClient;
+
+    let mut last_error = String::new();
+    for stun in STUNS_V4 {
+        let Some(stun_addr) = stun
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut addrs| addrs.find(|addr| addr.is_ipv4()))
+        else {
+            last_error = format!("failed to resolve {stun}");
+            continue;
+        };
+        let mut client = StunClient::new(stun_addr);
+        client
+            .set_timeout(Duration::from_millis(600))
+            .set_retry_interval(Duration::from_millis(100));
+        match client.query_external_address_async(socket).await {
+            Ok(addr) if addr.ip().is_ipv4() => return Ok((addr, stun.to_owned())),
+            Ok(addr) => last_error = format!("{stun} returned non-IPv4 address {addr}"),
+            Err(err) => last_error = format!("{stun}: {err}"),
+        }
+    }
+    bail!("Failed to map UDP punch socket via STUN: {last_error}")
 }
 
 async fn test_bind_ipv6() -> ResultType<SocketAddr> {

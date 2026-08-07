@@ -69,11 +69,11 @@ git diff --check
 Flutter 修改至少执行：
 
 ```bash
-export PATH=/Users/newlink/flutter/bin:$PATH
+KEMI_FLUTTER=/Users/newlink/kemi/RustDesk/client/.toolchains/flutter/bin/flutter
 cd /Users/newlink/kemi/RustDesk/client/flutter
 
-flutter analyze <本次修改的 Dart 文件>
-flutter build apk --debug
+"$KEMI_FLUTTER" analyze <本次修改的 Dart 文件>
+"$KEMI_FLUTTER" build apk --debug
 ```
 
 Debug APK：

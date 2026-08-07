@@ -1,6 +1,6 @@
 [package]
 name = "rustdesk"
-version = "1.4.62"
+version = "1.4.72"
 authors = ["rustdesk <info@rustdesk.com>"]
 edition = "2021"
 build= "build.rs"
@@ -153,6 +153,9 @@ objc_id = "0.1"
 piet = "0.6"
 piet-coregraphics = "0.6"
 foreign-types = "0.3"
+# KEMI maps the existing direct TCP listener through PCP, NAT-PMP or UPnP IGD
+# on macOS. This is deliberately macOS-only for the first MAC + PAD rollout.
+igd-next = "0.16"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
@@ -228,7 +231,7 @@ docopt = "1.1"
 
 [package.metadata.bundle]
 name = "RustDesk"
-identifier = "com.carriez.rustdesk"
+identifier = "com.newlinksz.kemi.remote"
 icon = ["res/32x32.png", "res/128x128.png", "res/128x128@2x.png"]
 osx_minimum_system_version = "10.14"
 

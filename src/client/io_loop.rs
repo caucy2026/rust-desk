@@ -1792,7 +1792,27 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.audio_sender.send(MediaData::AudioFormat(f)).ok();
                     }
                     Some(misc::Union::ChatMessage(c)) => {
-                        self.handler.new_message(c.text);
+                        if c.text == crate::common::KEMI_DIAGNOSTIC_REQUEST_V1 {
+                            let snapshot = crate::common::kemi_network_diagnostic_snapshot();
+                            log::info!(
+                                "KEMI authenticated diagnostic request received, response_bytes={}",
+                                snapshot.len()
+                            );
+                            let mut misc = Misc::new();
+                            misc.set_chat_message(ChatMessage {
+                                text: format!(
+                                    "{}{}",
+                                    crate::common::KEMI_DIAGNOSTIC_RESPONSE_V1,
+                                    snapshot
+                                ),
+                                ..Default::default()
+                            });
+                            let mut response = Message::new();
+                            response.set_misc(misc);
+                            allow_err!(peer.send(&response).await);
+                        } else {
+                            self.handler.new_message(c.text);
+                        }
                     }
                     Some(misc::Union::PermissionInfo(p)) => {
                         log::info!("Change permission {:?} -> {}", p.permission, p.enabled);

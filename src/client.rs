@@ -356,18 +356,30 @@ impl Client {
         }
         let mut connect_futures = Vec::new();
         connect_futures.push(fut.boxed());
-        let fut = Self::_start_inner(
-            peer.to_owned(),
-            key.to_owned(),
-            token.to_owned(),
-            conn_type,
-            interface,
-            (None, None),
-            None,
-            rendezvous_server,
-            servers,
-            contained,
-        );
+        // Do not let the TCP-only safety path race ahead of the request that
+        // carries the UDP mapping. On low-latency hbbs links that race made the
+        // server consistently receive udp_port=0 even when STUN had succeeded.
+        // The UDP-aware path is bounded, so delaying this fallback preserves
+        // connectivity while giving UDP punching a real opportunity to start.
+        let fallback_peer = peer.to_owned();
+        let fallback_key = key.to_owned();
+        let fallback_token = token.to_owned();
+        let fut = async move {
+            hbb_common::sleep(3.0).await;
+            Self::_start_inner(
+                fallback_peer,
+                fallback_key,
+                fallback_token,
+                conn_type,
+                interface,
+                (None, None),
+                None,
+                rendezvous_server,
+                servers,
+                contained,
+            )
+            .await
+        };
         connect_futures.push(fut.boxed());
         match select_ok(connect_futures).await {
             Ok(conn) => Ok((conn.0 .0, conn.0 .1, conn.0 .2)),
@@ -438,19 +450,33 @@ impl Client {
             secure_tcp(&mut socket, &key)
                 .await
                 .map_err(|e| anyhow!("Failed to secure tcp: {}", e))?;
-        } else if let Some(udp) = udp.1.as_ref() {
+        }
+        if let Some(udp) = udp.1.as_ref() {
+            // A half TCP RTT is too short on low-latency rendezvous servers: the
+            // UDP response commonly arrives after the caller has already sent a
+            // TCP-only PunchHoleRequest. Give UDP a small, bounded opportunity
+            // to finish so isolated Wi-Fi/mobile networks can use UDP punching.
+            let udp_wait = std::cmp::min(
+                std::cmp::max(rtt * 2, Duration::from_millis(2_500)),
+                Duration::from_millis(3_000),
+            );
             let tm = Instant::now();
             loop {
                 let port = *udp.lock().unwrap();
                 if port > 0 {
                     break;
                 }
-                // await for 0.5 RTT
-                if tm.elapsed() > rtt / 2 {
+                if tm.elapsed() >= udp_wait {
                     break;
                 }
                 hbb_common::sleep(0.001).await;
             }
+            log::debug!(
+                "UDP NAT result wait finished: tcp_rtt={:?}, wait={:?}, port={}",
+                rtt,
+                tm.elapsed(),
+                *udp.lock().unwrap()
+            );
         }
         // Stop UDP NAT test task if still running
         stop_udp_tx.map(|tx| tx.send(()));
@@ -718,6 +744,38 @@ impl Client {
             }
             .boxed(),
         );
+        // KEMI hosts on macOS keep a fixed direct listener (21118 by default)
+        // and automatically map it through PCP/NAT-PMP/UPnP. A PAD on a
+        // mobile hotspot can be reported as symmetric NAT, so gating this
+        // candidate on the peer's NAT classification would skip the only
+        // viable path before the relay policy is evaluated. Try it in
+        // parallel for every non-local peer; an unmapped port fails fast and
+        // does not change the ordinary TCP/UDP winner.
+        if !is_local {
+            let direct_port = crate::rendezvous_mediator::get_direct_port();
+            if (1..=u16::MAX as i32).contains(&direct_port) && peer.port() != direct_port as u16 {
+                let mapped_peer = SocketAddr::new(peer.ip(), direct_port as u16);
+                // Keep this candidate alive for the full bounded window even
+                // when the peer is classified as symmetric (the normal
+                // candidate intentionally uses a 1s fast-fail timeout). A
+                // cellular hotspot may need a little longer for the first
+                // outbound SYN without delaying a successful parallel path.
+                let mapped_timeout = 3_000;
+                log::info!(
+                    "KEMI trying mapped direct TCP candidate: {}, timeout: {}",
+                    mapped_peer,
+                    mapped_timeout
+                );
+                let fut = connect_tcp_local(mapped_peer, Some(local_addr), mapped_timeout);
+                connect_futures.push(
+                    async move {
+                        let conn = fut.await?;
+                        Ok((conn, None, "TCP-Mapped"))
+                    }
+                    .boxed(),
+                );
+            }
+        }
         if let Some(udp_socket_nat) = udp_socket_nat {
             connect_futures.push(udp_nat_connect(udp_socket_nat, "UDP", connect_timeout).boxed());
         }
@@ -4245,13 +4303,6 @@ async fn test_udp_uat(
     udp_port: Arc<Mutex<u16>>,
     mut stop_udp_rx: oneshot::Receiver<()>,
 ) -> ResultType<()> {
-    let (tx, mut rx) = oneshot::channel::<_>();
-    tokio::spawn(async {
-        if let Ok(v) = crate::test_nat_ipv4().await {
-            tx.send(v).ok();
-        }
-    });
-
     let start = Instant::now();
     let mut msg_out = RendezvousMessage::new();
     msg_out.set_test_nat_request(TestNatRequest {
@@ -4274,19 +4325,20 @@ async fn test_udp_uat(
     }
     let mut last_send_time = Instant::now();
     let mut buf = [0u8; 1500];
+    let direct_test_timeout = Duration::from_millis(500);
+    let mut stopped = false;
 
     loop {
         tokio::select! {
-            Ok((addr, server)) = &mut rx => {
-                *udp_port.lock().unwrap() = addr.port();
-                log::debug!("UDP NAT test received response from {}: {}", addr, server);
-                break;
-            }
             _ = &mut stop_udp_rx => {
                 log::debug!("UDP NAT test received stop signal after {} packets", packets_sent);
+                stopped = true;
                 break;
             }
             _ = hbb_common::sleep(retry_interval.as_secs_f32()) => {
+                if start.elapsed() >= direct_test_timeout {
+                    break;
+                }
                 // Adaptive retry: send fewer packets as time goes on
                 let elapsed = last_send_time.elapsed();
 
@@ -4325,6 +4377,30 @@ async fn test_udp_uat(
                         log::warn!("UDP NAT test socket error: {}", e);
                     }
                 }
+            }
+        }
+    }
+
+    // Some carrier and cascaded-router networks drop UDP/21116 while allowing
+    // standard STUN. Query STUN with this same socket so the advertised port
+    // always belongs to the socket subsequently used for hole punching.
+    if !stopped && *udp_port.lock().unwrap() == 0 {
+        log::info!(
+            "No UDP NAT response from rendezvous server after {:?}; trying same-socket STUN",
+            start.elapsed()
+        );
+        tokio::select! {
+            result = crate::test_nat_ipv4_with_socket(&udp_socket) => {
+                match result {
+                    Ok((addr, stun)) => {
+                        *udp_port.lock().unwrap() = addr.port();
+                        log::info!("UDP punch socket mapped by {stun}: {addr}");
+                    }
+                    Err(err) => log::warn!("Same-socket UDP STUN failed: {err}"),
+                }
+            }
+            _ = &mut stop_udp_rx => {
+                log::debug!("UDP NAT/STUN test stopped by caller");
             }
         }
     }

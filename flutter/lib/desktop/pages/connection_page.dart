@@ -5,11 +5,13 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common/widgets/connection_page_title.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/widgets/popup_menu.dart';
 import 'package:flutter_hbb/models/state_model.dart';
 import 'package:get/get.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 
@@ -19,6 +21,8 @@ import '../../common/widgets/peer_tab_page.dart';
 import '../../common/widgets/autocomplete.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
+
+const _kemiCloudDownloadPage = 'http://kemi-chat.newlinksz.com:21120/kemi-desk';
 
 class OnlineStatusWidget extends StatefulWidget {
   const OnlineStatusWidget({Key? key, this.onSvcStatusChanged})
@@ -108,6 +112,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
             color: serverColor,
             tooltip: serverReady ? '服务器已就绪' : '服务器未就绪',
             details: serverDetails,
+            onTap: serverReady && isMacOS ? _showReadyDetails : null,
             marginLeft: em,
           ),
           _buildStatusIndicator(
@@ -291,6 +296,94 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     );
   }
 
+  void _showReadyDetails() {
+    var copied = false;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('就绪状态'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'ID/信令服务器已连接，可以发起或接收远程连接。',
+                ),
+                const SizedBox(height: 14),
+                const Divider(height: 1),
+                const SizedBox(height: 14),
+                Text(
+                  '云端客户端下载',
+                  style: Theme.of(dialogContext).textTheme.titleSmall,
+                ),
+                const SizedBox(height: 6),
+                const Text('Windows、Linux、PAD/Android 客户端均在同一个云端页面下载。'),
+                const SizedBox(height: 14),
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      QrImageView(
+                        data: _kemiCloudDownloadPage,
+                        size: 156,
+                        backgroundColor: Colors.white,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text('扫码打开云端下载页', style: TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('下载地址', style: TextStyle(fontSize: 11)),
+                const SizedBox(height: 5),
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(dialogContext)
+                        .colorScheme
+                        .surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _kemiCloudDownloadPage,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(dialogContext).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(
+                  const ClipboardData(text: _kemiCloudDownloadPage),
+                );
+                final data = await Clipboard.getData(Clipboard.kTextPlain);
+                final succeeded = data?.text == _kemiCloudDownloadPage;
+                if (!dialogContext.mounted) return;
+                setDialogState(() => copied = succeeded);
+                showToast(succeeded ? '已复制' : '复制失败，请重试');
+              },
+              child: Text(copied ? '已复制' : '复制'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   updateStatus() async {
     final status =
         jsonDecode(await bind.mainGetConnectStatus()) as Map<String, dynamic>;
@@ -343,7 +436,10 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
 
 /// Connection page for connecting to a remote peer.
 class ConnectionPage extends StatefulWidget {
-  const ConnectionPage({Key? key}) : super(key: key);
+  const ConnectionPage({Key? key, this.showOnlineStatus = true})
+      : super(key: key);
+
+  final bool showOnlineStatus;
 
   @override
   State<ConnectionPage> createState() => _ConnectionPageState();
@@ -473,8 +569,9 @@ class _ConnectionPageState extends State<ConnectionPage>
             Expanded(child: PeerTabPage()),
           ],
         ).paddingOnly(left: 12.0)),
-        if (!isOutgoingOnly) const Divider(height: 1),
-        if (!isOutgoingOnly) OnlineStatusWidget()
+        if (!isOutgoingOnly && widget.showOnlineStatus)
+          const Divider(height: 1),
+        if (!isOutgoingOnly && widget.showOnlineStatus) OnlineStatusWidget()
       ],
     );
   }

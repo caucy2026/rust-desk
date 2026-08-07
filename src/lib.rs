@@ -74,3 +74,6 @@ pub mod privacy_mode;
 pub mod virtual_display_manager;
 
 mod kcp_stream;
+
+#[cfg(target_os = "macos")]
+mod kemi_p2p_portmap;

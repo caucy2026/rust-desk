@@ -1,0 +1,101 @@
+name: KEMI macOS ARM64 compile verification
+
+on:
+  push:
+    branches:
+      - ci/macos-developer-id-compile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kemi-macos-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.24.5"
+  MAC_RUST_VERSION: "1.81"
+  VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+    with:
+      build-profile: full
+
+  build-macos-arm64:
+    name: Compile KEMI macOS ARM64 app
+    runs-on: macos-14
+    needs: generate-bridge
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: recursive
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config >/dev/null 2>&1; then brew install pkg-config; fi
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Patch Flutter compatibility workaround
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: aarch64-apple-darwin
+
+      - name: Restore generated Flutter bridge
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg cache
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
+
+      - name: Build macOS application
+        shell: bash
+        run: |
+          MIN_MACOS_VERSION="12.3"
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+
+      - name: Package unsigned application for local Developer ID signing
+        shell: bash
+        run: |
+          ditto -c -k --keepParent \
+            ./flutter/build/macos/Build/Products/Release/RustDesk.app \
+            KEMI-macOS-arm64-unsigned.zip
+          shasum -a 256 KEMI-macOS-arm64-unsigned.zip > KEMI-macOS-arm64-unsigned.zip.sha256
+
+      - name: Upload unsigned macOS application
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: KEMI-macOS-arm64-unsigned
+          path: |
+            KEMI-macOS-arm64-unsigned.zip
+            KEMI-macOS-arm64-unsigned.zip.sha256
+          if-no-files-found: error

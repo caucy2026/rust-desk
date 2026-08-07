@@ -68,8 +68,9 @@ export KEMI_ANDROID_STORE_PASSWORD="$(security find-generic-password \
   -a newlink -s 'KEMI Android Release Keystore 2026' -w)"
 export KEMI_ANDROID_KEY_PASSWORD="$KEMI_ANDROID_STORE_PASSWORD"
 
+KEMI_FLUTTER=/Users/newlink/kemi/RustDesk/client/.toolchains/flutter/bin/flutter
 cd /Users/newlink/kemi/RustDesk/client/flutter
-/Users/newlink/flutter/bin/flutter build apk \
+"$KEMI_FLUTTER" build apk \
   --release \
   --target-platform android-arm64 \
   --no-pub

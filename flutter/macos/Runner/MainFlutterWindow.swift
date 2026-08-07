@@ -37,7 +37,7 @@ class RelativeMouseState {
 }
 
 class MainFlutterWindow: NSWindow {
-    private let launchAtLoginLabel = "com.carriez.kemi-remote-desktop"
+    private let launchAtLoginLabel = "com.newlinksz.kemi-remote-desktop"
     private let launchAtLoginBundlePathDefaultsKey = "KEMILaunchAtLoginBundlePath"
 
     private var isApplicationsInstall: Bool {

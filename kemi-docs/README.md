@@ -104,6 +104,7 @@ kemi-docs/
 ├── GIT-OPS.md                   ← Git 操作与 GitHub 备份指南
 ├── LOCAL-CHANGE-REVIEW.md       ← 当前候选逐文件改动、风险与发布门禁
 ├── macos-configuration.md        ← macOS 权限、签名、交付与排障（唯一操作说明）
+├── macos-developer-id-release.md  ← 公司Developer ID候选构建、公证与公开发布门禁
 ├── macos-local-build.md          ← Mac 同事从 GitHub 本地编译 Release App
 ├── android-release-signing.md    ← Android正式包名、固定签名、构建与迁移
 ├── ci-build.md                   ← 通用备份/云构建协调方法与 KEMI 特例
@@ -112,6 +113,8 @@ kemi-docs/
 ├── KEMI-SEND-CROSS-PLATFORM-CLIENT-DISTRIBUTION.md ← KEMI快传六文件、云后台、hbbc JSON、本地/云端下载闭环模板
 ├── file-transfer-history.md       ← PAD传输记录、去重、再次传输与错误提示设计
 ├── android-physical-mouse.md       ← PAD外接物理鼠标右键输入链路与排查
+├── ipv4-p2p-fixed-port-mapping.md  ← MAC固定公网端口映射简版设计与发布门禁
+├── p2p-network-debug-and-optimization.md ← IPv4 P2P现场调试、级联Wi-Fi/热点判定、失败处置与验收
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
@@ -198,6 +201,10 @@ PAD文件传输记录的产品与代码规格：记录时机、目录归组和�
 
 Android PAD外接物理鼠标的专项说明：右键失效根因、`BUTTON_SECONDARY`与鼠标来源`KEYCODE_BACK`兼容、单屏/双屏作用域、按下/移动/释放去重和ADB排查。修改物理鼠标输入时以本文为准。
 
+### ipv4-p2p-fixed-port-mapping.md 与 p2p-network-debug-and-optimization.md
+
+前者是MAC固定`TCP 21118`公网映射的简版机制和发布门禁；后者是IPv4 P2P的现场运行手册，记录级联Wi-Fi、手机热点、无IPv6、对称NAT和CGNAT的判定，列出`TCP-Mapped`候选、Relay回退、日志取证和逐项验收。涉及直连成功率、路由器映射或“为什么本次走中继”时必须先读后者，禁止把“已请求UPnP”误报为P2P成功。
+
 ### windows-vscode-build-prompt.md
 
 给 Windows 同事直接复制到 VSCode AI 的本地构建提示词：先审计 Visual Studio/LLVM/Rust/Flutter/vcpkg，再生成 default bridge、构建 Windows x64 Flutter客户端、打便携 EXE并核验版本、哈希和签名。用于同事自己从 GitHub源码复现 Windows候选包。
@@ -242,17 +249,19 @@ Android PAD外接物理鼠标的专项说明：右键失效根因、`BUTTON_SECO
 5. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
 6. **cross-display-keyboard.md** — 理解键盘模块
 7. **server-operations.md** — 服务端构建与部署入口
-8. **macos-configuration.md** — 涉及 Mac 时阅读
-9. **ci-build.md** — 涉及云端、Windows 或 Linux 构建时阅读
-10. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
+8. **p2p-network-debug-and-optimization.md** — 涉及网络直连、映射或中继时阅读
+9. **macos-configuration.md** — 涉及 Mac 时阅读
+10. **ci-build.md** — 涉及云端、Windows 或 Linux 构建时阅读
+11. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
+12. **build-toolchain-policy.md** — 所有本地客户端构建前必读；固定项目私有 Flutter，禁止全局 SDK
 
 ### 日常开发速查
 
 ```bash
-# 构建 PAD APK
-export PATH=/Users/newlink/flutter/bin:$PATH
+# 构建 PAD APK：只能使用本项目固定 Flutter，禁止使用全局 PATH 中的 flutter
+KEMI_FLUTTER=/Users/newlink/kemi/RustDesk/client/.toolchains/flutter/bin/flutter
 cd /Users/newlink/kemi/RustDesk/client/flutter
-flutter build apk --debug
+"$KEMI_FLUTTER" build apk --debug
 
 # 安装到设备
 adb -s 192.168.1.10:5555 install -r -d build/app/outputs/flutter-apk/app-debug.apk

@@ -66,7 +66,7 @@ Windows 同事本机构建时先读 `kemi-docs/windows-vscode-build-prompt.md`�
 - 先查当前代码和官方/原项目源码，不猜实现。
 - 修改前说明根因和最小方案；不要改无关入口、布局或会话生命周期。
 - 代码修改后先跑针对性 flutter analyze，再跑 flutter build apk --debug。
-- 当前可用 Flutter SDK 是 /Users/newlink/flutter/bin，命令前执行 export PATH=/Users/newlink/flutter/bin:$PATH。
+- 当前唯一可用 Flutter SDK 是项目私有的`/Users/newlink/kemi/RustDesk/client/.toolchains/flutter/bin/flutter`（3.24.5）；禁止使用`PATH`、`KEMI_FLUTTER_BIN`、`/Users/newlink/flutter`或其他项目SDK。完整规则见`kemi-docs/build-toolchain-policy.md`。
 - 默认跨平台 CI 仍以 Flutter 3.24.5 为基线；仓库 `extended_text` 必须保持精确 `14.0.0`。3.22 bridge 与 3.44 Windows ARM bridge 的临时改动只能在 `.github` 补丁中处理，详见 `kemi-docs/ci-build.md`。
 - Debug APK 输出为 flutter/build/app/outputs/flutter-apk/app-debug.apk。
 - 当前主要设备为`192.168.3.63:5555`；设备IP可能随Wi-Fi变化，先以`adb devices -l`确认，安装后必须用`dumpsys package`核对versionName/versionCode/lastUpdateTime。

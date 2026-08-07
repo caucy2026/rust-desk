@@ -1289,3 +1289,58 @@ remote          → keyboard_proxy_*          → 已认证远程session
 版本统一后固定签名归档为`BIN/KEMI-远程办公-PAD-1.4.61+166-release.apk`，大小24,579,994字节，SHA-256 `29a2ee1c6610fdcec847c8130fbc952bec2f12f8135dd16a8f9ebb2405f02e6d`。业务代码与用户确认稳定的包一致，差异仅为唯一版本/构建号和随原生重编更新的构建时间；`BIN/release`保持原批次。
 
 以后最小回归只需覆盖：副屏首页输入ID→连接→密码框对屏输入及退格→取消一次；再连接并成功出第一帧→远程键盘打开/关闭；最后主屏HOME后从副屏重开键盘。密码阶段不得出现远程字符发送，第一帧后不得残留`local_password`回调，鼠标左右键和远程画面不得因键盘宿主切换而失效。
+
+## 26. 当前唯一有效的跨屏键盘与文件窗口规则（2026-08-06）
+
+本节覆盖第20～25节中的临时方案，是后续修改必须遵循的**唯一有效结论**。旧节保留用于追踪根因；特别是第21.2节“给远控源Activity设置`FLAG_NOT_FOCUSABLE`”属于短期实验，已被撤销：它会让Android把远控源窗口视为非法输入目标，并在物理鼠标/Flutter输入分发场景触发`InputDispatcher`等待甚至ANR。稳定版本中远控源Activity始终保持可聚焦，键盘保持通过代理状态机、源端指针证据和IME可见性恢复完成，不能再靠改源窗口焦点标志实现。
+
+### 26.1 目标与显示屏选择
+
+- 双屏：从当前远控页面所在显示屏发起，在**另一块有效显示屏**创建或激活键盘宿主；远控在Display 0则键盘在Display 2，反之亦然。
+- 单屏：不创建跨屏宿主，使用当前屏原生输入法，不能因为没有副屏而卡在`opening`。
+- 每次激活都要核对`sourceDisplayId`、期望`targetDisplayId`、`KeyboardProxyActivity`真实`displayId`和IME token所属显示屏。Manager缓存的目标值不是事实来源。
+- 首页远程ID、连接密码和已连接后的远程输入共用宿主能力，但必须隔离输入通道：`numeric_id`、`local_password`、`remote`三种模式不可混用、不可把认证文字发送到远端。
+
+### 26.2 认证、HOME与“再次点不开”的根因闭环
+
+认证前不能预创建或抢占远程输入代理。此前主屏/副屏密码“键盘显示但字符输入不进去”的根因，是代理Activity改变了IME的输入连接所有权，Flutter密码框随后收到`commitText on inactive InputConnection`。认证状态以`pi.isSet`和首帧会话状态判断，不能以Display 0/2判断。
+
+用户按HOME、在另一屏关闭键盘或把主屏应用退后台后，Android可能保留一个不可见的`singleInstance`任务、销毁其`InputConnection`，或暂时禁止跨屏新建Activity。旧实现仍把它当作正在打开的宿主，新的`open()`返回busy，Flutter一直转圈；重连不能修复，重启App才恢复。
+
+当前规则是：
+
+1. `onUserLeaveHint()`只记录HOME意图，真正的`onStop()`才确认宿主是否已停驻；不能把普通鼠标焦点变化误判成HOME。
+2. 对已激活宿主立即发布`hidden(home_pressed)`，清掉本次IME请求和过期回调；但为避免Android 12从副屏重建主屏任务被拦截，保留同一宿主任务、channel和显示屏归属为可复用的停驻实例。
+3. 再次点击时只能以新的`requestId`激活该停驻实例、清除停驻窗口标志、核对真实Display后重新请求IME；旧请求的Insets/`onStop`回调不得覆盖新请求。
+4. 显式关闭、远控页退出、会话销毁、App真正后台或目标显示屏移除才完整释放任务、channel和输入回调。已释放后下次必须新建，不能复用弱引用中的旧Activity。
+5. Android 12双屏ROM第一次需要跨屏任务恢复时，`SYSTEM_ALERT_WINDOW`仅作为系统允许后台跨屏启动的许可；它不创建悬浮图标，也不能被当作键盘实现本身。没有许可时原生层返回`cross_display_permission_required`，Flutter必须回到`hidden`并显示中文说明，绝不能停在假`opening`。
+
+### 26.3 键盘保持与物理鼠标
+
+键盘一旦进入`opening/visible`，在远控显示区域的正常操作不能把它关闭：PAD手指点击、单指/多指操作、物理鼠标移动、左键点击、左键拖动均继续转发远端，同时保持键盘。关闭来源只能是用户再次点击“键盘”、目标屏输入法自身明确收起且没有源端操作证据、HOME/任务切换、会话退出、App后台或显示屏移除。
+
+实体右键不能套用左键的IME守护。此前右键被源端“保键盘”逻辑吞掉或只发down不发up，表现为远端右键卡住/闪一下。稳定链路为：主、副屏`dispatchTouchEvent`和`dispatchGenericMotionEvent`先记录源于`SOURCE_MOUSE`的事件；左键短时作为IME恢复证据；右键独立走`onSourceSecondaryMouseEvent`，完整转发`down → up`并取消不应保留的左键守护。因此验收必须同时确认“左键不让键盘消失”和“右键完整弹出并立即释放”，两者缺一不可。
+
+### 26.4 工具栏与文件传输窗口
+
+- “收起”是显式工具栏状态，不是系统键盘状态。收起时若键盘已经`opening/visible/closing`，保持原状；仅`hidden`时才打开键盘。收起后的展开按钮紧贴远控源屏右下角、无额外空隙、约50%透明，点击仅展开工具栏，不关闭键盘。
+- 文件按钮是独立的开关：打开时使用和键盘一致的背景色，第二次点击关闭并恢复原色。目标屏用户主动关闭、Activity销毁或会话退出时，原生`FileTransferActivity`通过状态channel通知源页面，按钮必须自动恢复关闭态。
+- 双屏文件传输使用另一屏的独立`FileTransferActivity`、FlutterEngine和文件FFI会话；它是90%×78%的真实非模态窗口，窗口外主屏桌面和远控画面仍可操作。它绝不能盖成透明全屏输入层，也不能因为打开文件窗口而中断视频Session。
+- HOME后的文件窗口采用与键盘相同的“停驻后复用 / 显式释放后重建”生命周期。不得把隐藏的旧`singleInstance`当作已显示窗口，也不得不加释放地重复创建独立文件Session。
+
+### 26.5 固定验收矩阵
+
+每次改动键盘、文件窗口、鼠标、Activity flag或跨屏权限，必须在双屏和单屏各执行一次：
+
+1. 副屏首页输入数字ID → 连接 → 密码框输入、退格、取消；主屏再完整重复一次。
+2. 连接成功后两个方向各打开/关闭远程键盘，PAD触摸、鼠标左键、拖动、滚轮均不让键盘消失；实体右键必须有完整down/up，远端不能卡住。
+3. 主屏按HOME或在另一屏主动关闭IME后，从副屏连续打开键盘、文件窗口至少三次；不得转圈、`open_timeout`、迁移到错误屏或要求重启App。
+4. 文件窗口由按钮关闭、目标窗口关闭、HOME后重开三种路径分别验证；远控视频、主屏桌面和文件独立Session均持续正常。
+5. 拔掉副屏或仅启动单屏后，键盘/文件回落本屏且状态不会残留。检查`dumpsys activity activities`、`KeyboardProxyActivity`真实display/task、`FileTransferActivity`以及日志中的requestId，而不是只看Flutter图标颜色。
+
+### 26.6 修改红线
+
+- 不得根据`hasWindowFocus()`、全局Insets或Flutter按钮状态单独判断键盘真实状态；以目标代理Activity、IME和匹配`requestId`的原生事件共同判定。
+- 不得恢复认证前远程代理预创建，不得把三种输入模式合并，不得用`restartInput()`替代状态修复。
+- 不得为了保键盘而拦截远控触摸/鼠标或修改远控源Activity为不可聚焦；远控操作与IME保持必须并行工作。
+- 不得用扩大/全屏透明文件Activity解决布局问题；文件窗口必须保持真实非模态边界。

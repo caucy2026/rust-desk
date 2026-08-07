@@ -21,6 +21,17 @@ import '../common/widgets/overlay.dart';
 import '../main.dart';
 import 'model.dart';
 
+const _kemiDiagnosticSavedPrefix = '__KEMI_DIAGNOSTIC_SAVED_V1__';
+const _kemiDiagnosticSaveFailedPrefix = '__KEMI_DIAGNOSTIC_SAVE_FAILED_V1__';
+
+enum KemiDiagnosticResult {
+  saved,
+  saveFailed,
+  sendFailed,
+  timeout,
+  inProgress,
+}
+
 class MessageKey {
   final String peerId;
   final int connId;
@@ -70,6 +81,12 @@ class ChatModel with ChangeNotifier {
   TextEditingController textController = TextEditingController();
   RxInt mobileUnreadSum = 0.obs;
   MessageKey? latestReceivedKey;
+
+  // A diagnostic request stays entirely inside the authenticated remote
+  // session. The completer lets the CM button report the real final result,
+  // rather than treating a click as success before the PAD has answered and
+  // the Mac has persisted the data.
+  final Map<int, Completer<KemiDiagnosticResult>> _pendingKemiDiagnostics = {};
 
   Offset chatWindowPosition = Offset(20, 80);
 
@@ -345,6 +362,16 @@ class ChatModel with ChangeNotifier {
   }
 
   receive(int id, String text) async {
+    if (text.startsWith(_kemiDiagnosticSavedPrefix)) {
+      _completeKemiDiagnostic(
+          text, _kemiDiagnosticSavedPrefix, KemiDiagnosticResult.saved);
+      return;
+    }
+    if (text.startsWith(_kemiDiagnosticSaveFailedPrefix)) {
+      _completeKemiDiagnostic(text, _kemiDiagnosticSaveFailedPrefix,
+          KemiDiagnosticResult.saveFailed);
+      return;
+    }
     final session = parent.target;
     if (session == null) {
       debugPrint("Failed to receive msg, session state is null");
@@ -439,6 +466,39 @@ class ChatModel with ChangeNotifier {
     }
     latestReceivedKey = messagekey;
     notifyListeners();
+  }
+
+  Future<KemiDiagnosticResult> requestKemiDiagnostic(int connId) async {
+    if (_pendingKemiDiagnostics.containsKey(connId)) {
+      return KemiDiagnosticResult.inProgress;
+    }
+    final completer = Completer<KemiDiagnosticResult>();
+    _pendingKemiDiagnostics[connId] = completer;
+    try {
+      await bind.cmSendChat(
+          connId: connId, msg: '__KEMI_DIAGNOSTIC_REQUEST_V1__');
+      try {
+        return await completer.future.timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        return KemiDiagnosticResult.timeout;
+      }
+    } catch (_) {
+      return KemiDiagnosticResult.sendFailed;
+    } finally {
+      if (identical(_pendingKemiDiagnostics[connId], completer)) {
+        _pendingKemiDiagnostics.remove(connId);
+      }
+    }
+  }
+
+  void _completeKemiDiagnostic(
+      String text, String prefix, KemiDiagnosticResult result) {
+    final connId = int.tryParse(text.substring(prefix.length));
+    if (connId == null) return;
+    final completer = _pendingKemiDiagnostics[connId];
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(result);
+    }
   }
 
   send(ChatMessage message) {

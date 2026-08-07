@@ -64,15 +64,35 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   Widget build(BuildContext context) {
     super.build(context);
     final isIncomingOnly = bind.isIncomingOnly();
-    return _buildBlock(
-        child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final protectedContent = _buildBlock(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          buildLeftPane(context),
+          if (!isIncomingOnly) const VerticalDivider(width: 1),
+          if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        ],
+      ),
+    );
+    if (bind.isOutgoingOnly()) return protectedContent;
+    // These four indicators only open read-only explanations. Keep them
+    // outside the remote-input protection used by passwords and settings so a
+    // connected PAD can inspect server, connection, capture and resource state.
+    return Column(
       children: [
-        buildLeftPane(context),
-        if (!isIncomingOnly) const VerticalDivider(width: 1),
-        if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
+        Expanded(child: protectedContent),
+        const Divider(height: 1),
+        OnlineStatusWidget(
+          onSvcStatusChanged: () {
+            if (isIncomingOnly && isInHomePage()) {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                _updateWindowSize();
+              });
+            }
+          },
+        ),
       ],
-    ));
+    );
   }
 
   Widget _buildBlock({required Widget child}) {
@@ -117,20 +137,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
       ),
       buildPluginEntry(),
     ];
-    if (isIncomingOnly) {
-      children.addAll([
-        Divider(),
-        OnlineStatusWidget(
-          onSvcStatusChanged: () {
-            if (isInHomePage()) {
-              Future.delayed(Duration(milliseconds: 300), () {
-                _updateWindowSize();
-              });
-            }
-          },
-        ).marginOnly(bottom: 6, right: 6)
-      ]);
-    }
     final textColor = Theme.of(context).textTheme.titleLarge?.color;
     return ChangeNotifierProvider.value(
       value: gFFI.serverModel,
@@ -187,7 +193,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   buildRightPane(BuildContext context) {
     return Container(
       color: Theme.of(context).scaffoldBackgroundColor,
-      child: ConnectionPage(),
+      child: const ConnectionPage(showOnlineStatus: false),
     );
   }
 
