@@ -84,7 +84,24 @@ ditto -c -k --keepParent '<发布App>' '<最终发布ZIP>'
 
 只有`notarytool`返回`Accepted`、App的`stapler validate`成功，且重新打包后的最终ZIP通过SHA-256校验，才可上传为`BIN/release/KEMI-macOS.zip`、更新manifest并发布到云端。DMG可以在公证通过后直接使用`stapler`装订和验证。
 
-## 明日候选验收
+## 1.4.75+182正式公证结果
+
+2026-08-08完成首个可公开分发的KEMI macOS包：
+
+- 公证提交ID：`b2746a22-151d-42c5-9bad-9876a936a083`；
+- Apple结果：`Accepted`；
+- App身份：`com.newlinksz.kemi.remote`、`1.4.75 (182)`、arm64；
+- 签名：`Developer ID Application: zhen ji (26T5WV4GLP)`、Hardened Runtime、安全时间戳；
+- `stapler staple`和`stapler validate`成功；
+- 解压最终ZIP后再次执行深度签名、票据和Gatekeeper验证，结果为`accepted / Notarized Developer ID`；
+- 最终归档：`BIN/KEMI-远程办公-macOS-arm64-1.4.75+182-notarized.zip`；
+- 固定上传副本：`BIN/release/KEMI-macOS.zip`；
+- 文件大小：22,650,917字节；
+- SHA-256：`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
+
+提交给Apple的原始ZIP不能直接覆盖最终文件：票据装订会修改App，必须在装订后重新ZIP并重新计算哈希。本轮没有停止或替换`/Applications`中正在运行的旧App。
+
+## 后续候选验收
 
 1. 解压候选ZIP到非`/Applications`的临时测试目录，确认不影响正在运行的旧App。
 2. 检查Info.plist、签名和`spctl`结果。
@@ -103,8 +120,7 @@ Android、Windows、Linux构建也必须遵循相同规则：每个项目将固�
 `.toolchains/flutter`，所有脚本都只引用该路径；需要升级Flutter时先新建独立版本分支
 并完成全平台验证，不能用全局SDK临时替换。
 
-当前本机构建验证（`1.4.64+169`）已通过：`com.newlinksz.kemi.remote`、ARM64、
-Developer ID 签名链和 ZIP SHA-256 均正确。因 Apple 时间戳服务当时不可用，候选包以
-`KEMI_MACOS_TIMESTAMP=off` 生成；它仅供本机测试，Gatekeeper 会将其标记为
-“Unnotarized Developer ID”。网络恢复后须以默认 `required` 时间戳重新签名，并完成
-notarization 后才能作为对外发布包。
+当前正式构建验证（`1.4.75+182`）已通过：`com.newlinksz.kemi.remote`、ARM64、
+Developer ID签名链、安全时间戳、Apple notarization、stapler票据和最终ZIP SHA-256
+全部正确。后续正式包仍必须使用默认`required`时间戳和`KEMI_NOTARY`配置；任何
+`KEMI_MACOS_TIMESTAMP=off`候选都只能用于本机诊断，不能覆盖正式上传文件。

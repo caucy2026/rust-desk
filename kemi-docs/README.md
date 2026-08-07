@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前PAD正式发布为 **1.4.62+167**；桌面三端仍保持各自已验收版本，Newlink云端批次以`release-manifest.json`实际内容为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。PAD以Newlink固定HTTPS元数据接口为主源，每次进入客户端页重新解析动态CDN地址；GitHub只在不造成版本倒退时作为备用源。Android使用Newlink正式applicationId与固定release签名，Mac当前使用固定本地测试签名。
+**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前本地待上传批次为 **1.4.75+182**：PAD使用固定Newlink release签名，macOS使用Developer ID且已完成Apple公证和票据装订，Windows/Linux为同批1.4.75云端构建产物；Newlink线上实际版本仍以固定HTTPS接口回读的`release-manifest.json`为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。
 
-## 当前项目总结（2026-08-06）
+## 当前项目总结（2026-08-08）
 
 - 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
 - Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
-- 当前PAD源码`1.4.62+167`在稳定鼠标/跨屏键盘基线上，加入连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁、客户端自更新前可选备份当前APK、本地APK安装与普通文件系统分享；首页远程ID和连接密码均可使用另一屏键盘，数字ID、本地密码和远程输入三种事件严格隔离。文件按钮与另一屏窗口状态同步，打开为绿色带背景，再点关闭；文件窗口是90%×78%的真实非模态窗口，窗口外主屏桌面仍可操作。Android 12双屏设备需一次性授予“显示在其他应用上层”，这里只把它作为跨屏任务恢复许可，不创建悬浮图标。详细边界分别见`connection-history-and-resource-monitor.md`、`file-transfer-history.md`、`cross-display-keyboard.md`和`client-distribution.md`。
-- Newlink云端已发布PAD `1.4.62+167`，三个固定接口回读文件与本地release逐字节一致；真机从1.4.61选择备份后升级成功。桌面三端仍保持各自已验收的`1.4.49`字节，清单明确标为PAD热修订混合快照；后续完整四端发布仍需同一提交重新构建Mac/Windows/Linux。受控PAD的Download完整访问部署步骤见`file-transfer-history.md`第8节。
+- 当前PAD源码`1.4.75+182`在稳定鼠标/跨屏键盘基线上，包含连接记录、资源监控、Android真实VP9硬解、双栏文件传输、远端传入文件/目录安全删除、PAD目标空间门禁、客户端自更新前可选备份当前APK、本地APK安装与普通文件系统分享；P2P连接保持快速并行基线，只保留已验证的诊断与端口映射能力，不保留会拖慢连接的重试实验。
+- `BIN/release`已形成完整四端`1.4.75`快照并通过大小/SHA-256交叉门禁；管理员尚未上传Newlink云盘，因此manifest状态为`pending-manual-upload`。严格按PAD、macOS、Windows、Linux、SHA256SUMS、release-manifest最后的顺序上传，随后再做云端回读和PAD远程升级闭环。
 - GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 
 ### 核心定制功能

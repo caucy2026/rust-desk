@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 一百零三、2026-08-08 1.4.75+182 四端正式包与macOS公证闭环
+
+- 功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`；云端构建兼容提交`66c71a888e5ba0ee0c25ad5223e2a3805cc7749e`只把`igd-next`固定到Rust 1.75可编译的`0.16.1`，解决`attohttpc 0.30/indexmap 2.14`导致bridge任务失败的问题，不改变对外版本和连接策略。
+- GitHub focused run `31184071063`全部通过：bridge、Windows x64、Linux x86_64 AppImage和汇总manifest均成功。Windows为22,720,512字节、SHA-256 `84d78eec4c8e78afd55691c53e73ecb0ed14a1dbb4797e6c15afac40af0f41d9`；Linux为77,785,592字节、SHA-256 `19eb461779aff801d54667eb6525f30df8fb80c2ab28278d50b4e41a2ac05e53`。
+- macOS `1.4.75+182`使用`Developer ID Application: zhen ji (26T5WV4GLP)`、Hardened Runtime和安全时间戳签名；公证请求`b2746a22-151d-42c5-9bad-9876a936a083`返回`Accepted`。App完成`stapler staple/validate`、深度签名和Gatekeeper复验，结果为`accepted / Notarized Developer ID`；最终ZIP为22,650,917字节、SHA-256 `a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
+- PAD固定签名包为`1.4.75+182`、24,591,455字节、SHA-256 `660c2612264a318629ae870ecd5128c6d123a10a0c9ad073b1c9fe41f468bb32`；包名`com.newlinksz.kemi.remote`，zipalign、v1/v2签名有效，证书SHA-256保持`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 四端带版本不可变归档已写入`BIN/`，四个固定客户端、`SHA256SUMS.txt`和`release-manifest.json`已整体覆盖到`BIN/release/`。旧六文件完整备份在`BIN/release/candidates/release-backup-before-1.4.75-20260808/`；四端哈希、manifest大小/哈希和SHA清单交叉门禁全部通过。
+- manifest批次为`1.4.75+182-four-client-notarized`，云端状态暂记`pending-manual-upload`。管理员必须依次上传PAD、macOS、Windows、Linux、SHA256SUMS，最后上传release-manifest；上传和回读完成前不能宣称Newlink云端已经发布1.4.75。
+
 ## 一百零二、2026-08-07 1.4.75+182 P2P实验回退与两日现场故障归档
 
 - 根据同网、电信热点和联通热点的真实会话日志，新增`p2p-field-failure-cases-2026-08-06-07.md`，逐项记录STUN映射、MAC候选、最终连接类型、耗时、失败原因和网络处置方法。

@@ -1,6 +1,16 @@
 # KEMI 本地未提交改动与风险复核
 
-## 0. 当前发布快照：1.4.62+167（2026-08-06）
+## 0. 当前待上传发布快照：1.4.75+182（2026-08-08）
+
+> GitHub当前基线：`backup/master = 66c71a888e5ba0ee0c25ad5223e2a3805cc7749e`；功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`。
+
+- PAD固定签名`1.4.75+182`已完成包名、版本、zipalign、v1/v2签名和证书复核；SHA-256为`660c2612264a318629ae870ecd5128c6d123a10a0c9ad073b1c9fe41f468bb32`。
+- macOS `1.4.75+182`已使用Developer ID签名，Apple公证请求`b2746a22-151d-42c5-9bad-9876a936a083`为`Accepted`；票据装订、解包复验和Gatekeeper均通过，最终ZIP SHA-256为`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
+- Windows/Linux focused run `31184071063`全绿，两个文件SHA-256分别为`84d78eec4c8e78afd55691c53e73ecb0ed14a1dbb4797e6c15afac40af0f41d9`和`19eb461779aff801d54667eb6525f30df8fb80c2ab28278d50b4e41a2ac05e53`。
+- `BIN/release`六文件已整体对齐并通过manifest、文件大小及SHA清单交叉校验；旧批次备份在`BIN/release/candidates/release-backup-before-1.4.75-20260808/`。
+- 当前风险不在本地制品，而在人工上传窗口：管理员必须最后上传`release-manifest`。上传前云端仍是旧批次，上传后必须回读六个接口并验证PAD升级和两个下载通道。
+
+## 历史发布快照：1.4.62+167（2026-08-06）
 
 > 功能基线：GitHub `backup/master = 5f4779b424ac22c7aa2fbd10916bf595cdde0237`；本次仅补充发布和设备权限的现场证据，不修改该稳定功能基线。
 

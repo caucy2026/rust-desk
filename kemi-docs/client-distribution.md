@@ -2,13 +2,13 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前PAD正式发布：1.4.62+167；桌面三端保持已验收字节
+## 当前待上传正式批次：1.4.75+182 四端对齐
 
-Newlink云端实际版本必须以在线`release-manifest`回读为准，不能依据本地源码猜测。本轮正式释放只更新PAD为`1.4.62+167`并重算两份清单；Mac/Windows/Linux必须保持已有字节和哈希。`1.4.60+165`及`1.4.61+166`均保存在`BIN/`版本化归档，不拿历史包覆盖固定上传文件。
+`BIN/release`已在2026-08-08整体整理为`1.4.75+182-four-client-notarized`批次：PAD为`1.4.75+182`，macOS为`1.4.75+182`且已完成Developer ID签名、Apple公证和票据装订，Windows/Linux为`1.4.75`。本地六文件一致性门禁已通过，但Newlink云端实际版本仍必须以在线`release-manifest`回读为准；管理员完成六项覆盖上传前，本批次状态为`pending-manual-upload`，不能把本地准备完成写成云端已发布。
 
 客户端页Android条目同时显示云端版本和小字“（本机版本 xxxxx）”。只有数值比较确认云端`versionName + versionCode`严格高于本机时才显示“更新”；相同或更旧版本不显示。点击后下载清单指定的固定签名APK，核对大小和SHA-256；安装前询问是否把当前已安装APK备份到系统“下载”目录。选“是”先备份再打开系统安装器，选“否”直接打开系统安装器，两条路径都不跳转RustDesk官网。未知来源授权往返必须保留选择，不能重复备份。
 
-本轮管理员已依次覆盖`KEMI-PAD`、`SHA256SUMS`并最后覆盖`release-manifest`，没有改动桌面三个对象。三个固定接口回读文件与`BIN/release`逐字节一致；真机从`1.4.61+166`检测`1.4.62+167`，选择“是，先备份”后完成系统安装和重启回读，备份APK真实落入公共Download。“否，直接升级”仍需在下一批次单独验收，不能用本次“是”路径代替。
+本批次六个文件尚待管理员上传。上传完成后必须回读六个固定HTTPS接口，并在PAD上验证“发现1.4.75+182 → 下载及双哈希校验 → 可选备份旧APK → 系统安装 → 新版本启动”；局域网HTTP和hbbc云端入口也必须回读到同一批次，不能只根据管理后台显示“上传成功”结束验收。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 
@@ -57,18 +57,16 @@ Newlink国内云盘HTTPS文件
 
 ## 2. 四端版本、归档名和云盘固定名
 
-源码产品版本来自根`Cargo.toml`，当前相对稳定版本为`1.4.61`，PAD build为`166`；`BIN/release`仍保留PAD `1.4.59+164`和三个桌面已验收文件。版本和SHA必须如实保留。下一次完整四端发布必须从同一提交重建全部客户端后，才能取消“PAD热修订/混合批次”标记。
+源码产品版本来自根`Cargo.toml`，当前发布版本为`1.4.75`，PAD/macOS build为`182`。`BIN/release`六文件已取消历史混合批次，四端版本、大小和哈希由同目录manifest如实记录。功能发布提交为`62473ba7f`；Windows/Linux focused构建使用`66c71a888`，后者只包含Rust 1.75依赖兼容锁定，清单必须同时保留两个完整提交号和run ID。
 
 `BIN/`根目录中当前批次的版本化归档为：
 
 ```text
 BIN/
-├── KEMI-远程桌面-PAD-1.4.51+156-release.apk   # 当前PAD单端候选，不属于正式六文件
-├── KEMI-远程桌面-PAD-1.4.50+155-release.apk   # 当前PAD单端候选，不属于正式六文件
-├── KEMI-远程桌面-PAD-1.4.49+154-release.apk
-├── KEMI-远程桌面-macOS-arm64-1.4.49+154.zip
-├── KEMI-远程桌面-Windows-x64-1.4.49-ed615c7.exe
-└── KEMI-远程桌面-Linux-x86_64-1.4.49-ed615c7.AppImage
+├── KEMI-远程办公-PAD-1.4.75+182-release.apk
+├── KEMI-远程办公-macOS-arm64-1.4.75+182-notarized.zip
+├── KEMI-远程办公-Windows-x64-1.4.75-66c71a888.exe
+└── KEMI-远程办公-Linux-x86_64-1.4.75-66c71a888.AppImage
 ```
 
 上述`BIN/`根目录归档名必须带真实版本。旧版可以移到 `BIN/archive/`，但不能用新版文件名包装旧字节，也不能因为某个平台尚未构建完成就复制旧包冒充本次版本。macOS 当前是 Apple Silicon，Windows/Linux 当前是 x86_64；新增架构时新增独立目标，不能覆盖现有架构文件。
@@ -137,10 +135,10 @@ BIN/release/
 
 | 平台 | 版本来源 | 当前`BIN/release/`内容 |
 |---|---|---|
-| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.62`、`versionCode=167`，清单写 `1.4.62+167` |
-| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.49`、`CFBundleVersion=154` |
-| Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |
-| Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.49`，绑定源码`ed615c7fb`与run `30891539907` |
+| PAD / Android | `flutter/pubspec.yaml` | `versionName=1.4.75`、`versionCode=182`，清单写`1.4.75+182` |
+| macOS arm64 | App `Info.plist` | `CFBundleShortVersionString=1.4.75`、`CFBundleVersion=182`，Developer ID公证已Accepted并装订 |
+| Windows x64 | focused构建环境与候选manifest | 产品版本`1.4.75`，绑定源码`66c71a888`与run `31184071063` |
+| Linux x86_64 | focused构建环境、AppImage和候选manifest | 产品版本`1.4.75`，绑定源码`66c71a888`与run `31184071063` |
 
 ## 3. common-data 仓库结构
 
