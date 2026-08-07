@@ -148,6 +148,7 @@ pub fn kemi_network_diagnostic_snapshot() -> String {
         "peer address",
         "nat_type",
         "direct connection",
+        "mapped direct tcp candidate",
         "establish tcp",
         "establish udp",
         "establish relay",

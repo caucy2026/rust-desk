@@ -115,6 +115,7 @@ kemi-docs/
 ├── android-physical-mouse.md       ← PAD外接物理鼠标右键输入链路与排查
 ├── ipv4-p2p-fixed-port-mapping.md  ← MAC固定公网端口映射简版设计与发布门禁
 ├── p2p-network-debug-and-optimization.md ← IPv4 P2P现场调试、级联Wi-Fi/热点判定、失败处置与验收
+├── p2p-field-failure-cases-2026-08-06-07.md ← 两日真实日志、电信/联通差异、双层NAT与代码保留/回退清单
 ├── server-operations.md         ← 服务端构建与部署入口
 ├── cross-display-keyboard.md    ← 跨屏软键盘需求与设计
 ├── dual-screen-port.md          ← 安卓双屏移植总体架构
