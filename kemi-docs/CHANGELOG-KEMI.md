@@ -4,6 +4,7 @@
 
 ## 一百零四、2026-08-08 1.4.76+183 PAD自有设备权限与固定工具链发布
 
+- 本轮功能、版本、KEMI服务器受控补丁和审计文档提交为`bacea56df`；`libs/hbb_common`仍跟随公开上游gitlink，KEMI服务器与公钥由主仓`.github/patches/kemi_hbb_common_server.diff`复现，避免推送云端无法获取的私有子模块提交。
 - 本轮只更新Android PAD；macOS、Windows和Linux二进制保持`1.4.75`批次原字节不变。项目固定使用`client/.toolchains/flutter`中的Flutter 3.24.5以及现有NDK、Gradle和Cargo缓存，不读取或切换全局Flutter。
 - 将“双屏能力”与“KEMI自有设备权限”拆开：普通双屏判断继续服务跨屏键盘和窗口；中继权限要求设备同时具备`huanglong.product.type.stb`系统特性、`BRAND=huanglong`、`DEVICE=hi3781v730`，并存在1920×1280、支持Presentation的活动非默认屏幕。其他Android安装默认只允许P2P，不因本地伪造`access_token`开放中继。
 - 首轮Kotlin编译发现`Display.type/TYPE_EXTERNAL`属于当前SDK不可见API；保持产品属性条件不变，改用公开的`displayId != Display.DEFAULT_DISPLAY`和`state != STATE_OFF`判断非默认活动屏，随后固定签名Release构建通过。

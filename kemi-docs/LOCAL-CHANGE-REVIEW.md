@@ -2,7 +2,7 @@
 
 ## 0. 当前待上传发布快照：1.4.76+183 PAD单端更新（2026-08-08）
 
-> 整理前GitHub当前基线：`backup/master = 1d169cc40`；功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`。本轮完成提交并推送后，以本文记录的新提交哈希替代该整理前基线。
+> 整理前GitHub基线：`backup/master = 1d169cc40`；本轮PAD策略、版本和审计文档提交为`bacea56df`。推送后以远端回读的完整哈希为最终备份凭据。
 
 - PAD固定签名`1.4.76+183`已完成包名、版本、arm64核心、zipalign、v1/v2签名和证书复核；SHA-256为`fd969b4b2ca3f9de3ab8f7a8e4e7a76cb6d9c83e37957c2e94a15e2bd53b31b6`。本轮只允许KEMI自有OEM双屏设备使用中继，其他Android安装P2P-only。
 - macOS `1.4.75+182`已使用Developer ID签名，Apple公证请求`b2746a22-151d-42c5-9bad-9876a936a083`为`Accepted`；票据装订、解包复验和Gatekeeper均通过，最终ZIP SHA-256为`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
