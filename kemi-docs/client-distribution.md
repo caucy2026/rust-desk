@@ -2,13 +2,13 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前待上传正式批次：1.4.77+184 PAD单端更新
+## 当前待上传正式批次：1.4.78+185 PAD第一阶段封版
 
-`BIN/release`已在2026-08-08更新为`1.4.77+184-single-display-local-tools`批次：PAD为`1.4.77+184`，普通单屏设备的远程ID、密码、远控键盘和文件传输全部留在当前屏幕；macOS继续使用已完成Developer ID签名、Apple公证和票据装订的`1.4.75+182`原文件，Windows/Linux继续使用`1.4.75`原文件。本地六文件一致性门禁已通过，但Newlink云端实际版本仍必须以在线`release-manifest`回读为准；管理员完成PAD、SHA256SUMS和最后的release-manifest三项覆盖上传前，本批次状态为`pending-manual-upload`，不能把本地准备完成写成云端已发布。
+`BIN/release`在2026-08-08更新为`1.4.78+185-pad-phase-1-final`批次：PAD为`1.4.78+185`，顶栏统一显示“KEMI远程办公 + 实际版本号”，底部服务器正常状态统一显示“就绪”；`1.4.77`的单屏键盘/文件同屏行为完整保留。macOS继续使用已完成Developer ID签名、Apple公证和票据装订的`1.4.75+182`原文件，Windows/Linux继续使用`1.4.75`原文件。管理员完成PAD、SHA256SUMS和最后的release-manifest三项覆盖上传前，本批次状态为`pending-manual-upload`。
 
 客户端页Android条目同时显示云端版本和小字“（本机版本 xxxxx）”。只有数值比较确认云端`versionName + versionCode`严格高于本机时才显示“更新”；相同或更旧版本不显示。点击后下载清单指定的固定签名APK，核对大小和SHA-256；安装前询问是否把当前已安装APK备份到系统“下载”目录。选“是”先备份再打开系统安装器，选“否”直接打开系统安装器，两条路径都不跳转RustDesk官网。未知来源授权往返必须保留选择，不能重复备份。
 
-本批次只需覆盖上传`KEMI-PAD`、`SHA256SUMS`和最后的`release-manifest`，桌面三端不得重复替换。上传完成后必须回读六个固定HTTPS接口，并在PAD上验证“发现1.4.77+184 → 下载及双哈希校验 → 可选备份旧APK → 系统安装 → 新版本启动”；局域网HTTP和hbbc云端入口也必须回读到同一批次，不能只根据管理后台显示“上传成功”结束验收。
+本批次只需覆盖上传`KEMI-PAD`、`SHA256SUMS`和最后的`release-manifest`，桌面三端不得重复替换。上传完成后必须回读六个固定HTTPS接口，并在PAD上验证“发现1.4.78+185 → 下载及双哈希校验 → 可选备份旧APK → 系统安装 → 新版本启动”；局域网HTTP和hbbc云端入口也必须回读到同一批次，不能只根据管理后台显示“上传成功”结束验收。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 

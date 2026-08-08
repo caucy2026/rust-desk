@@ -12,7 +12,7 @@ import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'connection_page.dart';
 
-const String kKemiPadAppTitle = 'KEMI远程桌面PAD版';
+const String kKemiPadAppTitle = 'KEMI远程办公';
 
 abstract class PageShape extends Widget {
   final String title = "";
@@ -142,7 +142,7 @@ class HomePageState extends State<HomePage> {
     final String message;
     if (status > 0) {
       color = const Color.fromARGB(255, 50, 190, 166);
-      message = translate('server_ready_status');
+      message = translate('Ready');
     } else if (status == 0) {
       color = kColorWarn;
       message = translate('server_connecting_status');

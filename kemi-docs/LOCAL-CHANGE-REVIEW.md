@@ -1,10 +1,10 @@
 # KEMI 本地未提交改动与风险复核
 
-## 0. 当前待上传发布快照：1.4.77+184 PAD单端更新（2026-08-08）
+## 0. 当前待上传发布快照：1.4.78+185 PAD第一阶段封版（2026-08-08）
 
 > 整理前GitHub基线：`backup/master = 1d169cc40`；本轮PAD策略、版本和审计文档提交为`bacea56df`。推送后以远端回读的完整哈希为最终备份凭据。
 
-- PAD固定签名`1.4.77+184`已完成包名、版本、纯arm64-v8a、zipalign、v1/v2签名和证书复核；大小为24,591,467字节，SHA-256为`f77969fff769892730d0595b9d4a879696efb7693011bf2f51e97263b3cfefea`。本轮继续只允许KEMI自有OEM双屏设备使用中继，其他Android安装P2P-only；同时把普通单屏设备的远程ID键盘、密码键盘、远控键盘和文件传输统一保留在当前屏幕。
+- PAD `1.4.78+185`在`1.4.77`单屏适配基础上完成第一阶段界面统一：顶栏为“KEMI远程办公 + 实际版本号”，底部服务器正常状态为绿色圆点加“就绪”。固定签名纯arm64-v8a APK为24,592,227字节、SHA-256 `f52f72dbe4a1673ad8462335acab81de800d3ef649451a3e7e3df408926e534e`；中继权限和单/双屏输入、文件逻辑均不改变。
 - macOS `1.4.75+182`已使用Developer ID签名，Apple公证请求`b2746a22-151d-42c5-9bad-9876a936a083`为`Accepted`；票据装订、解包复验和Gatekeeper均通过，最终ZIP SHA-256为`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
 - Windows/Linux focused run `31184071063`全绿，两个文件SHA-256分别为`84d78eec4c8e78afd55691c53e73ecb0ed14a1dbb4797e6c15afac40af0f41d9`和`19eb461779aff801d54667eb6525f30df8fb80c2ab28278d50b4e41a2ac05e53`。
 - `BIN/release`已更新PAD、SHA清单和manifest，三个桌面文件保持上一批次原字节；六文件通过manifest、文件大小及SHA清单交叉校验。
@@ -19,14 +19,14 @@
 | `DeviceRole.kt`、键盘/文件Activity和两个远控Activity | KEMI自有PAD权限判定保持不变；另将跨屏工具统一限定为有效、点亮且支持Presentation的非默认屏幕，动态选择对面屏并取消硬编码Display 2 | PAD，高风险显示边界；单屏失败关闭并在当前页处理，真实双屏保持原跨屏行为 |
 | `flutter/lib/main.dart`、`consts.dart`、`remote_page.dart`、`models/model.dart` | 将旧“双屏即允许中继”选项替换为“KEMI自有设备”选项，普通安装保持P2P-only，资源窗口同步显示实际策略 | PAD，高风险连接策略；不改变双屏键盘和跨屏窗口能力判断 |
 | `src/client.rs` | P2P失败和强制中继入口统一执行自有PAD策略，拒绝本地伪造账户状态解锁中继 | PAD核心，高风险；中继仅由本机原生硬件判定写入的受控选项开放 |
-| `Cargo.toml`、`Cargo.lock`、`src/version.rs`、`flutter/pubspec.yaml` | PAD版本提升到`1.4.77+184`，桌面三端二进制继续使用已发布`1.4.75` | 四端版本关系；manifest必须明确为PAD单端升级，不能把桌面文件冒充`1.4.77` |
+| `Cargo.toml`、`Cargo.lock`、`src/version.rs`、`flutter/pubspec.yaml` | PAD版本提升到`1.4.78+185`，桌面三端二进制继续使用已发布`1.4.75` | 四端版本关系；manifest必须明确为PAD单端升级，不能把桌面文件冒充`1.4.78` |
 | `libs/hbb_common/src/config.rs` | 本机工作树应用KEMI服务器默认值 | 四端高风险配置；云端通过已跟踪的`.github/patches/kemi_hbb_common_server.diff`复现，禁止提交云端不可获取的本地子模块gitlink |
 | `kemi-docs/*` | 更新版本、发布分工、固定工具链、签名公证验收和本地/云端差异 | 文档；必须与最终提交、release manifest和真实云端状态一致 |
 
 ### 0.2 本轮制品边界
 
 - Git只备份源码、受控补丁、工作流和文档；`BIN/release`位于源码仓外，不会因Git push自动上传到Newlink云盘。
-- 本轮PAD正式文件为`1.4.77+184`；macOS、Windows、Linux保持既有`1.4.75`原字节。
+- 本轮PAD正式文件为`1.4.78+185`；macOS、Windows、Linux保持既有`1.4.75`原字节。
 - `libs/hbb_common`当前本机dirty是受控服务器补丁的工作副本，不提交到上游`rustdesk/hbb_common`；fresh clone由主仓工作流应用同一受控补丁。
 
 ## 历史发布快照：1.4.62+167（2026-08-06）
