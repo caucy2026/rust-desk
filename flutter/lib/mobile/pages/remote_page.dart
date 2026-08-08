@@ -137,7 +137,7 @@ class _AndroidResourceUsageDialogState
     final direct = gFFI.ffiModel.direct;
     final streamType = gFFI.ffiModel.cachedPeerData.streamType;
     final relayAllowed =
-        bind.mainGetLocalOption(key: kOptionKemiDualScreenPad) == 'Y';
+        bind.mainGetLocalOption(key: kOptionKemiOwnedPad) == 'Y';
     final coreCount = _intValue('logicalCoreCount').clamp(1, 1 << 16);
     final cumulativeCpu = _doubleValue('cpuPercent');
     final deviceCpu = (cumulativeCpu / coreCount).clamp(0.0, 100.0);

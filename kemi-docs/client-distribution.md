@@ -2,13 +2,13 @@
 
 > 适用版本：`1.4.46+119` 起。本文是四端制品、项目 `BIN/`、固定云盘文件名、GitHub `caucy2026/common-data`、PAD 后台缓存和局域网 HTTP/HTTPS 下载入口的唯一维护说明。
 
-## 当前待上传正式批次：1.4.75+182 四端对齐
+## 当前待上传正式批次：1.4.76+183 PAD单端更新
 
-`BIN/release`已在2026-08-08整体整理为`1.4.75+182-four-client-notarized`批次：PAD为`1.4.75+182`，macOS为`1.4.75+182`且已完成Developer ID签名、Apple公证和票据装订，Windows/Linux为`1.4.75`。本地六文件一致性门禁已通过，但Newlink云端实际版本仍必须以在线`release-manifest`回读为准；管理员完成六项覆盖上传前，本批次状态为`pending-manual-upload`，不能把本地准备完成写成云端已发布。
+`BIN/release`已在2026-08-08更新为`1.4.76+183-pad-owned-device-policy`批次：PAD为`1.4.76+183`，macOS继续使用已完成Developer ID签名、Apple公证和票据装订的`1.4.75+182`原文件，Windows/Linux继续使用`1.4.75`原文件。本地六文件一致性门禁已通过，但Newlink云端实际版本仍必须以在线`release-manifest`回读为准；管理员完成PAD、SHA256SUMS和最后的release-manifest三项覆盖上传前，本批次状态为`pending-manual-upload`，不能把本地准备完成写成云端已发布。
 
 客户端页Android条目同时显示云端版本和小字“（本机版本 xxxxx）”。只有数值比较确认云端`versionName + versionCode`严格高于本机时才显示“更新”；相同或更旧版本不显示。点击后下载清单指定的固定签名APK，核对大小和SHA-256；安装前询问是否把当前已安装APK备份到系统“下载”目录。选“是”先备份再打开系统安装器，选“否”直接打开系统安装器，两条路径都不跳转RustDesk官网。未知来源授权往返必须保留选择，不能重复备份。
 
-本批次六个文件尚待管理员上传。上传完成后必须回读六个固定HTTPS接口，并在PAD上验证“发现1.4.75+182 → 下载及双哈希校验 → 可选备份旧APK → 系统安装 → 新版本启动”；局域网HTTP和hbbc云端入口也必须回读到同一批次，不能只根据管理后台显示“上传成功”结束验收。
+本批次只需覆盖上传`KEMI-PAD`、`SHA256SUMS`和最后的`release-manifest`，桌面三端不得重复替换。上传完成后必须回读六个固定HTTPS接口，并在PAD上验证“发现1.4.76+183 → 下载及双哈希校验 → 可选备份旧APK → 系统安装 → 新版本启动”；局域网HTTP和hbbc云端入口也必须回读到同一批次，不能只根据管理后台显示“上传成功”结束验收。
 
 更新顺序固定为：形成候选 commit → 本地构建并验收 PAD/Mac → 同 commit 获取 Windows/Linux focused artifacts → 核对四端版本/服务器/公钥/哈希 → 一次性覆盖六个 release 文件 → 最后生成并上传 manifest。
 
@@ -354,4 +354,4 @@ GitHub在部分网络环境下可能不可达或速度不稳定。小型清单�
 
 当前不可变Release为[`kemi-rustdesk-v1.4.46-build110`](https://github.com/caucy2026/common-data/releases/tag/kemi-rustdesk-v1.4.46-build110)，对应源码commit `1618ab449e5791b5280528623c6cddffcbec7fd4`、stable清单commit `7460ba5`。PAD真机已验证读取该清单并开始Assets API断点下载；列表百分比和HTTP DEMO页面已验收。完整四端缓存仍按网络速度后台顺序完成，未完成项不会被HTTP服务暴露。
 
-现有 macOS ZIP 使用本地测试签名，未经 Apple Developer ID 公证；通过浏览器下载后仍可能被 Gatekeeper 阻止。它可用于内部测试，但在正式面向客户前必须由公司的 Apple Developer 账号完成 Developer ID 签名、公证和 stapling。Windows 当前候选也未做 Authenticode 签名。清单和 HTTP 分发只保证文件一致性，不会绕过操作系统安全策略。
+> 历史说明：本段描述的是`1.4.46+110`时期的旧制品，不能用于判断当前release。当前`1.4.75+182` macOS ZIP已经使用Apple Developer ID签名、通过公证并装订票据，解压后的Gatekeeper结果为`accepted / Notarized Developer ID`。Windows当前候选仍未做Authenticode签名。清单和HTTP分发只保证文件一致性，不能替代各平台签名。

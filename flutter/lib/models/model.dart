@@ -1151,7 +1151,7 @@ class FfiModel with ChangeNotifier {
       OverlayDialogManager dialogManager,
       String peerId) async {
     final relayAllowed =
-        bind.mainGetLocalOption(key: kOptionKemiDualScreenPad) == 'Y';
+        bind.mainGetLocalOption(key: kOptionKemiOwnedPad) == 'Y';
     var hint = relayAllowed
         ? "\n\n${translate('relay_hint_tip')}"
         : '\n\n当前设备仅允许 P2P 直连，不会占用服务器中继带宽。';

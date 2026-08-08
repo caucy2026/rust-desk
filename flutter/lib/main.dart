@@ -224,18 +224,18 @@ void runMobileApp() async {
 }
 
 Future<void> _syncAndroidRelayPolicy() async {
-  var isDualScreenPad = false;
+  var isKemiOwnedPad = false;
   try {
-    isDualScreenPad = await gFFI
-            .invokeMethod('is_dual_screen_pad', null)
+    isKemiOwnedPad = await gFFI
+            .invokeMethod('is_kemi_owned_pad', null)
             .timeout(const Duration(seconds: 2)) ==
         true;
   } catch (_) {
     // Fail closed: an unidentified Android device is P2P-only.
   }
   await bind.mainSetLocalOption(
-    key: kOptionKemiDualScreenPad,
-    value: isDualScreenPad ? 'Y' : 'N',
+    key: kOptionKemiOwnedPad,
+    value: isKemiOwnedPad ? 'Y' : 'N',
   );
 }
 

@@ -213,6 +213,9 @@ class RemoteActivity : FlutterActivity() {
                 "is_dual_screen_pad" -> {
                     result.success(DeviceRole.isDualScreenPad(this@RemoteActivity))
                 }
+                "is_kemi_owned_pad" -> {
+                    result.success(DeviceRole.isKemiOwnedPad(this@RemoteActivity))
+                }
                 "check_cross_display_restore_permission" -> {
                     result.success(canRestoreCrossDisplayTools(this@RemoteActivity))
                 }

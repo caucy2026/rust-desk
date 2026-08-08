@@ -100,14 +100,15 @@ pub const SEC30: Duration = Duration::from_secs(30);
 const RESTART_REMOTE_DEVICE_GRACE: Duration = Duration::from_secs(5 * 60);
 pub const VIDEO_QUEUE_SIZE: usize = 120;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
-const KEMI_DUAL_SCREEN_PAD_OPTION: &str = "kemi-dual-screen-pad";
+const KEMI_OWNED_PAD_OPTION: &str = "kemi-owned-pad";
 const KEMI_P2P_ONLY_ERROR: &str =
-    "P2P direct connection failed: relay is only available when a dual-screen PAD initiates the session";
+    "P2P direct connection failed: relay is unavailable for this device";
 
-/// KEMI reserves relay bandwidth for sessions initiated by a dual-screen PAD.
-/// Unknown and non-Android clients fail closed and remain P2P-only.
+/// KEMI-owned PADs have full connection capability. Other PAD installations
+/// fail closed and remain P2P-only until server-verified account entitlements
+/// are introduced; a locally stored token must never unlock relay by itself.
 fn kemi_outgoing_relay_allowed() -> bool {
-    LocalConfig::get_option(KEMI_DUAL_SCREEN_PAD_OPTION).eq_ignore_ascii_case("Y")
+    LocalConfig::get_option(KEMI_OWNED_PAD_OPTION).eq_ignore_ascii_case("Y")
 }
 
 #[cfg(target_os = "linux")]
@@ -602,7 +603,7 @@ impl Client {
                             );
                         } else {
                             log::warn!(
-                                "KEMI blocked peer-requested relay: this initiator is not a dual-screen PAD"
+                                "KEMI blocked peer-requested relay: this PAD is not a KEMI-owned device"
                             );
                         }
                         if connect_futures.is_empty() {
@@ -1946,9 +1947,7 @@ impl LoginConfigHandler {
                 || Config::is_proxy();
         self.force_relay = requested_force_relay && kemi_outgoing_relay_allowed();
         if requested_force_relay && !self.force_relay {
-            log::warn!(
-                "KEMI ignored forced relay: relay is reserved for dual-screen PAD initiated sessions"
-            );
+            log::warn!("KEMI ignored forced relay: this PAD is not a KEMI-owned device");
         }
         if let Some((real_id, server, key)) = &self.other_server {
             let other_server_key = self.get_option("other-server-key");

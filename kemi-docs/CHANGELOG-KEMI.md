@@ -2,6 +2,16 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 一百零四、2026-08-08 1.4.76+183 PAD自有设备权限与固定工具链发布
+
+- 本轮只更新Android PAD；macOS、Windows和Linux二进制保持`1.4.75`批次原字节不变。项目固定使用`client/.toolchains/flutter`中的Flutter 3.24.5以及现有NDK、Gradle和Cargo缓存，不读取或切换全局Flutter。
+- 将“双屏能力”与“KEMI自有设备权限”拆开：普通双屏判断继续服务跨屏键盘和窗口；中继权限要求设备同时具备`huanglong.product.type.stb`系统特性、`BRAND=huanglong`、`DEVICE=hi3781v730`，并存在1920×1280、支持Presentation的活动非默认屏幕。其他Android安装默认只允许P2P，不因本地伪造`access_token`开放中继。
+- 首轮Kotlin编译发现`Display.type/TYPE_EXTERNAL`属于当前SDK不可见API；保持产品属性条件不变，改用公开的`displayId != Display.DEFAULT_DISPLAY`和`state != STATE_OFF`判断非默认活动屏，随后固定签名Release构建通过。
+- Android ARM64 Rust核心完整重编，包内核心确认包含新的P2P-only拦截逻辑且不存在未解析`sodium_*`符号。正式APK为24,590,842字节、SHA-256 `fd969b4b2ca3f9de3ab8f7a8e4e7a76cb6d9c83e37957c2e94a15e2bd53b31b6`；包名`com.newlinksz.kemi.remote`、版本`1.4.76+183`、仅arm64-v8a、zipalign及v1/v2签名有效，固定证书SHA-256仍为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 带版本归档为`BIN/KEMI-远程办公-PAD-1.4.76+183-release.apk`；固定上传文件`BIN/release/KEMI-PAD.apk`、`SHA256SUMS.txt`和`release-manifest.json`已更新并通过四端交叉校验。测试PAD`192.168.3.63`当前ADB连接超时，尚未安装真机，不能把构建通过写成真机验收完成。
+- 复核macOS正式包时曾在受限自动化隔离环境执行`codesign`，该环境无法访问完整钥匙串和macOS Security/trustd服务，输出`Authority=(unavailable)`并误报`invalid signature`。对相同`BIN/release/KEMI-macOS.zip`在正常系统安全上下文重新解压复验后，Developer ID深度签名、安全时间戳、`stapler validate`和Gatekeeper全部通过，结果仍为`accepted / Notarized Developer ID`；文件大小和SHA-256始终未变化。因此`1.4.75+182`Mac正式包从未损坏，也未在Apple等待期间被修改。
+- 后续macOS发布门禁增加环境有效性判断：出现`Authority=(unavailable)`或钥匙串身份不可见时，只能记为“当前环境无法验签”，禁止宣布制品损坏；必须在完整macOS用户安全上下文联合执行`codesign --verify --deep --strict`、`xcrun stapler validate`和`spctl --assess`。同时比较压缩前后关键二进制SHA-256，只有完整环境仍失败或字节确实变化才判定损坏。
+
 ## 一百零三、2026-08-08 1.4.75+182 四端正式包与macOS公证闭环
 
 - 功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`；云端构建兼容提交`66c71a888e5ba0ee0c25ad5223e2a3805cc7749e`只把`igd-next`固定到Rust 1.75可编译的`0.16.1`，解决`attohttpc 0.30/indexmap 2.14`导致bridge任务失败的问题，不改变对外版本和连接策略。

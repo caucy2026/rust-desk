@@ -467,6 +467,9 @@ class MainActivity : FlutterActivity() {
                 "is_dual_screen_pad" -> {
                     result.success(DeviceRole.isDualScreenPad(this@MainActivity))
                 }
+                "is_kemi_owned_pad" -> {
+                    result.success(DeviceRole.isKemiOwnedPad(this@MainActivity))
+                }
                 "get_app_resource_usage" -> {
                     result.success(AndroidResourceMonitor.snapshot(this@MainActivity))
                 }

@@ -1,14 +1,32 @@
 # KEMI 本地未提交改动与风险复核
 
-## 0. 当前待上传发布快照：1.4.75+182（2026-08-08）
+## 0. 当前待上传发布快照：1.4.76+183 PAD单端更新（2026-08-08）
 
-> GitHub当前基线：`backup/master = 66c71a888e5ba0ee0c25ad5223e2a3805cc7749e`；功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`。
+> 整理前GitHub当前基线：`backup/master = 1d169cc40`；功能发布提交为`62473ba7f7d31c2e6971b5ada127cd4f4a49d77f`。本轮完成提交并推送后，以本文记录的新提交哈希替代该整理前基线。
 
-- PAD固定签名`1.4.75+182`已完成包名、版本、zipalign、v1/v2签名和证书复核；SHA-256为`660c2612264a318629ae870ecd5128c6d123a10a0c9ad073b1c9fe41f468bb32`。
+- PAD固定签名`1.4.76+183`已完成包名、版本、arm64核心、zipalign、v1/v2签名和证书复核；SHA-256为`fd969b4b2ca3f9de3ab8f7a8e4e7a76cb6d9c83e37957c2e94a15e2bd53b31b6`。本轮只允许KEMI自有OEM双屏设备使用中继，其他Android安装P2P-only。
 - macOS `1.4.75+182`已使用Developer ID签名，Apple公证请求`b2746a22-151d-42c5-9bad-9876a936a083`为`Accepted`；票据装订、解包复验和Gatekeeper均通过，最终ZIP SHA-256为`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
 - Windows/Linux focused run `31184071063`全绿，两个文件SHA-256分别为`84d78eec4c8e78afd55691c53e73ecb0ed14a1dbb4797e6c15afac40af0f41d9`和`19eb461779aff801d54667eb6525f30df8fb80c2ab28278d50b4e41a2ac05e53`。
-- `BIN/release`六文件已整体对齐并通过manifest、文件大小及SHA清单交叉校验；旧批次备份在`BIN/release/candidates/release-backup-before-1.4.75-20260808/`。
+- `BIN/release`已更新PAD、SHA清单和manifest，三个桌面文件保持上一批次原字节；六文件通过manifest、文件大小及SHA清单交叉校验。
 - 当前风险不在本地制品，而在人工上传窗口：管理员必须最后上传`release-manifest`。上传前云端仍是旧批次，上传后必须回读六个接口并验证PAD升级和两个下载通道。
+- macOS固定上传包仍是原`1.4.75+182`字节，Apple公证等待过程不会修改本地App。2026-08-08曾因受限隔离环境无法访问完整Security/trustd服务而得到`Authority=(unavailable)`和错误的签名失败结论；正常系统上下文复验为`accepted / Notarized Developer ID`。以后隔离环境结果只作诊断，不作正式发布判定。
+
+### 0.1 本轮相对GitHub备份基线的源码改动
+
+| 范围 | 本地改动 | 平台与风险结论 |
+|---|---|---|
+| `DeviceRole.kt`、两个Android Activity | 新增KEMI自有PAD判定桥接：系统特性、品牌、设备代号及1920×1280 Presentation副屏必须同时满足 | PAD，高风险权限边界；未知设备失败关闭，不能仅凭普通双屏获得中继 |
+| `flutter/lib/main.dart`、`consts.dart`、`remote_page.dart`、`models/model.dart` | 将旧“双屏即允许中继”选项替换为“KEMI自有设备”选项，普通安装保持P2P-only，资源窗口同步显示实际策略 | PAD，高风险连接策略；不改变双屏键盘和跨屏窗口能力判断 |
+| `src/client.rs` | P2P失败和强制中继入口统一执行自有PAD策略，拒绝本地伪造账户状态解锁中继 | PAD核心，高风险；中继仅由本机原生硬件判定写入的受控选项开放 |
+| `Cargo.toml`、`Cargo.lock`、`src/version.rs`、`flutter/pubspec.yaml` | PAD版本提升到`1.4.76+183`，桌面三端二进制继续使用已发布`1.4.75` | 四端版本关系；manifest必须明确为PAD单端升级，不能把桌面文件冒充`1.4.76` |
+| `libs/hbb_common/src/config.rs` | 本机工作树应用KEMI服务器默认值 | 四端高风险配置；云端通过已跟踪的`.github/patches/kemi_hbb_common_server.diff`复现，禁止提交云端不可获取的本地子模块gitlink |
+| `kemi-docs/*` | 更新版本、发布分工、固定工具链、签名公证验收和本地/云端差异 | 文档；必须与最终提交、release manifest和真实云端状态一致 |
+
+### 0.2 本轮制品边界
+
+- Git只备份源码、受控补丁、工作流和文档；`BIN/release`位于源码仓外，不会因Git push自动上传到Newlink云盘。
+- 本轮PAD正式文件为`1.4.76+183`；macOS、Windows、Linux保持既有`1.4.75`原字节。
+- `libs/hbb_common`当前本机dirty是受控服务器补丁的工作副本，不提交到上游`rustdesk/hbb_common`；fresh clone由主仓工作流应用同一受控补丁。
 
 ## 历史发布快照：1.4.62+167（2026-08-06）
 

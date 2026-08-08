@@ -11,8 +11,10 @@ diff --git a/src/config.rs b/src/config.rs
      pub static ref EXE_RENDEZVOUS_SERVER: RwLock<String> = Default::default();
      pub static ref APP_NAME: RwLock<String> = RwLock::new("RustDesk".to_owned());
      static ref KEY_PAIR: Mutex<Option<KeyPair>> = Default::default();
-@@ -120,2 +121,2 @@
+@@ -120,2 +121,4 @@
 -pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];
 -pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
++// KEMI builds must remain on the company-hosted rendezvous service even if
++// the persisted custom server setting is unavailable or has been reset.
 +pub const RENDEZVOUS_SERVERS: &[&str] = &["kemi-chat.newlinksz.com"];
 +pub const RS_PUB_KEY: &str = "gGsFBYJT34y1PIRgE+kBFOIH+MDkOadi4Or6tlwQ3jE=";

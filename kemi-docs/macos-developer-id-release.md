@@ -84,6 +84,26 @@ ditto -c -k --keepParent '<发布App>' '<最终发布ZIP>'
 
 只有`notarytool`返回`Accepted`、App的`stapler validate`成功，且重新打包后的最终ZIP通过SHA-256校验，才可上传为`BIN/release/KEMI-macOS.zip`、更新manifest并发布到云端。DMG可以在公证通过后直接使用`stapler`装订和验证。
 
+### 验签必须使用完整macOS安全环境
+
+`codesign`、`stapler`和`spctl`不仅读取App文件，也依赖macOS钥匙串、证书链、Security/trustd和Gatekeeper服务。受限沙箱或隔离自动化环境可能输出：
+
+```text
+Authority=(unavailable)
+invalid signature (code or signature have been modified)
+```
+
+这组输出只能说明当前执行环境无法完成可信验签，不能单独证明App字节被修改。正式结论必须在正常macOS用户安全上下文执行：
+
+```bash
+security find-identity -v -p codesigning
+codesign --verify --deep --strict --verbose=2 '<解压后的App>'
+xcrun stapler validate -v '<解压后的App>'
+spctl --assess --type execute --verbose=4 '<解压后的App>'
+```
+
+同时比较压缩前后关键二进制SHA-256。若哈希一致且完整环境验证通过，隔离环境的失败属于误报；只有完整环境仍失败或文件哈希确实变化，才判定制品损坏。
+
 ## 1.4.75+182正式公证结果
 
 2026-08-08完成首个可公开分发的KEMI macOS包：
@@ -100,6 +120,8 @@ ditto -c -k --keepParent '<发布App>' '<最终发布ZIP>'
 - SHA-256：`a0b51eeaca4284fc171cbe39d5cc227938d450c3363b8631b61c44233da2b206`。
 
 提交给Apple的原始ZIP不能直接覆盖最终文件：票据装订会修改App，必须在装订后重新ZIP并重新计算哈希。本轮没有停止或替换`/Applications`中正在运行的旧App。
+
+2026-08-08再次从固定上传ZIP解压复验，仍得到`valid on disk`、`satisfies its Designated Requirement`、`The validate action worked!`以及`accepted / Notarized Developer ID`。Apple公证等待不会修改本地文件；本包从生成后到复验时大小和SHA-256均保持不变。
 
 ## 后续候选验收
 
