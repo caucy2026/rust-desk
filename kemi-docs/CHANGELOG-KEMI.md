@@ -13,6 +13,7 @@
 - 复核macOS正式包时曾在受限自动化隔离环境执行`codesign`，该环境无法访问完整钥匙串和macOS Security/trustd服务，输出`Authority=(unavailable)`并误报`invalid signature`。对相同`BIN/release/KEMI-macOS.zip`在正常系统安全上下文重新解压复验后，Developer ID深度签名、安全时间戳、`stapler validate`和Gatekeeper全部通过，结果仍为`accepted / Notarized Developer ID`；文件大小和SHA-256始终未变化。因此`1.4.75+182`Mac正式包从未损坏，也未在Apple等待期间被修改。
 - 后续macOS发布门禁增加环境有效性判断：出现`Authority=(unavailable)`或钥匙串身份不可见时，只能记为“当前环境无法验签”，禁止宣布制品损坏；必须在完整macOS用户安全上下文联合执行`codesign --verify --deep --strict`、`xcrun stapler validate`和`spctl --assess`。同时比较压缩前后关键二进制SHA-256，只有完整环境仍失败或字节确实变化才判定损坏。
 - 误判期间额外生成了未安装、未进入release的macOS `1.4.76+183`候选，并提交公证请求`c240c04b-7833-4853-933a-9954a9d4d70e`；截至记录时状态为`In Progress`。该请求不会修改本地App，也不具备自动发布权限，无论Apple后续结果如何都不得自动替换已验证的`1.4.75+182`正式包；只有用户另行决定发布Mac新版本并完成完整验收后才能晋级。
+- 补充Developer ID续费边界：当前证书北京时间`2027-02-02 06:12:15`自然到期，建议`2027-01-02`前检查会员续费和新证书。会员续费或旧证书自然到期都不要求重签现有`1.4.75+182`正式ZIP；已安装客户和以后首次下载的新客户均可继续使用原文件。只有发布新版本时使用新的有效证书重走签名、公证和staple流程；旧证书不得因正常换证而主动撤销。
 
 ## 一百零三、2026-08-08 1.4.75+182 四端正式包与macOS公证闭环
 
