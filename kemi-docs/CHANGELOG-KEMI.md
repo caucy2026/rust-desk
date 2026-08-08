@@ -7,6 +7,7 @@
 - PAD顶栏产品名由`KEMI远程桌面PAD版`统一为`KEMI远程办公`，后面继续读取APK实际`versionName`并以小字显示`v1.4.78`；Android应用名称、安装器和权限页原本已经使用`KEMI远程办公`，本次把运行界面名称统一到同一口径。
 - PAD底部服务器状态在已连接ID/信令服务器时由长句精简为与macOS/Windows/Linux相同的“就绪”两字和绿色圆点；连接中、离线和手动重连行为保持原逻辑，不能把未连接状态伪装成就绪。
 - 版本提升为`1.4.78+185`。项目固定Flutter 3.24.5和NDK完成Rust核心及纯arm64-v8a正式APK构建；包名`com.newlinksz.kemi.remote`，APK为24,592,227字节、SHA-256 `f52f72dbe4a1673ad8462335acab81de800d3ef649451a3e7e3df408926e534e`，zipalign、v1/v2固定签名和包内Rust核心`1.4.78`复核通过。本轮只重新发布PAD，macOS、Windows和Linux保持现有正式文件不变；这是PAD第一阶段界面与单屏适配封版。
+- 新增`PHASE-1-DEVELOPMENT-SUMMARY.md`，把第一阶段目录、架构、四端版本、完成能力、不可回退规则、构建发布门禁、未闭环风险和第二阶段起点统一归档；同时修正`WORKSPACE.md`仍停留在1.4.48的过期发布状态。
 
 ## 一百零五、2026-08-08 1.4.77+184 单屏设备工具同屏适配
 

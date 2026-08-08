@@ -31,6 +31,9 @@
 
 | 客户端版本 | 对应功能 |
 |---|---|
+| `PAD 1.4.78+185；第一阶段封版` | 顶栏统一为“KEMI远程办公 v1.4.78”，底部服务器正常状态统一为绿色圆点加“就绪”；保留1.4.77单屏工具同屏和既有双屏行为。客户端封版提交`9b4d8c585` |
+| `PAD 1.4.77+184` | 普通单屏设备的远程ID、密码、远控键盘和文件传输全部留在当前屏幕；真实双屏PAD继续使用对面屏工具窗口 |
+| `PAD 1.4.76+183` | KEMI自有OEM双屏设备保留完整P2P/中继能力，其他Android安装默认P2P-only；固定使用项目Flutter 3.24.5构建 |
 | `PAD 1.4.53+158候选；全端源码1.4.53` | Android arm64接入真实MediaCodec VP9硬解；按厂商组件和具体I420/NV12输出选择，处理stride/crop/动态格式变化，失败自动回退libvpx；副屏实测进入`OMX.uapi.video.decoder.vp9`。当前未切换正式六文件批次 |
 | `PAD 1.4.52+157候选；全端源码1.4.52` | 恢复首页后两个入口；新增连接记录、删除/清空和跨重启持久化；CPU拆分整机/多核口径并上报实际Decoder后端。当前未切换正式六文件批次 |
 | `PAD 1.4.51+156候选；全端源码1.4.51` | 修复跨屏键盘打开时源Activity被设为`NOT_FOCUSABLE`造成的InputDispatcher ANR；远控窗口始终保持合法焦点能力；右键缺失release时按下一鼠标状态自动补发up。当前未切换正式六文件批次 |
@@ -98,6 +101,7 @@
 ```
 kemi-docs/
 ├── README.md                    ← 本文件（项目简介与文档导航）
+├── PHASE-1-DEVELOPMENT-SUMMARY.md ← 第一阶段封版事实、风险、门禁与第二阶段起点
 ├── WORKSPACE.md                 ← 工作区、客户端/服务端仓库边界
 ├── SESSION-HANDOFF.md           ← 跨会话接续手册、完整架构与构建部署流程
 ├── CHANGELOG-KEMI.md            ← 开发调试记录
@@ -129,6 +133,11 @@ kemi-docs/
 
 ## 文档说明
 
+### PHASE-1-DEVELOPMENT-SUMMARY.md
+
+**第一阶段封版后的总事实入口**：记录最终客户端提交、四端制品、客户端/服务端边界、已完成功能、
+不可回退行为、构建发布门禁、未闭环风险和第二阶段建议。新成员和新会话先读本文，再进入专项文档。
+
 ### README.md（本文件）
 
 项目简介、文档目录导航、快速入门指引。**新成员入职第一份阅读材料。**
@@ -155,7 +164,7 @@ kemi-docs/
 
 - 每节包含：问题、根因、修复文件、改动细节、验证结果
 - 末尾维护"暂未完成任务"清单
-- 当前最新：第六十九节（新服务器四端重编译与PAD自动更新验证）
+- 当前最新：第一百零六节（PAD 1.4.78+185第一阶段封版与总结归档）
 
 > 每次提交代码前应同步更新本文档。
 
@@ -244,17 +253,18 @@ Android PAD外接物理鼠标的专项说明：右键失效根因、`BUTTON_SECO
 ### 新成员上手顺序
 
 1. **README.md**（本文件）— 了解项目全貌
-2. **WORKSPACE.md** — 确认客户端、服务端与 Git 边界
-3. **SESSION-HANDOFF.md** — 核对当前事实、基线、环境和不可回退行为
-4. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
-5. **dual-screen-port.md** — 理解双屏架构（历史命令以接续手册为准）
-6. **cross-display-keyboard.md** — 理解键盘模块
-7. **server-operations.md** — 服务端构建与部署入口
-8. **p2p-network-debug-and-optimization.md** — 涉及网络直连、映射或中继时阅读
-9. **macos-configuration.md** — 涉及 Mac 时阅读
-10. **ci-build.md** — 涉及云端、Windows 或 Linux 构建时阅读
-11. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
-12. **build-toolchain-policy.md** — 所有本地客户端构建前必读；固定项目私有 Flutter，禁止全局 SDK
+2. **PHASE-1-DEVELOPMENT-SUMMARY.md** — 确认第一阶段封版事实、风险和第二阶段起点
+3. **WORKSPACE.md** — 确认客户端、服务端与 Git 边界
+4. **SESSION-HANDOFF.md** — 查阅详细架构和历史接续信息
+5. **CHANGELOG-KEMI.md** — 了解近期改动与当前待办
+6. **dual-screen-port.md** — 理解双屏架构（历史命令以第一阶段总结和接续手册为准）
+7. **cross-display-keyboard.md** — 理解键盘模块
+8. **server-operations.md** — 服务端构建与部署入口
+9. **p2p-network-debug-and-optimization.md** — 涉及网络直连、映射或中继时阅读
+10. **macos-configuration.md** — 涉及 Mac 时阅读
+11. **ci-build.md** — 涉及云端、Windows 或 Linux 构建时阅读
+12. **GIT-OPS.md** — 掌握代码提交与 GitHub 备份流程
+13. **build-toolchain-policy.md** — 所有本地客户端构建前必读；固定项目私有 Flutter，禁止全局 SDK
 
 ### 日常开发速查
 
@@ -287,5 +297,5 @@ git rev-parse HEAD
 
 ---
 
-> 最后更新：2026-08-01
+> 最后更新：2026-08-08
 > 维护：KEMI 远程桌面团队

@@ -12,12 +12,12 @@
 
 客户端只在 `/Users/newlink/kemi/RustDesk/client` 开发、构建和提交；服务端只在 `/Users/newlink/kemi/RustDesk/server` 开发和构建。不要在一个仓库中复制另一个模块的源码、`target/`、Flutter `build/` 或 APK。
 
-`BIN/`用于保存本地交付包。`BIN/release`当前稳定六文件为`1.4.48+125`批次；源码正在准备
-`1.4.48+129`四端候选，在四端同commit产物齐备前不得局部覆盖稳定manifest。旧PAD debug
-APK和历史版本只用于回溯。BIN不是Git源码备份；每份制品仍需
-记录来源commit、版本、哈希与签名状态。当前Mac包使用固定本地测试签名并已通过深度校验，
-但未使用Apple Developer ID且未公证，不能把“固定签名完成”写成“公开分发已通过
-Gatekeeper”。不要从`BIN/`反向修改或构建源码。
+`BIN/`用于保存本地交付包。`BIN/release`当前批次为
+`1.4.78+185-pad-phase-1-final`：PAD为`1.4.78+185`；macOS为已完成Developer ID签名、
+Apple公证和票据装订的`1.4.75+182`；Windows/Linux为`1.4.75`。本地六文件已对齐，
+Newlink云盘仍以在线manifest回读为准。旧PAD debug APK和历史版本只用于回溯。BIN不是Git
+源码备份；每份制品仍需记录来源commit、版本、哈希与签名状态。不要从`BIN/`反向修改或
+构建源码。第一阶段完整封版事实见`PHASE-1-DEVELOPMENT-SUMMARY.md`。
 
 `rustdesk/` 不包含 Git、客户端源码或服务端源码，当前大小为 0B。它不是第三个模块，也不是 `client/` 的上级工程；如需清理，可在确认后删除这个空目录。
 
