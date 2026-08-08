@@ -9,7 +9,39 @@ object DeviceRole {
     fun isDualScreenPad(context: Context): Boolean {
         val manager = context.applicationContext
             .getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        return manager.displays.count { it.state != Display.STATE_OFF } >= 2
+        return findUsableSecondaryDisplayId(manager) != null
+    }
+
+    fun findOppositeDisplayId(context: Context, sourceDisplayId: Int): Int {
+        val manager = context.applicationContext
+            .getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        return if (sourceDisplayId != Display.DEFAULT_DISPLAY) {
+            val defaultDisplay = manager.getDisplay(Display.DEFAULT_DISPLAY)
+            if (defaultDisplay != null && defaultDisplay.isValid &&
+                defaultDisplay.state == Display.STATE_ON
+            ) {
+                Display.DEFAULT_DISPLAY
+            } else {
+                sourceDisplayId
+            }
+        } else {
+            findUsableSecondaryDisplayId(manager) ?: sourceDisplayId
+        }
+    }
+
+    fun findUsableSecondaryDisplayId(context: Context): Int? {
+        val manager = context.applicationContext
+            .getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        return findUsableSecondaryDisplayId(manager)
+    }
+
+    private fun findUsableSecondaryDisplayId(manager: DisplayManager): Int? {
+        return manager.displays.firstOrNull { display ->
+            display.displayId != Display.DEFAULT_DISPLAY &&
+                display.isValid &&
+                display.state == Display.STATE_ON &&
+                display.flags and Display.FLAG_PRESENTATION != 0
+        }?.displayId
     }
 
     /**

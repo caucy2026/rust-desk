@@ -101,16 +101,8 @@ class FileTransferActivity : FlutterActivity() {
             connToken: String?,
             toggle: Boolean = false
         ): Map<String, Any> {
-            val displayManager =
-                source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
             val sourceDisplayId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
-            val targetDisplayId = if (sourceDisplayId != Display.DEFAULT_DISPLAY) {
-                Display.DEFAULT_DISPLAY
-            } else {
-                displayManager.displays.firstOrNull {
-                    it.displayId != Display.DEFAULT_DISPLAY && it.state == Display.STATE_ON
-                }?.displayId ?: sourceDisplayId
-            }
+            val targetDisplayId = DeviceRole.findOppositeDisplayId(source, sourceDisplayId)
             if (targetDisplayId == sourceDisplayId) {
                 Log.i(TAG, "No opposite display; keep same-display transfer fallback")
                 return mapOf(

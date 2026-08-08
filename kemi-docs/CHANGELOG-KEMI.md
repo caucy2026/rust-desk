@@ -2,6 +2,15 @@
 
 > 基于 RustDesk 定制，日期 2026-07-26
 
+## 一百零五、2026-08-08 1.4.77+184 单屏设备工具同屏适配
+
+- 将跨屏能力统一收口为Android原生`DeviceRole`判断：只有存在有效、点亮并带`FLAG_PRESENTATION`的非默认显示器时才视为双屏。普通单屏、残留虚拟显示或不可用显示不再误触发跨屏键盘、跨屏权限申请或对面屏文件窗口。
+- 远程ID输入和连接密码继续使用同一`is_dual_screen_pad`结果：单屏设备保留当前页面的系统数字键盘/密码键盘；真实双屏PAD才使用对面屏键盘代理。
+- 远控会话键盘新增单屏分支：单屏使用当前远控页面的Flutter输入框和系统输入法，键盘显示/隐藏状态继续驱动底部按钮；双屏保持已验证的`KeyboardProxyActivity`跨屏宿主、HOME恢复和鼠标不关闭键盘逻辑。
+- 文件传输、键盘代理和远程Activity共用`DeviceRole.findOppositeDisplayId`，不再分别猜测副屏。没有可用副屏时文件传输回落到当前远控页面的独立FFI浮窗；`RemoteActivity`也不再因硬编码Display 2在单屏设备上反复重启。
+- 版本统一提升为`1.4.77+184`。项目自带Flutter 3.24.5完成纯arm64-v8a Release构建，Kotlin/Java、R8、资源压缩和正式签名任务全部通过；APK为24,591,467字节、SHA-256 `f77969fff769892730d0595b9d4a879696efb7693011bf2f51e97263b3cfefea`，包名`com.newlinksz.kemi.remote`、zipalign及v1/v2签名有效，固定证书SHA-256为`8546d03e51d09dfa17dbcf432f84bccf74bd2d9fde1cff981ff202f8871871a2`。
+- 本轮只发布PAD APK，带版本归档为`BIN/KEMI-远程办公-PAD-1.4.77+184-release.apk`；`BIN/release`只替换`KEMI-PAD.apk`并更新两份清单，macOS、Windows和Linux保持现有正式文件原字节不变。当前没有普通单屏Android真机在线，因此已完成编译和静态分支闭环，单屏实机的远程ID、密码、远控键盘和文件传输四项仍需用户安装后验收，不能写成已真机通过。
+
 ## 一百零四、2026-08-08 1.4.76+183 PAD自有设备权限与固定工具链发布
 
 - 本轮功能、版本、KEMI服务器受控补丁和审计文档提交为`bacea56df`；`libs/hbb_common`仍跟随公开上游gitlink，KEMI服务器与公钥由主仓`.github/patches/kemi_hbb_common_server.diff`复现，避免推送云端无法获取的私有子模块提交。

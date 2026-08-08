@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前本地待上传批次为 **1.4.76+183 PAD单端更新**：PAD使用固定Newlink release签名，macOS仍为已完成Developer ID签名、公证和票据装订的`1.4.75+182`，Windows/Linux保持`1.4.75`原字节；Newlink线上实际版本仍以固定HTTPS接口回读的`release-manifest.json`为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。
+**KEMI-远程办公** 是基于 [RustDesk](https://github.com/rustdesk/rustdesk) (AGPL-3.0) 定制的远程桌面客户端，面向 Android PAD 与多平台远控场景。当前本地待上传批次为 **1.4.77+184 PAD单端更新**：PAD使用固定Newlink release签名，macOS仍为已完成Developer ID签名、公证和票据装订的`1.4.75+182`，Windows/Linux保持`1.4.75`原字节；Newlink线上实际版本仍以固定HTTPS接口回读的`release-manifest.json`为准。`BIN/`根目录保存带版本号的不可变归档，`BIN/release/`保存无版本号、永久固定名称的云盘上传副本。
 
 ## 当前项目总结（2026-08-08）
 
 - 客户端源码位于本仓；服务端`hbbs/hbbr/hbbc`独立部署和维护。客户端统一使用`kemi-chat.newlinksz.com`与固定服务器公钥，无账户后台，因此不显示登录入口。
 - Android PAD是当前主要实机：Display 0/Display 2双屏运行，远程控制、文件传输独立会话、跨屏键盘、触摸、物理鼠标右键、共享屏幕、服务器状态和局域网客户端分发均已有专项文档与真机基线。
-- 当前PAD源码`1.4.76+183`在稳定鼠标/跨屏键盘基线上，新增KEMI自有OEM双屏设备全功能、其他Android安装P2P-only策略；其余连接记录、资源监控、VP9硬解、文件传输和升级能力保持原逻辑。
-- `BIN/release`已形成PAD `1.4.76+183`加三端既有`1.4.75`的混合发布快照并通过大小/SHA-256交叉门禁；管理员尚未上传Newlink云盘，因此manifest状态为`pending-manual-upload`。本轮只需上传PAD、SHA256SUMS，最后上传release-manifest，随后再做云端回读和PAD远程升级闭环。
+- 当前PAD源码`1.4.77+184`在稳定双屏行为和自有设备权限策略上，新增单屏设备工具同屏适配：远程ID数字键盘、密码键盘、远控键盘和文件传输都不再尝试跨屏；其余连接记录、资源监控、VP9硬解和升级能力保持原逻辑。
+- `BIN/release`已形成PAD `1.4.77+184`加三端既有`1.4.75`的混合发布快照并通过大小/SHA-256交叉门禁；管理员尚未上传Newlink云盘，因此manifest状态为`pending-manual-upload`。本轮只需上传PAD、SHA256SUMS，最后上传release-manifest，随后再做云端回读和PAD远程升级闭环。
 - GitHub `backup/master`保存KEMI源码和文档；`origin`只跟踪RustDesk上游，禁止推送定制代码。二进制历史位于项目`BIN/`，固定云盘上传快照位于`BIN/release/`，两者不以Git提交代替。
 
 ### 核心定制功能

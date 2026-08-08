@@ -65,8 +65,10 @@ class RemoteActivity : FlutterActivity() {
             (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.displayId
         }
 
-        if (currentDisplayId == Display.DEFAULT_DISPLAY) {
-            Log.w(TAG, "防呆: RemoteActivity 被启动到主屏 Display 0, 迁回副屏 Display 2")
+        if (currentDisplayId == Display.DEFAULT_DISPLAY &&
+            DeviceRole.findUsableSecondaryDisplayId(this) != null
+        ) {
+            Log.w(TAG, "防呆: RemoteActivity 被启动到主屏 Display 0, 迁回可用副屏")
             relaunchOnDisplay2()
             return
         }
@@ -85,6 +87,11 @@ class RemoteActivity : FlutterActivity() {
      * 防呆: 重新将自身启动到副屏 Display 2。
      */
     private fun relaunchOnDisplay2() {
+        val targetDisplayId = DeviceRole.findUsableSecondaryDisplayId(this)
+        if (targetDisplayId == null) {
+            Log.i(TAG, "No usable secondary display; keep RemoteActivity on current display")
+            return
+        }
         val intent = Intent(this, RemoteActivity::class.java).apply {
             putExtra(EXTRA_PEER_ID, peerId)
             password?.let { putExtra(EXTRA_PASSWORD, it) }
@@ -99,7 +106,7 @@ class RemoteActivity : FlutterActivity() {
                     "setLaunchDisplayId",
                     Int::class.javaPrimitiveType  // ⚠️ 注意: javaPrimitiveType 不是 javaObjectType
                 )
-                method.invoke(options, 2) // Display 2
+                method.invoke(options, targetDisplayId)
                 startActivity(intent, options.toBundle())
             } catch (e: Exception) {
                 Log.e(TAG, "反射 setLaunchDisplayId 失败, 降级启动", e)

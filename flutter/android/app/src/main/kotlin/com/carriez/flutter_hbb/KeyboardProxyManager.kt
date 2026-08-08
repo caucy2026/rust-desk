@@ -93,7 +93,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
             Log.i(TAG, "Defer keyboard proxy preparation on default display until authentication")
             return true
         }
-        val targetId = findTargetDisplay(manager, sourceId)
+        val targetId = DeviceRole.findOppositeDisplayId(source, sourceId)
         val existing = proxyActivity.get()
         if (existing != null && !existing.isFinishing && !existing.isDestroyed &&
             existing.display?.displayId == targetId
@@ -167,7 +167,7 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
 
         val manager = source.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         val sourceId = source.display?.displayId ?: Display.DEFAULT_DISPLAY
-        val targetId = findTargetDisplay(manager, sourceId)
+        val targetId = DeviceRole.findOppositeDisplayId(source, sourceId)
         if (sourceId != targetId && !canRestoreCrossDisplayTools(source)) {
             Log.w(TAG, "Cross-display restore permission is required")
             return mapOf(
@@ -497,15 +497,4 @@ object KeyboardProxyManager : DisplayManager.DisplayListener, DefaultLifecycleOb
         channel?.invokeMethod("keyboard_proxy_state", payload)
     }
 
-    private fun findTargetDisplay(manager: DisplayManager, sourceId: Int): Int {
-        if (sourceId != Display.DEFAULT_DISPLAY) return Display.DEFAULT_DISPLAY
-        val secondaryDisplay = manager.displays.firstOrNull {
-            it.displayId != Display.DEFAULT_DISPLAY && it.state == Display.STATE_ON
-        }
-        if (secondaryDisplay == null) {
-            Log.i(TAG, "No usable secondary display; use source display=$sourceId for keyboard proxy")
-            return sourceId
-        }
-        return secondaryDisplay.displayId
-    }
 }

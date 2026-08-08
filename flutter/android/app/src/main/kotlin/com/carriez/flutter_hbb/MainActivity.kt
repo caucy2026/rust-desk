@@ -740,7 +740,12 @@ class MainActivity : FlutterActivity() {
      * Reference: chip.md §2.3 — 副屏 Activity 启动（反射 API）
      */
     private fun launchRemoteOnDisplay2(peerId: String, password: String?, forceRelay: Boolean) {
-        Log.d(logTag, "launchRemoteOnDisplay2: peerId=$peerId, display=2")
+        val sourceDisplayId = display?.displayId ?: Display.DEFAULT_DISPLAY
+        val targetDisplayId = DeviceRole.findOppositeDisplayId(this, sourceDisplayId)
+        Log.d(
+            logTag,
+            "launchRemoteOnDisplay2: peerId=$peerId source=$sourceDisplayId target=$targetDisplayId"
+        )
 
         val intent = Intent(this, RemoteActivity::class.java).apply {
             putExtra(RemoteActivity.EXTRA_PEER_ID, peerId)
@@ -756,9 +761,9 @@ class MainActivity : FlutterActivity() {
                     "setLaunchDisplayId",
                     Int::class.javaPrimitiveType  // ⚠️ javaPrimitiveType, 不是 javaObjectType
                 )
-                method.invoke(options, 2) // Display 2 = 副屏
+                method.invoke(options, targetDisplayId)
                 startActivity(intent, options.toBundle())
-                Log.d(logTag, "RemoteActivity 已启动到 Display 2")
+                Log.d(logTag, "RemoteActivity 已启动到 Display $targetDisplayId")
             } catch (e: Exception) {
                 Log.e(logTag, "反射 setLaunchDisplayId 失败, 降级到默认 Display", e)
                 startActivity(intent)

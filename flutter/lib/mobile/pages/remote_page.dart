@@ -295,6 +295,7 @@ class RemotePage extends StatefulWidget {
 
 class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   bool? _keyboardCloseIntent;
+  bool _useCrossDisplayTools = false;
 
   Timer? _timer;
   Timer? _keyboardProxyWatchdog;
@@ -353,6 +354,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         keyboardVisibilityController.onChange.listen(onSoftKeyboardChanged);
     if (isAndroid) {
       unawaited(gFFI.invokeMethod("set_remote_mouse_input_active", true));
+      unawaited(_loadCrossDisplayToolMode());
       keyboardProxyController.addListener(_onKeyboardProxyChanged);
       fileTransferWindowController.addListener(_onFileTransferWindowChanged);
       unawaited(_syncFileTransferWindowState());
@@ -361,7 +363,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
-      if (isAndroid) {
+      if (isAndroid && _useCrossDisplayTools) {
         // Authentication fields must retain Flutter's InputConnection. Create
         // the reusable opposite-display keyboard host only after authentication
         // succeeds and the first remote frame has arrived.
@@ -599,7 +601,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         },
       );
 
-      if (isAndroid) {
+      if (isAndroid && _useCrossDisplayTools) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             unawaited(gFFI.invokeMethod(
@@ -686,7 +688,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       );
 
   void onSoftKeyboardChanged(bool visible) {
-    if (isAndroid) return;
+    if (isAndroid && _useCrossDisplayTools) return;
     if (!visible) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
@@ -839,7 +841,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void openKeyboard() {
-    if (isAndroid) {
+    if (isAndroid && _useCrossDisplayTools) {
       final closeIntent =
           _keyboardCloseIntent ?? keyboardProxyController.value.isVisible;
       _keyboardCloseIntent = null;
@@ -876,7 +878,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   void _openKeyboardUnlocked() {
     inputModel.keyboardInputAllowed = true;
-    if (isAndroid) {
+    if (isAndroid && _useCrossDisplayTools) {
       unawaited(_openAndroidKeyboardWithPermission());
       return;
     }
@@ -903,6 +905,17 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     final currentSessionId = sessionId.toString();
     if (!keyboardProxyController.tryBeginOpen(currentSessionId)) return;
     await _requestKeyboardProxyOpen(currentSessionId);
+  }
+
+  Future<void> _loadCrossDisplayToolMode() async {
+    var enabled = false;
+    try {
+      enabled = await gFFI.invokeMethod('is_dual_screen_pad', null) == true;
+    } catch (_) {
+      // Fail closed: single-display behavior never launches tools elsewhere.
+    }
+    if (!mounted) return;
+    setState(() => _useCrossDisplayTools = enabled);
   }
 
   Future<void> _requestKeyboardProxyOpen(
@@ -960,7 +973,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void _openKeyboardAfterBarCollapse() {
-    final alreadyActive = isAndroid
+    final alreadyActive = isAndroid && _useCrossDisplayTools
         ? keyboardProxyController.value.state != KeyboardProxyState.hidden
         : keyboardVisibilityController.isVisible && _showEdit;
     if (alreadyActive) return;
@@ -982,8 +995,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardIsVisible =
-        !isAndroid && keyboardVisibilityController.isVisible && _showEdit;
+    final keyboardIsVisible = (!isAndroid || !_useCrossDisplayTools) &&
+        keyboardVisibilityController.isVisible &&
+        _showEdit;
     final showActionButton = !_showBar || keyboardIsVisible || _showGestureHelp;
     final barCollapsed = !_showBar && !_showGestureHelp;
 
