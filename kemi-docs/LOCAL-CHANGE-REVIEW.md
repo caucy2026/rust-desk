@@ -10,6 +10,7 @@
 - `BIN/release`已更新PAD、SHA清单和manifest，三个桌面文件保持上一批次原字节；六文件通过manifest、文件大小及SHA清单交叉校验。
 - 当前风险不在本地制品，而在人工上传窗口：管理员必须最后上传`release-manifest`。上传前云端仍是旧批次，上传后必须回读六个接口并验证PAD升级和两个下载通道。
 - macOS固定上传包仍是原`1.4.75+182`字节，Apple公证等待过程不会修改本地App。2026-08-08曾因受限隔离环境无法访问完整Security/trustd服务而得到`Authority=(unavailable)`和错误的签名失败结论；正常系统上下文复验为`accepted / Notarized Developer ID`。以后隔离环境结果只作诊断，不作正式发布判定。
+- 误判期间产生的Mac `1.4.76+183`候选公证请求为`c240c04b-7833-4853-933a-9954a9d4d70e`，当前不属于release，不覆盖现有Mac文件，也不得在Apple返回后自动晋级。
 
 ### 0.1 本轮相对GitHub备份基线的源码改动
 
